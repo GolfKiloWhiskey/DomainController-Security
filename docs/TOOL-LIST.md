@@ -85,6 +85,7 @@ a `Result` per object, run history; forest- or domain-wide changes need the doma
 | --- | --- | --- | --- |
 | FSMO Roles | `dc-fsmo` | Report + Change | Show the role holders; move one or all roles to another DC (from MigrateFSMOtoNewServer). Seizing is not offered |
 | Functional Levels | `ad-levels` | Report + Change | Show schema version, domain and forest levels and the highest each can go to; raise the domain or forest level. Schema upgrades (adprep) stay manual |
+| Sort New Computers | `ad-sort-computers` | Report + Change | New computers all land in `Devices/Workstations` (redircmp has one target). Lists computers there running Windows Server and moves them to `Devices/Member Servers`; servers outside Member Servers are flagged by `ad-report` too. Optional: pre-create a server's computer object in Member Servers before it joins |
 | Stale Computers | `ad-stale-computers` | Report + Change | Computers not signed in for N days or already disabled; disable and move them to a chosen OU, with an exclude list (from GetComputerLastLogonDate-AndMoveToOU) |
 | Password Never Expires | `ad-pwd-never-expires` | Report + Change | Accounts in an OU with Password never expires; clear the flag, with exclusions. Service accounts are listed separately and left alone unless picked |
 | Bulk Password Reset | `ad-pwd-reset` | Report + Change | Reset passwords and set change at next logon for the users in an OU, with exclusions. The password is typed at run time, never stored |
@@ -94,12 +95,14 @@ a `Result` per object, run history; forest- or domain-wide changes need the doma
 
 ## Open questions
 
-- **OU standard:** `OU=<CompanyName>` under the domain root, then Devices, Security Groups, Service
-  Accounts, Users and more. Need the full list, including OUs nested below those (for example Devices
-  > Workstations, Laptops, Servers), and which ones the GPOs link to.
+- **OU standard:** filled in by Cliff in the OU Standard doc (claude.ai artifact); copied into the repo as
+  `ou-layout`'s data once the link targets are accepted.
 
 ## Decided
 
 - Runs on a DC only (elevated, as a domain admin). Other DCs are reached from there.
 - Audit policy per role.
+- SCHANNEL Hardening is in, to Microsoft's current guidance: `docs/baselines/Security-SCHANNEL-Hardening.md`.
+- Firewall GPOs always merge local rules. Time Synchronization links at Devices only.
+- Disabled objects live directly under the domain root (Z-Disabled Users, Z-Disabled Computers), outside the organization OU and the Entra Connect sync scope; Users/Z-Disabled Users-SharedMailboxes stays in scope for shared mailboxes. Admin accounts stay in Users/Admin Accounts.
 - General AD admin is in, except the employee ID import.

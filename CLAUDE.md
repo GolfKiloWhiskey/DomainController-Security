@@ -23,7 +23,10 @@ no "build everything" button.
 
 **It runs on a DC**, elevated, as a domain admin; other DCs are reached from there. **OU standard:** one
 organization OU directly under the domain root (`OU=<CompanyName>,DC=clientx,DC=local`), with all
-structured OUs (Devices, Security Groups, Service Accounts, Users and so on) below it.
+structured OUs (Devices, Security Groups, Service Accounts, Users and so on) below it. The one exception:
+`Z-Disabled Users` and `Z-Disabled Computers` sit directly under the domain root, outside the Entra Connect
+sync scope. **Firewall GPOs always merge local rules** (Cliff's standard): never set "Apply local firewall
+rules" to No, least of all on a GPO that reaches DCs.
 
 ## Baseline: M365-Tools
 
