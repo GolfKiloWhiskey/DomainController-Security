@@ -59,7 +59,7 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 ## Order of work
 
-1. Core and launcher (copied from M365-Tools and adapted), `session-info`.
+1. Core and launcher (copied from M365-Tools and adapted), `session-info`. **Done in 0.1.0.**
 2. The baseline file format, and `gpo-build` and `gpo-compare` for the easy kinds (template settings,
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
    The format includes a control-tag field on every setting from the start (see Compliance profiles).
