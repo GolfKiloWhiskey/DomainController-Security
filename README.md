@@ -1,8 +1,9 @@
 # DomainController-Security
 
 The Nutmeg AD Toolkit (working name `Nutmeg.AD`): one menu-driven PowerShell module for Active Directory
-domain controller onboarding and hardening, such as building a new forest, promoting DCs, DNS, sites,
-OU and tier layout, GPO baselines and health checks. It follows the same pattern as the Nutmeg M365
+domain controller onboarding after the DC is built by hand: OU and tier layout, GPO baselines,
+hardening, reports and health checks. Building a DC (installing AD DS, creating the forest, promoting
+DCs) stays manual and is not part of the toolkit. It follows the same pattern as the Nutmeg M365
 Toolkit (M365-Tools): a shared core for menus, logging, safety prompts, exports and settings, and one
 file per tool.
 
