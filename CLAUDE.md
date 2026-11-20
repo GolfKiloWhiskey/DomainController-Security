@@ -21,6 +21,10 @@ parameters, asked for at build time with sensible defaults. Links, delegation, f
 filters are chosen by the technician on each run, GPO by GPO: no GPO is set up the same way, so there is
 no "build everything" button.
 
+**It runs on a DC**, elevated, as a domain admin; other DCs are reached from there. **OU standard:** one
+organization OU directly under the domain root (`OU=<CompanyName>,DC=clientx,DC=local`), with all
+structured OUs (Devices, Security Groups, Service Accounts, Users and so on) below it.
+
 ## Baseline: M365-Tools
 
 The Nutmeg M365 Toolkit (`GolfKiloWhiskey/M365-Tools`) is the reference for how this toolkit is set up:

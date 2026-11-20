@@ -40,7 +40,7 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 | Tool | Id | Kind | What it does |
 | --- | --- | --- | --- |
-| OU Layout | `ou-layout` | Report + Change | Create the standard OU tree under an organization OU (Computers, Servers, Users, and whatever else the standard needs, plus a GPO Test OU), protected from accidental deletion. Optionally point new computers and users at those OUs (`redircmp` / `redirusr`). Shows what exists and creates only what's missing |
+| OU Layout | `ou-layout` | Report + Change | Create Cliff's standard tree: one organization OU directly under the domain root (`OU=<CompanyName>,DC=...`), with the standard OUs below it (Devices, Security Groups, Service Accounts, Users and the rest of the list, still to be confirmed), protected from accidental deletion. Optionally point new computers and users at those OUs (`redircmp` / `redirusr`). Shows what exists and creates only what's missing |
 | Groups and Members | `ad-groups` | Report | Find groups by part of a name; members of one or all of them, nested resolved; a privileged view (Domain Admins and the other built-in admin groups, with each member's groups). From the group export scripts |
 
 ### Readiness (`ready`)
@@ -65,26 +65,41 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 3. `gpo-scope`, `gpo-wmi`, `gpo-admx`, `gpo-inventory`.
 4. Firewall baselines, then the hard kinds: wireless, software installation, certificate trust.
 5. `ad-report` (wrapping the existing script), `ou-layout`, `ready` and `ready-aes`, `ad-groups`.
-6. `gpo-capture`.
+6. The AD admin tools.
+7. `gpo-capture`.
 
 ## New baselines from the scripts
 
 - **Security - SCHANNEL Hardening**: SSL 2.0/3.0 and TLS 1.0/1.1 off (from CreateGPO-SSL_TLS-Disable).
-- **Audit policy (Huntress)**: the 59 subcategories in Update-AuditPol-HuntressDefaults, as a GPO. It
-  overlaps the three Domain Auditing GPOs and turns Process Creation off, which the PowerShell logging
-  GPO needs on. Decide: one audit baseline for everything, or per role (DCs, servers, devices) with the
-  Huntress list as the floor.
+- **Audit policy, per role** (decided): Domain Auditing (DCs), (Servers) and (Devices), each starting
+  from the Huntress list in Update-AuditPol-HuntressDefaults as the minimum, with the role's extra
+  subcategories from the existing GPOs on top (File Servers becomes Servers, or stays as its own role).
+  Process Creation is turned on wherever the PowerShell logging GPO applies, so command lines are logged.
 
-## Maybe (general AD admin)
+### AD admin (`admin`) (in scope, decided)
 
-From the personal repository. In scope only if the toolkit is also for day-to-day AD work, not just
-onboarding: FSMO transfer, raising domain and forest levels, stale computer clean-up (disable and move),
-password never expires and org-wide password resets, UPN suffix change, home folder attributes and
-folders, employee ID import, managed service accounts (gMSA).
+Day-to-day AD work from the personal repository. Every one is a change tool: asks first, `-WhatIf`,
+a `Result` per object, run history; forest- or domain-wide changes need the domain name typed.
+
+| Tool | Id | Kind | What it does |
+| --- | --- | --- | --- |
+| FSMO Roles | `dc-fsmo` | Report + Change | Show the role holders; move one or all roles to another DC (from MigrateFSMOtoNewServer). Seizing is not offered |
+| Functional Levels | `ad-levels` | Report + Change | Show schema version, domain and forest levels and the highest each can go to; raise the domain or forest level. Schema upgrades (adprep) stay manual |
+| Stale Computers | `ad-stale-computers` | Report + Change | Computers not signed in for N days or already disabled; disable and move them to a chosen OU, with an exclude list (from GetComputerLastLogonDate-AndMoveToOU) |
+| Password Never Expires | `ad-pwd-never-expires` | Report + Change | Accounts in an OU with Password never expires; clear the flag, with exclusions. Service accounts are listed separately and left alone unless picked |
+| Bulk Password Reset | `ad-pwd-reset` | Report + Change | Reset passwords and set change at next logon for the users in an OU, with exclusions. The password is typed at run time, never stored |
+| UPN Suffix | `ad-upn` | Report + Change | List UPN suffixes and who uses them; change users in an OU to another suffix |
+| Home Folders | `ad-home-folders` | Report + Change | Set or clear users' home drive and folder attributes in an OU, and optionally create each user's folder on the share with the right permissions |
+| Managed Service Accounts | `ad-gmsa` | Report + Change | List service accounts; create a gMSA (and the KDS root key if missing) for named servers. Replaces the sMSA script |
 
 ## Open questions
 
-- **OU standard:** the reports show Computers, Servers and Users under the organization OU. Is that the
-  whole standard, or are there more OUs (groups, service accounts, admin or tier OUs, disabled objects)?
-- **Where it runs:** on a DC, or also from a management server or workstation with RSAT? Both work for
-  everything except `ou-layout` redirection (needs a domain admin), but it changes how DCs are reached.
+- **OU standard:** `OU=<CompanyName>` under the domain root, then Devices, Security Groups, Service
+  Accounts, Users and more. Need the full list, including OUs nested below those (for example Devices
+  > Workstations, Laptops, Servers), and which ones the GPOs link to.
+
+## Decided
+
+- Runs on a DC only (elevated, as a domain admin). Other DCs are reached from there.
+- Audit policy per role.
+- General AD admin is in, except the employee ID import.
