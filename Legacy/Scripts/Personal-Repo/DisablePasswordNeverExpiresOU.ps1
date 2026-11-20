@@ -1,0 +1,2 @@
+﻿#Fill in SearchBase info as needed for current OU structure.
+Get-ADUser -filter {Enabled -eq $True -and PasswordNeverExpires -eq $True} -SearchBase "OU=,OU= Users,DC=,DC=" | set-aduser -PasswordNeverExpires $false

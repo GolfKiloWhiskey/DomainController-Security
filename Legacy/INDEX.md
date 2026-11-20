@@ -18,7 +18,51 @@ and remediation, the Office Bing policy, the AD/MSOnline hygiene export).
 
 ## Your scripts
 
-(None yet.)
+### AD report
+
+| Script | Status | What it does | Notes |
+| --- | --- | --- | --- |
+| [AD-Advanced-Report.ps1](Scripts/AD-Report/AD-Advanced-Report.ps1) | To do (`ad-report`) | v4.5. One self-contained HTML AD health and inventory report with executive summary, findings (and JSON), DC health, replication, sites and DNS, users, groups, privileged access, security, computers and LAPS, OUs and GPOs | Kept whole, like the IT Glue engine in M365-Tools: the tool asks its questions through the core and runs it in its own process with `-NoPrompt`. Read only. No client data in it |
+
+### Personal repository
+
+Scrubbed before commit: a client domain and OU, a hard-coded password, example rows from a real
+environment, and a personal email address in the headers (now the work address). Nothing else changed.
+**Ask** means Cliff decides whether general AD admin is in scope.
+
+| Script | Status | What it does | Notes |
+| --- | --- | --- | --- |
+| [Update-AuditPol-HuntressDefaults.ps1](Scripts/Personal-Repo/Update-AuditPol-HuntressDefaults.ps1) | To do (baseline) | Checks and applies 59 advanced audit subcategories with auditpol, to Huntress recommendations | Becomes an audit baseline, not auditpol on the machine (hardening is GPO). Overlaps the three Domain Auditing GPOs; it turns Process Creation off, but the PowerShell logging GPO turns on command lines in process creation events, which need it. Merge decided with Cliff |
+| [CreateGPO-SSL_TLS-Disable.ps1](Scripts/Personal-Repo/CreateGPO-SSL_TLS-Disable.ps1) | To do (baseline) | Adds registry preferences to a GPO (Registry.xml) that turn off SSL 2.0/3.0 and TLS 1.0/1.1 | New baseline "Security - SCHANNEL Hardening". Its Registry.xml writer is a reference for `gpo-build` |
+| [Audit-SslTlsCiphersAndProtocols.ps1](Scripts/Personal-Repo/Audit-SslTlsCiphersAndProtocols.ps1) | To do | Audits SSL/TLS on one machine: SCHANNEL protocols with OS defaults, .NET strong crypto, FIPS, cipher suites, curves, HTTPS bindings, RDP and WinRM security, certificate health | Goes into `ready` (check DCs before the SCHANNEL baseline), run on each DC |
+| [Enable-UserKerberosEncryption.ps1](Scripts/Personal-Repo/Enable-UserKerberosEncryption.ps1) | To do | Sets AES encryption types on the users in an OU | Fix step for `ready`: accounts without AES before the Kerberos Encryption baseline |
+| [Get-ADGroupMembers-PartialGroupNaming-MENU.ps1](Scripts/Personal-Repo/Get-ADGroupMembers-PartialGroupNaming-MENU.ps1) | To do | Finds groups by part of a name; exports members of one or all | `ad-groups` |
+| [Get-ADGroupMemberAudit.ps1](Scripts/Personal-Repo/Get-ADGroupMemberAudit.ps1) | To do | Group member export with a menu | `ad-groups`; older version of the one above |
+| [Get-DomainAdminsUsers_ThenTheirGroups.ps1](Scripts/Personal-Repo/Get-DomainAdminsUsers_ThenTheirGroups.ps1) | To do | Domain Admins members and each one's groups | `ad-groups` (privileged view) |
+| [GetDomainAdmins.ps1](Scripts/Personal-Repo/GetDomainAdmins.ps1) | Delete | Lists Domain Admins | One-liner; covered by the AD report and `ad-groups` |
+| [MigrateFSMOtoNewServer.ps1](Scripts/Personal-Repo/MigrateFSMOtoNewServer.ps1) | Ask | Moves all five FSMO roles to a named DC | Possible `dc-fsmo` (when a new DC replaces an old one). Post-build, but close to DC build work |
+| [Get-Schema_Forest-ThenUpgradeBothToNewestLevel.ps1](Scripts/Personal-Repo/Get-Schema_Forest-ThenUpgradeBothToNewestLevel.ps1) | Ask | Shows schema and forest level; upgrades schema and raises the forest level | Raising domain and forest levels could be a tool; the schema upgrade (adprep) is DC build work and stays manual |
+| [Get-ADSchemaVersion.ps1](Scripts/Personal-Repo/Get-ADSchemaVersion.ps1) | Delete | Schema version mapped to a Windows Server version | Covered by the AD report |
+| [GetSchemaVersion.ps1](Scripts/Personal-Repo/GetSchemaVersion.ps1) | Delete | Schema version | Covered by the AD report |
+| [GetForestFunctionalLevel.ps1](Scripts/Personal-Repo/GetForestFunctionalLevel.ps1) | Delete | Forest level | Covered by the AD report |
+| [Get-DomainReplicationStatus.ps1](Scripts/Personal-Repo/Get-DomainReplicationStatus.ps1) | Delete | Replication status, errors and events (RMM-style, custom fields) | Covered by the AD report |
+| [GetComputerLastLogonDate-AndMoveToOU.ps1](Scripts/Personal-Repo/GetComputerLastLogonDate-AndMoveToOU.ps1) | Ask | Finds disabled and stale computers; moves and disables them | Possible stale-object clean-up tool. General AD hygiene |
+| [GetADDevices-Name_Version_Timestamp.ps1](Scripts/Personal-Repo/GetADDevices-Name_Version_Timestamp.ps1) | Delete | Computers with OS, version and last logon | Covered by the AD report |
+| [GetComputerLastLogonDate.ps1](Scripts/Personal-Repo/GetComputerLastLogonDate.ps1) | Delete | Computers by last logon | Covered by the AD report |
+| [GetADUsers-LastLockOutDate.ps1](Scripts/Personal-Repo/GetADUsers-LastLockOutDate.ps1) | Delete | Users by lockout time | Covered by the AD report |
+| [GetPasswordLastSetDate.ps1](Scripts/Personal-Repo/GetPasswordLastSetDate.ps1) | Delete | Users by password last set | Covered by the AD report |
+| [GetADUsers-LastPasswordSetDate.ps1](Scripts/Personal-Repo/GetADUsers-LastPasswordSetDate.ps1) | Delete | Users in an OU by password last set, to CSV | Covered by the AD report |
+| [Get-AllActiveADUsers.ps1](Scripts/Personal-Repo/Get-AllActiveADUsers.ps1) | Delete | All enabled users to CSV | Covered by the AD report |
+| [GetADUsers-All-CSVExport.ps1](Scripts/Personal-Repo/GetADUsers-All-CSVExport.ps1) | Delete | All users with password flags to CSV | Covered by the AD report |
+| [DisablePasswordNeverExpiresOU.ps1](Scripts/Personal-Repo/DisablePasswordNeverExpiresOU.ps1) | Ask | Clears Password never expires in an OU | General user admin |
+| [GetADUsers-ChangePassword_SetChangeOnLogin.ps1](Scripts/Personal-Repo/GetADUsers-ChangePassword_SetChangeOnLogin.ps1) | Ask | Clears Password never expires, resets passwords, sets change at next logon | General user admin. Had a password in the file (removed) |
+| [GetAllADUsers-ChangePassword_SetChangeOnLogin.ps1](Scripts/Personal-Repo/GetAllADUsers-ChangePassword_SetChangeOnLogin.ps1) | Ask | Same, marked not complete | Duplicate of the one above. Had a password and a client OU in the file (removed) |
+| [ChangeToNewUPNSuffix.ps1](Scripts/Personal-Repo/ChangeToNewUPNSuffix.ps1) | Ask | Changes users' UPN suffix in an OU | General / hybrid identity prep |
+| [RemoveOrAddConnect_HomeFolderAttributesInAD.ps1](Scripts/Personal-Repo/RemoveOrAddConnect_HomeFolderAttributesInAD.ps1) | Ask | Sets or clears home folder attributes in an OU | General user admin |
+| [CreateFoldersFrom-sAMAccountName.ps1](Scripts/Personal-Repo/CreateFoldersFrom-sAMAccountName.ps1) | Ask | Creates a folder per user on a share | File server work |
+| [Import-MatchADAttributes-EmployeeID.ps1](Scripts/Personal-Repo/Import-MatchADAttributes-EmployeeID.ps1) | Ask | Imports employee IDs from CSV with fuzzy name matching | General user admin |
+| [Add sMSA account to AD.ps1](Scripts/Personal-Repo/Add%20sMSA%20account%20to%20AD.ps1) | Ask | Creates and installs a standalone managed service account | A gMSA tool would replace it |
+| [Get-LDAPQuery_User_Group.ps1](Scripts/Personal-Repo/Get-LDAPQuery_User_Group.ps1) | Keep outside | User and group lookups over ADSI from a member server without RSAT | The toolkit needs RSAT |
 
 ## Screenshots
 

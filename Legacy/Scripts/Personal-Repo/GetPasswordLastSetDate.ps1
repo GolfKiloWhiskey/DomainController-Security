@@ -1,0 +1,1 @@
+﻿get-aduser -filter {Enabled -eq $true} -properties passwordlastset, passwordneverexpires | sort passwordlastset | ft Name, passwordlastset, Passwordneverexpires

@@ -30,22 +30,25 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 | GPO Inventory | `gpo-inventory` | Report | Every GPO: links, status, filtering, WMI filter, last change, and which baseline it matches. Flags empty, unlinked, disabled and "applies to nobody" GPOs. Exports the GPMC HTML report per GPO for documentation |
 | Capture a GPO as a Baseline | `gpo-capture` | Report | Read a live GPO and write a new baseline file from its settings, turning the values you pick into parameters. This is how new baselines get added after a new client build. Writes only the file, never the domain |
 
+### Reports (`report`)
+
+| Tool | Id | Kind | What it does |
+| --- | --- | --- | --- |
+| AD Health and Inventory Report | `ad-report` | Report | Cliff's AD-Advanced-Report (v4.5), kept whole: one HTML report with executive summary and findings JSON, covering DC health, replication, sites and DNS, users, groups, privileged access, security, computers and LAPS, OUs and GPOs. The tool asks for client name, logo and folder (and the day thresholds) through the core, then runs the script in its own process with `-NoPrompt`. Replaces the separate DC health, replication, privileged groups, stale accounts and DC events tools in the first draft |
+
 ### Active Directory (`ad`)
 
 | Tool | Id | Kind | What it does |
 | --- | --- | --- | --- |
 | OU Layout | `ou-layout` | Report + Change | Create the standard OU tree under an organization OU (Computers, Servers, Users, and whatever else the standard needs, plus a GPO Test OU), protected from accidental deletion. Optionally point new computers and users at those OUs (`redircmp` / `redirusr`). Shows what exists and creates only what's missing |
-| Privileged Groups | `ad-privileged` | Report | Members of Domain, Enterprise and Schema Admins, Administrators, Account/Server/Backup/Print Operators, DnsAdmins, and objects with `adminCount` set. Nested members resolved |
-| Stale and Risky Accounts | `ad-stale` | Report | Users and computers not signed in for N days, disabled but still in groups, password never expires, no password required, reversible encryption, old `krbtgt` password |
+| Groups and Members | `ad-groups` | Report | Find groups by part of a name; members of one or all of them, nested resolved; a privileged view (Domain Admins and the other built-in admin groups, with each member's groups). From the group export scripts |
 
-### Readiness and health (`health`)
+### Readiness (`ready`)
 
 | Tool | Id | Kind | What it does |
 | --- | --- | --- | --- |
-| Hardening Readiness | `ready` | Report | Run before the baselines that can break things: accounts and services without AES keys (Kerberos Encryption), unsigned or non-channel-bound LDAP binds (DC events 2889, 3039; LDAPS Hardening), NTLMv1 and LM logons (4624; NTLM Hardening), SMB1 clients (SMB Hardening). Says per baseline whether it is safe to apply |
-| DC Health | `dc-health` | Report | Each DC: services (NTDS, DNS, Netlogon, KDC, W32Time, DFSR), SYSVOL and NETLOGON shared, DFSR SYSVOL state, FSMO holders, time source (the PDC on an external source, the others on the hierarchy), DNS, free disk space, and PowerShell 5.1 and 7 logging policy in effect |
-| Replication | `dc-replication` | Report | Replication partners, last success, failures and their error text, per DC and naming context |
-| DC Security Events | `dc-events` | Report | Ready-made event searches across the DCs: lockouts (4740), failed sign-ins (4625, by account and source), privileged group changes (4728, 4732, 4756), audit policy changes (4719), log cleared (1102), new services (7045). Events read into named fields (from `Get-EventIDHashTables.ps1`) |
+| Hardening Readiness | `ready` | Report | Run before the baselines that can break things, per DC or domain: accounts without AES keys (Kerberos Encryption), unsigned or non-channel-bound LDAP binds (events 2889, 3039; LDAPS Hardening), NTLMv1 and LM logons (4624; NTLM Hardening), SMB1 clients (SMB Hardening), and SSL/TLS on each DC (from Audit-SslTlsCiphersAndProtocols; SCHANNEL Hardening). Says per baseline whether it is safe to apply |
+| Kerberos AES for Accounts | `ready-aes` | Report + Change | Sets AES encryption types on the accounts `ready` found without them (from Enable-UserKerberosEncryption). Asks first; `-WhatIf` |
 
 ### Toolkit (`kit`)
 
@@ -61,8 +64,23 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
 3. `gpo-scope`, `gpo-wmi`, `gpo-admx`, `gpo-inventory`.
 4. Firewall baselines, then the hard kinds: wireless, software installation, certificate trust.
-5. `ou-layout`, `ready`, then the health and AD reports.
+5. `ad-report` (wrapping the existing script), `ou-layout`, `ready` and `ready-aes`, `ad-groups`.
 6. `gpo-capture`.
+
+## New baselines from the scripts
+
+- **Security - SCHANNEL Hardening**: SSL 2.0/3.0 and TLS 1.0/1.1 off (from CreateGPO-SSL_TLS-Disable).
+- **Audit policy (Huntress)**: the 59 subcategories in Update-AuditPol-HuntressDefaults, as a GPO. It
+  overlaps the three Domain Auditing GPOs and turns Process Creation off, which the PowerShell logging
+  GPO needs on. Decide: one audit baseline for everything, or per role (DCs, servers, devices) with the
+  Huntress list as the floor.
+
+## Maybe (general AD admin)
+
+From the personal repository. In scope only if the toolkit is also for day-to-day AD work, not just
+onboarding: FSMO transfer, raising domain and forest levels, stale computer clean-up (disable and move),
+password never expires and org-wide password resets, UPN suffix change, home folder attributes and
+folders, employee ID import, managed service accounts (gMSA).
 
 ## Open questions
 

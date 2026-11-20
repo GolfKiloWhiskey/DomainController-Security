@@ -1,0 +1,1 @@
+﻿Get-ADForest | fl Name,ForestMode
