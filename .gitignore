@@ -1,0 +1,21 @@
+# Output and local state never belongs in the repo
+*.csv
+!Nutmeg.AD/Data/*.csv
+!Legacy/**/*.csv
+*.log
+Logs/
+History.csv
+Domains.json
+
+# Certificates and secrets
+*.pfx
+*.cer
+*.pem
+*.key
+secrets*.json
+
+# Editor and OS
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
