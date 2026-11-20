@@ -6,7 +6,7 @@ OU and tier layout, GPO baselines and health checks. It follows the same pattern
 Toolkit (M365-Tools): a shared core for menus, logging, safety prompts, exports and settings, and one
 file per tool.
 
-Status: intake. No module code yet. The layout is agreed first, then scripts are ported one area at a time.
+Status: intake. No module code yet. See `Legacy/INDEX.md` for what is in and where it goes, and `CLAUDE.md` for the rules (PowerShell 7, M365-Tools as the pattern).
 
 ## Intake
 
