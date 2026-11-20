@@ -8,6 +8,11 @@ layout, GPO baselines, hardening, reports and health checks.
 always done by hand. No tool installs AD DS, runs `Install-ADDSForest` / `Install-ADDSDomainController`
 or demotes a DC.
 
+**Hardening is the GPO baselines.** DC and domain hardening is defined by Cliff's GPO reports in
+`Legacy/GPO-Reports/`. Tools build, link and check those GPOs; don't add separate hardening scripts that
+set the same things outside Group Policy. A setting that can't be done in a GPO is the exception, and is
+agreed with Cliff first.
+
 ## Baseline: M365-Tools
 
 The Nutmeg M365 Toolkit (`GolfKiloWhiskey/M365-Tools`) is the reference for how this toolkit is set up:
