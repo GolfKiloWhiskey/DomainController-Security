@@ -13,6 +13,14 @@ or demotes a DC.
 set the same things outside Group Policy. A setting that can't be done in a GPO is the exception, and is
 agreed with Cliff first.
 
+**A baseline is a GPO's settings, nothing else.** The reports in `Legacy/GPO-Reports/` come from one
+client build; their links, delegation, security filtering, WMI filters, owners and IDs belong to that
+client and are not part of the baseline. Values that depend on the environment (server names, paths,
+IP ranges, SSID, CA, disclaimer text, renamed account names, the Duo installer and settings) are
+parameters, asked for at build time with sensible defaults. Links, delegation, filtering and WMI
+filters are chosen by the technician on each run, GPO by GPO: no GPO is set up the same way, so there is
+no "build everything" button.
+
 ## Baseline: M365-Tools
 
 The Nutmeg M365 Toolkit (`GolfKiloWhiskey/M365-Tools`) is the reference for how this toolkit is set up:
