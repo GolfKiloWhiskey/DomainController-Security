@@ -62,11 +62,38 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 1. Core and launcher (copied from M365-Tools and adapted), `session-info`.
 2. The baseline file format, and `gpo-build` and `gpo-compare` for the easy kinds (template settings,
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
+   The format includes a control-tag field on every setting from the start (see Compliance profiles).
 3. `gpo-scope`, `gpo-wmi`, `gpo-admx`, `gpo-inventory`.
 4. Firewall baselines, then the hard kinds: wireless, software installation, certificate trust.
 5. `ad-report` (wrapping the existing script), `ou-layout`, `ready` and `ready-aes`, `ad-groups`.
 6. The AD admin tools.
 7. `gpo-capture`.
+8. Compliance profiles (next project, to revisit with Cliff): see below.
+
+## Compliance profiles (next project)
+
+Agreed in principle (Nov 2026); to revisit once the Nutmeg baseline is built. Not started.
+
+- **Why:** onboarding a forest for a regulated client (a healthcare practice under HIPAA, a credit union
+  under NCUA, a contractor with CUI under NIST 800-171 / CMMC) should start from a profile that meets
+  that framework, not just the Nutmeg Standard.
+- **Shape:** the Nutmeg Standard baseline stays the base layer. Each setting carries control tags
+  (for example screen timeout: HIPAA 164.312(a)(2)(iii), NIST 800-53 AC-11, 800-171 3.1.10). A
+  compliance profile is an overlay that adds GPOs and tightens values; it is picked in `gpo-build`, and
+  links and delegation are still chosen per GPO. A compliance report lists each control, the setting
+  that covers it, its live state (`gpo-compare`), and the controls GPO can't cover, marked outside the
+  toolkit.
+- **Settings sources:** HIPAA, NCUA/FFIEC and NIST 800-53/171 are outcome-based and name no Windows
+  settings. Settings come from technical benchmarks: DISA STIG (public domain, GPO packages), Microsoft
+  Security Baselines (free; downloaded at run time, not committed), CIS Benchmarks (cross-reference by
+  section number only; their GPOs and text are licensed and not copied in).
+- **Likely additions** to the Standard for most profiles: BitLocker, Windows LAPS, password and lockout
+  policy, Credential Guard and LSA protection, WDigest off, LLMNR and NetBIOS off, Defender ASR rules,
+  event log size and retention, SMB encryption.
+- **Open when we revisit:** which framework first (HIPAA, NIST 800-171/CMMC, FFIEC/NCUA); which
+  benchmark to build from (proposed: DISA STIG plus Microsoft, CIS as cross-reference); the research
+  write-up per framework with sources. Check NCUA's current guidance then: FFIEC retired its
+  Cybersecurity Assessment Tool in 2025 and pointed to NIST CSF 2.0.
 
 ## New baselines from the scripts
 
