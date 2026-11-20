@@ -1,0 +1,34 @@
+Baseline,DefaultLinks,Notes
+Group Policy Processing,Domain root,
+Network - Prefer IPv4 over IPv6,Domain root,
+Network - Disable NCSI,Devices/Workstations,
+Network - Time Synchronization,Devices,Never the domain root or Domain Controllers (the PDC needs its own time source)
+Devices - Power Profile (Workstations),Devices/Workstations/Desktops,Replaces the desktop WMI filter
+Printer Deployment - Point and Print Restrictions,Devices/Workstations,
+Remote Desktop - Devices (Default),Devices/Workstations,
+Remote Desktop - Servers (Default),Domain Controllers; Devices/Member Servers,
+Security - DUO Desktop (Laptops),Devices/Workstations/Laptops,Replaces the laptop WMI filter
+Security - DUO Standards (Devices),Devices/Workstations/Desktops,
+Security - DUO Standards (Servers),Domain Controllers; Devices/Member Servers,
+Software - DUO Rollout,Domain root,
+Security - Disable AutoPlay,Devices/Workstations; Devices/Member Servers,
+Security - Disable Print Spooler,Domain Controllers; Devices/Member Servers,
+Security - Domain Auditing (DC's),Domain Controllers,
+Security - Domain Auditing (Servers),Devices/Member Servers,
+Security - Domain Auditing (Devices),Devices/Workstations,
+Security - Enforce UAC,Domain root,
+Security - Logon Disclaimer,Domain root,
+Security - Kerberos Encryption,Domain root,Run ready first
+Security - LDAPS Hardening (DC's),Domain Controllers,Run ready first
+Security - LDAPS Hardening (Devices),Devices/Workstations; Devices/Member Servers,
+Security - NTLM Hardening,Domain root,Run ready first
+Security - PKI - CA Infrastructure,Domain root,
+Security - PowerShell Logging,Domain Controllers; Devices/Workstations; Devices/Member Servers,
+Security - Removable Drive Restrictions,Users,
+Security - Rename and Disable Local Accounts,Domain root,
+Security - SCHANNEL Hardening,Domain Controllers; Devices/Member Servers; Devices/Workstations,Link to Devices/Workstations/GPO Test first; run ready before DCs and servers
+Security - SMB Hardening,Domain root,Run ready first
+Security - Screen Timeout,Users,
+Windows Firewall - Devices (Default),Devices/Workstations,
+Windows Firewall - Servers (Default),Domain Controllers; Devices/Member Servers,Local rules always merge
+Wireless - Corporate (802.1X),Devices/Workstations/Laptops,

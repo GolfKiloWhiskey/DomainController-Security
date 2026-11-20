@@ -1,0 +1,17 @@
+Path,Parent,Need,Protected,Notes
+<CompanyName>,Domain root,Required,Yes,Organization OU; everything below it is in the Entra Connect sync scope
+Devices,<CompanyName>,Required,Yes,
+Devices/Workstations,<CompanyName>,Required,Yes,Default container for new computers (redircmp)
+Devices/Workstations/Desktops,<CompanyName>,Required,Yes,
+Devices/Workstations/Laptops,<CompanyName>,Required,Yes,
+Devices/Workstations/GPO Test,<CompanyName>,Required,Yes,Link new or changed GPOs here first
+Devices/Member Servers,<CompanyName>,Required,Yes,ad-sort-computers moves Windows Server computers here
+Security Groups,<CompanyName>,Required,Yes,
+Distribution Lists,<CompanyName>,Required,Yes,
+Service Accounts,<CompanyName>,Required,Yes,
+Users,<CompanyName>,Required,Yes,Default container for new users (redirusr)
+Users/Admin Accounts,<CompanyName>,Required,Yes,
+Users/Vendors,<CompanyName>,Required,Yes,
+Users/Z-Disabled Users-SharedMailboxes,<CompanyName>,Required,Yes,Inside the sync scope: disabled users who keep a shared mailbox
+Z-Disabled Users,Domain root,Required,Yes,Outside the organization OU and the sync scope; no Users GPOs
+Z-Disabled Computers,Domain root,Required,Yes,Outside the organization OU; ad-stale-computers moves disabled computers here

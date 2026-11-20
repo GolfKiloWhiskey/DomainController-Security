@@ -122,8 +122,10 @@ a `Result` per object, run history; forest- or domain-wide changes need the doma
 
 ## Open questions
 
-- **OU standard:** filled in by Cliff in the OU Standard doc (claude.ai artifact); copied into the repo as
-  `ou-layout`'s data once the link targets are accepted.
+- **OU standard:** done. Agreed in the OU Standard doc (claude.ai artifact) and copied to
+  `Nutmeg.AD/Data/OuStandard.csv` (`ou-layout`) and `Nutmeg.AD/Data/GpoDefaultLinks.csv` (`gpo-build`'s
+  default links, confirmed or changed on every run). Paths are relative to the organization OU unless
+  the parent is the domain root.
 
 ## Decided
 
