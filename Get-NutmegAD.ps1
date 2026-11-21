@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.5
+    Version: 1.6
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -20,6 +20,8 @@
     - Unblocks the files, so Windows runs them and the New Forest Build's pre-flight passes.
     - Writes what it does to a log in C:\Temp\NutmegAD\Logs (never the token) and hands that log to
       the toolkit, which carries on in it (through every restart of a New Forest Build).
+    - Run from outside the toolkit folder (C:\Temp, say), it replaces itself with the copy just
+      downloaded, so the next run uses the latest version.
     - Shows the toolkit version and the commit it came from, then changes to the toolkit folder and
       starts it: the New Forest Build on a workgroup server, the main menu on a domain-joined server
       or DC. -StartBuild or -Start picks one; -NoStart only downloads.
@@ -44,6 +46,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.6 - Updates itself from the download when run from elsewhere; steps out of the toolkit folder before replacing it.
     1.5 - Hands -NewForest and -LogPath to the launcher as named parameters (a list bound them in order: the log path became '-LogPath').
     1.4 - Starts the log (C:\Temp\NutmegAD\Logs) and hands it to the toolkit, so a build has one log throughout.
     1.3 - Clears the screen when it starts (issue #6).
@@ -63,7 +66,7 @@ param(
     [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.5'
+$ScriptVersion = '1.6'
 $ErrorActionPreference = 'Stop'
 
 $script:GetLogPath = $null
@@ -160,6 +163,11 @@ function Install-NutmegPackage {
         $previous = "$Path.previous"
         if (Test-Path -LiteralPath $Path) {
             if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous -Recurse -Force }
+            # Windows will not rename a folder the console is standing in: step out of it first.
+            $here = (Get-Location).ProviderPath
+            if ($here -and ($here.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar).StartsWith($Path.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                Set-Location -LiteralPath $parent
+            }
             Move-Item -LiteralPath $Path -Destination $previous
         }
         Move-Item -LiteralPath $root.FullName -Destination $Path
@@ -183,6 +191,24 @@ function Get-NutmegStartChoice {
 function Test-NutmegPartOfDomain {
     # True when this computer is joined to a domain (a DC included).
     try { return [bool](Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).PartOfDomain } catch { return $true }
+}
+
+function Update-NutmegSelf {
+    <#
+    .SYNOPSIS
+        Replaces this script with the copy in the toolkit just installed, when it was run from
+        somewhere else (C:\Temp, the desktop) and the two differ. Returns the new version, or ''.
+    #>
+    param([string]$Self, [Parameter(Mandatory)][string]$Path)
+    if (-not $Self -or -not (Test-Path -LiteralPath $Self)) { return '' }
+    $new = Join-Path $Path 'Get-NutmegAD.ps1'
+    if (-not (Test-Path -LiteralPath $new)) { return '' }
+    $selfFull = [IO.Path]::GetFullPath($Self); $newFull = [IO.Path]::GetFullPath($new)
+    if ($selfFull -eq $newFull) { return '' }
+    if ((Get-FileHash -LiteralPath $selfFull).Hash -eq (Get-FileHash -LiteralPath $newFull).Hash) { return '' }
+    Copy-Item -LiteralPath $newFull -Destination $selfFull -Force
+    $v = if ((Get-Content -LiteralPath $selfFull -Raw) -match "\`$ScriptVersion = '([^']+)'") { $Matches[1] } else { 'new' }
+    return $v
 }
 
 # Tests dot-source this file with NUTMEG_GET_TEST set, to reach the functions without running it.
@@ -219,6 +245,10 @@ try {
     $r = Install-NutmegPackage -ZipPath $zip -Path $Path
     Write-Step "Nutmeg AD Toolkit $($r.Version) (commit $($r.Commit)) is in $($r.Path)." Green
     if ($r.Previous) { Write-Step "The copy that was there is kept in $($r.Previous)." DarkGray }
+    try {
+        $selfVersion = Update-NutmegSelf -Self $PSCommandPath -Path $r.Path
+        if ($selfVersion) { Write-Step "This copy of Get-NutmegAD.ps1 ($PSCommandPath) is updated to $selfVersion for next time." DarkGray }
+    } catch { Write-Step "This copy of Get-NutmegAD.ps1 was not updated: $($_.Exception.Message)" Yellow }
 } catch {
     Write-Step "$($_.Exception.Message)" Red
     return
