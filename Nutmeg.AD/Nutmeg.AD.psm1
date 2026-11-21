@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.3
+    Version: 0.7.4
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.4 - Core\Steps.ps1: a live step list for long runs (window panel, console lines, progress in the log); background calls
+            pass their progress on; the Output panel follows along. The New Forest Build uses it.
     0.7.3 - Fixed the restart loop after promotion (restart steps saved before their notice; Get-NmLastBootTime); notices
             with only words open as the modern dialog. New Forest Build results: a Build card (the answers) first and a Still to do card last; cards whose rows share one
             status no longer repeat it on every line.
@@ -63,7 +65,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.3'
+$script:ModuleVersion = '0.7.4'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -83,7 +85,7 @@ $script:NmConfig = [pscustomobject]@{
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
+$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Steps', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
 foreach ($name in $coreFiles) {
     . (Join-Path (Join-Path $PSScriptRoot 'Core') "$name.ps1")
 }

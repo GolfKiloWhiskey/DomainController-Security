@@ -89,15 +89,18 @@ function Invoke-NmBuildStep {
         return [pscustomobject]@{ Phase = $Phase; Step = $Label; Result = 'Already done'; Detail = "$($State.Steps.$Name.Detail)" }
     }
     Write-NmLog "Build step: $Label" -Level INFO
+    Set-NmStepStatus -Name $Name -Status Running   # the live step list (Core\Steps.ps1), when one is running
     try {
         $detail = "$(& $Action)"
         Set-NmBuildStep -State $State -Name $Name -Status Done -Detail $detail
+        Set-NmStepStatus -Name $Name -Status Done -Detail $detail
         Write-NmLog "Build step done: $Label - $detail" -Level SUCCESS -NoConsole
         Write-NmRunHistory -ToolId 'new-forest' -Kind Change -ItemCount 1 -Notes "$Label ($detail)"
         return [pscustomobject]@{ Phase = $Phase; Step = $Label; Result = 'Done'; Detail = $detail }
     } catch {
         $why = "$($_.Exception.Message)"
         Set-NmBuildStep -State $State -Name $Name -Status Failed -Detail $why
+        Set-NmStepStatus -Name $Name -Status Failed -Detail $why
         Write-NmRunHistory -ToolId 'new-forest' -Kind Change -Result Failed -Notes "$Label ($why)"
         Write-NmLog "Build step failed: $Label - $why" -Level ERROR
         throw (New-Object System.InvalidOperationException("$Label failed: $why"))

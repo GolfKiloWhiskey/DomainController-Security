@@ -59,7 +59,8 @@ $script:NmGuiMainControls = @('VersionText', 'DomainButton', 'DomainLabel', 'Dom
     'CenterPanel', 'ToolListCenter', 'ToolListTitle', 'ToolList', 'ToolTitle', 'ChangeTag', 'ToolMeta', 'OptionsBorder', 'OptionsPanel', 'ActionRow',
     'RunButton', 'GuidedButton', 'PreviewBox', 'ResultTitle', 'DetailsButton', 'SummaryButton', 'ExportTxtButton', 'ExportCsvButton',
     'AllColumnsBox', 'FilterBox', 'ResultsGrid', 'CardScroll', 'CardHost', 'ViewToggle', 'ClearButton', 'LogBox', 'StatusText', 'ProgressPanel', 'ProgressText', 'ProgressBar',
-    'SearchHint', 'FilterHint', 'ResultBar', 'EmptyText', 'OutputExpander', 'SelectionBar', 'SelectionText', 'SelectAllButton', 'SelectNoneButton', 'SelectionActions')
+    'SearchHint', 'FilterHint', 'ResultBar', 'EmptyText', 'OutputExpander', 'SelectionBar', 'SelectionText', 'SelectAllButton', 'SelectNoneButton', 'SelectionActions',
+    'StepBorder', 'StepTitle', 'StepSummary', 'StepPanel')
 
 # ---------------------------------------------------------------------------
 # Output and prompt redirection (inert unless the window is open)
@@ -367,7 +368,20 @@ function Add-NmGuiText {
     [void]$script:NmGui.Buffer.Append($line)
     # The Output panel leaves out the screen furniture (borders, author, version, the status line);
     # the dialogs still get it, to find their titles.
-    if (-not (Test-NmGuiFurniture -Text $Text)) { [void]$script:NmGui.Transcript.Append($line) }
+    if (-not (Test-NmGuiFurniture -Text $Text)) {
+        [void]$script:NmGui.Transcript.Append($line)
+        # The Output panel follows along while a tool runs (at most about 4 times a second).
+        try {
+            $lb = $script:NmGui.Controls.LogBox
+            if ($lb) {
+                if (-not $script:NmGui.LogClock) { $script:NmGui.LogClock = [System.Diagnostics.Stopwatch]::StartNew() }
+                if ($script:NmGui.LogClock.ElapsedMilliseconds -ge 250 -or $Text -match '^\[[\d\- :]+\] \[') {
+                    $script:NmGui.LogClock.Restart()
+                    $lb.Text = $script:NmGui.Transcript.ToString(); $lb.ScrollToEnd()
+                }
+            }
+        } catch { $null = $_ }
+    }
     # Log lines also go to the status bar, and the window repaints so long runs show progress.
     if ($Text -match '^\[\d{4}-\d{2}-\d{2} [\d:]{8}\] \[(\w+)\] (.*)$' -and $script:NmGui.Controls.StatusText) {
         try {
@@ -2151,6 +2165,62 @@ function Show-NmGuiConfirm {
     return $state.Ok
 }
 
+function Get-NmGuiProgressText {
+    # A progress record as one line and a percent: its status, else its activity ("Installing" over
+    # "Install-WindowsFeature"); -1 when it gives no percent.
+    param($Record)
+    $t = "$($Record.StatusDescription)".Trim()
+    if (-not $t -or $t -match '^(?i)(processing|working)$') { $t = "$($Record.Activity)".Trim() }
+    if ("$($Record.CurrentOperation)".Trim()) { $t = "${t}: $("$($Record.CurrentOperation)".Trim())" }
+    $pc = -1
+    try { $pc = [int]$Record.PercentComplete } catch { $pc = -1 }
+    if ($pc -gt 100) { $pc = 100 }
+    [pscustomobject]@{ Text = $t; Percent = $pc }
+}
+
+function Update-NmGuiSteps {
+    # Draws the step list (Get-NmStepListModel) above the results; hides it when there is none.
+    $c = $script:NmGui.Controls
+    if (-not $c -or -not $c.StepBorder) { return }
+    $m = Get-NmStepListModel
+    if (-not $m) { $c.StepBorder.Visibility = 'Collapsed'; return }
+    $c.StepBorder.Visibility = 'Visible'
+    $c.StepTitle.Text = $m.Title
+    $c.StepSummary.Text = "$($m.Summary)  |  $($m.State)"
+    $c.StepPanel.Children.Clear()
+    $glyph = @{ Done = 0xE73E; Failed = 0xE711; Running = 0xE895; Waiting = 0xE91F; Skipped = 0xE738 }
+    $color = @{ Done = '#1F6B35'; Failed = '#A0281C'; Running = '#0E6B66'; Waiting = '#8A919C'; Skipped = '#8A919C' }
+    foreach ($r in $m.Rows) {
+        if ($r.Kind -eq 'Group') {
+            $h = New-NmGuiTextBlock -Text "$($r.Label)".ToUpper() -Size 11 -Weight 'SemiBold' -Color '#0E6B66'
+            $h.Margin = '0,8,0,4'
+            [void]$c.StepPanel.Children.Add($h)
+            continue
+        }
+        $g = New-Object System.Windows.Controls.Grid
+        $g.Margin = '0,3'
+        foreach ($w in @(26, 0, 90)) {
+            $cd = New-Object System.Windows.Controls.ColumnDefinition
+            $cd.Width = $(if ($w -gt 0) { New-Object System.Windows.GridLength $w } else { New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star) })
+            [void]$g.ColumnDefinitions.Add($cd)
+        }
+        $mk = New-NmGuiTextBlock -Text ([string][char]$glyph["$($r.Mark)"]) -Size 14 -Color $color["$($r.Mark)"]
+        $mk.FontFamily = 'Segoe MDL2 Assets'; $mk.VerticalAlignment = 'Top'; $mk.Margin = '0,2,0,0'
+        $sp = New-Object System.Windows.Controls.StackPanel
+        [System.Windows.Controls.Grid]::SetColumn($sp, 1)
+        $weight = if ($r.Mark -eq 'Running') { 'SemiBold' } else { 'Normal' }
+        [void]$sp.Children.Add((New-NmGuiTextBlock -Text $r.Label -Size 13 -Weight $weight -Color $(if ($r.Mark -eq 'Waiting') { '#5B6370' } else { '#16191F' }) -Wrap))
+        $sub = if ($r.Mark -eq 'Running' -and $r.Progress) { $r.Progress } else { $r.Detail }
+        if ($sub) { $t = New-NmGuiTextBlock -Text $sub -Size 12 -Color $(if ($r.Mark -eq 'Failed') { '#A0281C' } else { '#5B6370' }) -Wrap; [void]$sp.Children.Add($t) }
+        $tm = New-NmGuiTextBlock -Text $r.Time -Size 12 -Color '#5B6370'
+        $tm.HorizontalAlignment = 'Right'; $tm.VerticalAlignment = 'Top'; $tm.Margin = '0,2,0,0'
+        [System.Windows.Controls.Grid]::SetColumn($tm, 2)
+        [void]$g.Children.Add($mk); [void]$g.Children.Add($sp); [void]$g.Children.Add($tm)
+        [void]$c.StepPanel.Children.Add($g)
+    }
+    try { $script:NmGui.Window.Dispatcher.Invoke([action] {}, [System.Windows.Threading.DispatcherPriority]::Background) } catch { $null = $_ }
+}
+
 function Invoke-NmGuiBackground {
     <#
     .SYNOPSIS
@@ -2169,9 +2239,21 @@ function Invoke-NmGuiBackground {
         foreach ($k in $Parameters.Keys) { [void]$ps.AddParameter($k, $Parameters[$k]) }
         $clock = [System.Diagnostics.Stopwatch]::StartNew()
         $handle = $ps.BeginInvoke()
+        $seen = 0; $tick = [System.Diagnostics.Stopwatch]::StartNew()
         while (-not $handle.IsCompleted) {
-            $view = Update-NmGuiProgressState -Id 7 -Activity $Status -Status ('{0:m\:ss} elapsed' -f $clock.Elapsed)
+            # What the call reports (Install-WindowsFeature's percent, the forest's stages): under the
+            # running step, in the status bar, and in the log once per change.
+            $said = ''
+            $n = $ps.Streams.Progress.Count
+            if ($n -gt $seen) {
+                $rec = $ps.Streams.Progress[$n - 1]; $seen = $n
+                $p = Get-NmGuiProgressText -Record $rec
+                if ($p.Text) { Write-NmStepProgress -Text $p.Text -Percent $p.Percent; $said = $p.Text }
+            }
+            $view = Update-NmGuiProgressState -Id 7 -Activity $Status -Status ('{0}{1:m\:ss} elapsed' -f $(if ($said) { "$said  |  " } else { '' }), $clock.Elapsed)
             if ($script:NmGui.Window) { Show-NmGuiProgress -View $view -Force }
+            # The running step's timer, once a second.
+            if ($tick.ElapsedMilliseconds -ge 1000) { $tick.Restart(); Update-NmStepView }
             [void]$handle.AsyncWaitHandle.WaitOne(150)
         }
         $out = @($ps.EndInvoke($handle))
@@ -2734,6 +2816,17 @@ $script:NmGuiMainXaml = @'
           <CheckBox x:Name="PreviewBox" Content="Preview changes only (WhatIf)" VerticalAlignment="Center" Margin="8,0,0,0"/>
         </StackPanel>
         <StackPanel Grid.Row="3">
+        <Border x:Name="StepBorder" Visibility="Collapsed" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="16,12" Margin="0,16,0,0">
+          <StackPanel>
+            <DockPanel LastChildFill="True" Margin="0,0,0,8">
+              <TextBlock x:Name="StepSummary" DockPanel.Dock="Right" Foreground="#5B6370" VerticalAlignment="Center"/>
+              <TextBlock x:Name="StepTitle" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </DockPanel>
+            <ScrollViewer MaxHeight="300" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <StackPanel x:Name="StepPanel"/>
+            </ScrollViewer>
+          </StackPanel>
+        </Border>
         <DockPanel x:Name="ResultBar" Margin="0,16,0,8" LastChildFill="False" Visibility="Collapsed">
           <TextBlock x:Name="ResultTitle" DockPanel.Dock="Left" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
           <Button x:Name="DetailsButton" DockPanel.Dock="Right" Content="Row details" Margin="0" IsEnabled="False"/>
@@ -3042,6 +3135,8 @@ function Select-NmGuiTool {
     $c.PreviewBox.IsChecked = $false
     Build-NmGuiOptionForm
     $c.ActionRow.Visibility = 'Visible'
+    # Another tool: the last run's step list goes.
+    if (-not $script:NmGui.BuildMode) { Stop-NmStepList; Update-NmGuiSteps }
     # Build mode: one way in, the build's own questions (the Resume and WhatIf boxes would only confuse).
     if ($script:NmGui.BuildMode) { Set-NmGuiBuildModeControl -Controls $c }
     # The tool's last results stay until cleared or the domain or DC changes.
