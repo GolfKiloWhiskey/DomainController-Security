@@ -2,6 +2,17 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.3 - 11/21/2026
+
+From the first run on a real DC (Cliff's Server 2025 VM, PowerShell 7.6.10):
+
+- **GroupPolicy showed "not installed" on a DC that has it.** PowerShell 7 hides Windows PowerShell
+  modules that aren't marked for 7 unless they are looked for with `-SkipEditionCheck`, and
+  GroupPolicy is one of them. The toolkit now looks for them that way; GroupPolicy still loads
+  through Windows PowerShell as before.
+- **Long values in result tables were cut off** ("Install-WindowsFeature ..."). Tables now wrap
+  them onto the next line instead.
+
 ## 0.2.2 - 11/21/2026
 
 - **Downloads are fast in Windows PowerShell 5.1 now.** The PowerShell 7 install and
