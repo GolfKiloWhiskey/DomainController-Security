@@ -29,7 +29,7 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
    Administrator, open **Windows PowerShell** as administrator and run:
    ```powershell
    cd C:\Tools\DomainController-Security
-   .\Start-NutmegAD.ps1 -NewForest -Gui     # the window (leave out -Gui for the console)
+   .\Start-NutmegAD.ps1 -NewForest     # the window (add -Console for the console)
    ```
    In the window (0.5.0) the questions come one at a time, in the console's order, as clean
    dialogs: the server check as a table in the first one, the suggested answer already in the box,
@@ -57,7 +57,7 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
   set by Windows itself).
 - `Get-ADDomain` and `Get-ADForest`: names and levels as answered.
 - `Get-ScheduledTask -TaskName 'Nutmeg AD Toolkit - New Forest Build'`: gone at the end (while the
-  build runs in the window, its action ends in `-NewForest -Gui`).
+  build runs in the console, its action ends in `-NewForest -Console`; in the window, in `-NewForest`).
 - `pwsh -v`: PowerShell 7 installed by `Get-NutmegAD.ps1`, and the log says `Approved with the plan
   'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server'`.
 - `C:\Temp\NutmegAD\NewForest\State.json`: every step Done, and no password in it.

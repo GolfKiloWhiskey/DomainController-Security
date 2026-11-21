@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.5.0
+    Version: 0.6.0
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.6.0 - Launcher 0.6.0: the window by default (-Console for the console), PowerShell 7 without asking when installed;
+            the sign-in task passes -Console for a console build; Get-NutmegAD.ps1 1.9.
     0.5.0 - Modern dialogs: no console text (sections, notes, tables, suggested answers), one approval dialog for changes
             (Read-NmGuiConfirm), long steps in the background (Invoke-NmGuiBackground); build mode shows this server.
     0.4.0 - The New Forest Build in the window (Start-NmToolkitGui -NewForest, password dialog, sign-in task reopens the window);
@@ -51,7 +53,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.5.0'
+$script:ModuleVersion = '0.6.0'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

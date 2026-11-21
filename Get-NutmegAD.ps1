@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.8
+    Version: 1.9
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -54,6 +54,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.9 - Passes -Console for the console (the launcher opens the window by default since 0.6.0).
     1.8 - Installs PowerShell 7 when missing, without asking (-SkipPowerShell7); the New Forest Build opens in the window (-Console for the console).
     1.7 - Opens the window on a domain-joined server or DC (-Console for the menu); the build stays in the console.
     1.6 - Updates itself from the download when run from elsewhere; steps out of the toolkit folder before replacing it.
@@ -78,7 +79,7 @@ param(
     [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.8'
+$ScriptVersion = '1.9'
 $ErrorActionPreference = 'Stop'
 
 $script:GetLogPath = $null
@@ -108,7 +109,8 @@ function Get-NutmegLauncherArgs {
     param([Parameter(Mandatory)][string]$Choice, [string]$LogPath)
     $a = @{}
     if ($Choice -eq 'NewForest' -or $Choice -eq 'NewForestWindow') { $a.NewForest = $true }
-    if ($Choice -eq 'Window' -or $Choice -eq 'NewForestWindow') { $a.Gui = $true }
+    # The launcher opens the window by default; the console must be asked for.
+    if ($Choice -eq 'Menu' -or $Choice -eq 'NewForest') { $a.Console = $true }
     if ($LogPath) { $a.LogPath = $LogPath }
     return $a
 }
@@ -300,7 +302,7 @@ try {
 
 $choice = Get-NutmegStartChoice -PartOfDomain (Test-NutmegPartOfDomain) -StartBuild:$StartBuild -Start:$Start -Console:$Console -NoStart:$NoStart
 if ($choice -eq 'None') {
-    Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest),   .\Start-NutmegAD.ps1 -Gui   (the window)   or   .\Start-NutmegAD.ps1   (the menu)" DarkGray
+    Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest)   or   .\Start-NutmegAD.ps1   (the toolkit); add -Console for the console" DarkGray
     return
 }
 Set-Location -LiteralPath $Path
@@ -310,7 +312,7 @@ if ($choice -eq 'NewForestWindow') {
 } elseif ($choice -eq 'NewForest') {
     Write-Step 'This server is in a workgroup: starting the New Forest Build in the console (it carries on in this log).' DarkGray
 } elseif ($choice -eq 'Window') {
-    Write-Step 'Opening the toolkit window (it carries on in this log). For the console menu: .\Get-NutmegAD.ps1 -Console, or .\Start-NutmegAD.ps1' DarkGray
+    Write-Step 'Opening the toolkit window (it carries on in this log). For the console menu: .\Get-NutmegAD.ps1 -Console, or .\Start-NutmegAD.ps1 -Console' DarkGray
 } else {
     Write-Step 'Starting the toolkit menu (it carries on in this log).' DarkGray
 }

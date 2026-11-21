@@ -2,6 +2,19 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.6.0 - 11/21/2026
+
+- **`.\Start-NutmegAD.ps1` opens the window** (Cliff). `-Console` opens the console menu instead;
+  `-Gui` still works but is no longer needed. The same goes for the New Forest Build:
+  `.\Start-NutmegAD.ps1 -NewForest` is the window, `-NewForest -Console` the console.
+- **PowerShell 7 whenever it is installed** (Cliff): started in Windows PowerShell 5.1, the launcher
+  moves to PowerShell 7 without asking ("Start the toolkit in PowerShell 7?" is gone). If it isn't
+  installed, it offers to install it (now Yes by default). The New Forest Build still runs in 5.1.
+- A build started in the console keeps reopening in the console after its restarts (its sign-in
+  task now says `-Console`); one started in the window reopens in the window.
+- `Get-NutmegAD.ps1` 1.9 asks the launcher for the console with `-Console` when you choose it.
+- Not run on Windows yet: tested against stand-ins (175 tests).
+
 ## 0.5.0 - 11/21/2026
 
 **A modern look in the window** (Cliff: no console text in the pop-ups; same order of questions as

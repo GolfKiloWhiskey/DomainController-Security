@@ -32,24 +32,25 @@ On a domain controller, as a domain admin:
 .\Start-NutmegAD.ps1
 ```
 
-- Works in Windows PowerShell 5.1 and PowerShell 7 (7 recommended).
+- Opens the window. `-Console` opens the console menu instead.
+- Runs in PowerShell 7 whenever it is installed: started in Windows PowerShell 5.1, it moves to 7
+  without asking. Not installed: it offers to install the current LTS release (Microsoft's signed
+  MSI, with Microsoft Update on), or carries on in 5.1.
 - Not elevated: offers to start again as administrator.
-- In 5.1: offers to start again in PowerShell 7, or to install the current PowerShell 7 LTS release
-  first (Microsoft's signed MSI, with Microsoft Update on).
-- `-Stay` skips both offers.
+- `-Stay` stays where it was started: no move to PowerShell 7, no offer to elevate.
 
-**In a window:** `.\Start-NutmegAD.ps1 -Gui` opens the same tools in a window: areas on the left,
+**The window:** the same tools as the console menu: areas on the left,
 each tool's options as a form (or **Guided...** for its own questions), results as cards or a table
 with filter, export and row details. Questions come in the console's order as clean dialogs (no
 console text: notes, tables and the suggested answer), changes are approved in one approval dialog,
 and long steps run in the background so the window keeps responding. Logs and run history are the
 same as the console's. The header shows the domain and the DC (click it for
 **Domain and DC**) and which modules are loaded; the cog opens Settings. The normal window leaves the
-New Forest Build out; `-NewForest -Gui` opens the window on the build alone. New tools reach the window
+New Forest Build out; `-NewForest` opens the window on the build alone. New tools reach the window
 only after they pass QA in the console.
 
 **A brand-new forest:** on a freshly installed Windows Server in a workgroup, `Get-NutmegAD.ps1`
-opens it in the window, or run `.\Start-NutmegAD.ps1 -NewForest -Gui` (leave out `-Gui` for the
+opens it in the window, or run `.\Start-NutmegAD.ps1 -NewForest` (add `-Console` for the
 console). It always runs in Windows PowerShell 5.1. It checks the server, asks its questions once, shows the plan, and
 then sets the IP and name, installs AD DS and creates the forest, carrying on by itself after each
 restart (sign in as an administrator and it reopens, in the window if it started there). It refuses to run on a domain-joined server or
