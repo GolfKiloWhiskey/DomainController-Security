@@ -578,6 +578,11 @@ Test-That 'A check list before "Press Enter to continue" opens as the modern che
     ($code -match "\`$model.Kind = 'Continue'") -and ($q -match "if \(\`$Model.Kind -eq 'Continue'\)") -and ($q -match "\`$ok.Content = 'Continue'")
 }
 
+Test-That 'A notice with only words opens as the modern dialog with Continue, titled by its heading' {
+    $code = (Get-Command Read-NmGuiHost).ScriptBlock.ToString()
+    ($code -match 'if \(-not \$caps\.Count\) \{') -and ($code -match '\$model\.Title = \$\(if \(\$model\.Section\)')
+}
+
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
     ((Get-NmSetting -Key ResultsView) -eq 'Cards') -and (@($script:NmSettingSections) -contains 'Window')
 }

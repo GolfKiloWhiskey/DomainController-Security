@@ -65,6 +65,13 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
   finished DC, is one log (the newest file started before the build). Each restart shows as a
   `---- Session continued ----` line, and each step as `Build step done: ...`.
 
+## A VM stuck restarting at every sign-in (0.7.2)
+
+0.7.2 could restart again at each sign-in after the forest was made. To get out of it: at the
+"Continue it?" question answer **No** (nothing restarts), update with `Get-NutmegAD.ps1`, then run
+`.\Start-NutmegAD.ps1`: the build sees the server has already restarted, skips that restart and
+checks the new DC.
+
 ## Things worth trying on purpose
 
 - Run it in PowerShell 7 (`pwsh .\Start-NutmegAD.ps1 -NewForest`): it should hand over to Windows PowerShell.

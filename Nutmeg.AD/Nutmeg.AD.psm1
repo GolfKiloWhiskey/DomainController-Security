@@ -23,7 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
-    0.7.3 - New Forest Build results: a Build card (the answers) first and a Still to do card last; cards whose rows share one
+    0.7.3 - Fixed the restart loop after promotion (restart steps saved before their notice; Get-NmLastBootTime); notices
+            with only words open as the modern dialog. New Forest Build results: a Build card (the answers) first and a Still to do card last; cards whose rows share one
             status no longer repeat it on every line.
     0.7.2 - New Forest Build: server check its own pop-up first; a pending restart ends phase 0 even without a rename; before AD DS a
             pending restart stops the build: restart now or within 30 minutes (reminders every 5). Stop-NmScheduledRestart, Get-NmNow.

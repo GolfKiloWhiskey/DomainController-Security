@@ -636,7 +636,16 @@ function Read-NmGuiHost {
         $model = Get-NmGuiDialogModel -Text $text -Prompt $Prompt
         $caps = @($script:NmGui.Captures.ToArray())
         $heading = if ($model.Title -ne 'Results' -or -not $caps.Count) { $model.Title } elseif ($caps[0].Title) { Get-NmGuiShortTitle -Title $caps[0].Title } else { 'Results' }
-        if (Test-NmGuiCheckPage -Captures $caps) {
+        if (-not $caps.Count) {
+            # Only words to read (a notice such as "The server restarts in 60 seconds"): the modern
+            # dialog, titled by its heading, with Continue.
+            $model.Title = $(if ($model.Section) { $model.Section } elseif ($model.Title -and $model.Title -ne 'Results') { $model.Title } else { 'Note' })
+            $model.Section = ''
+            $model.Kind = 'Continue'
+            Set-NmGuiStatus -Text $model.Title
+            $answer = Show-NmGuiQuestion -Model $model
+            if ($null -eq $answer) { $answer = '' }   # closing a notice counts as Continue
+        } elseif (Test-NmGuiCheckPage -Captures $caps) {
             # A check list (the server check): the modern dialog, its badges, Continue or Cancel,
             # titled by the check ("Server check").
             $first = @($caps | Where-Object { $_ -and @(Get-NmGuiCheckRowModel -Capture $_).Count })[0]
