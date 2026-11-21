@@ -39,8 +39,19 @@ PowerShell, the window or tests.
 
 ## Status
 
-Intake. Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`. The tool list is agreed with
-Cliff before any module code is written.
+Building, in the order in `docs/TOOL-LIST.md` (agreed with Cliff, Nov 2026). Done: step 1, the core and
+launcher (0.1.0) and `session-info`. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
+Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
+
+## How work is delivered
+
+- **Work on the session's branch and open the PR against `main`.** One PR per piece of work; Cliff
+  merges, never merge yourself.
+- **Every PR also updates:** the version in `Nutmeg.AD.psd1` (`ModuleVersion`) and in `Nutmeg.AD.psm1`
+  (`$script:ModuleVersion`, the header's `Version:` and a line at the top of `.VERSIONING`);
+  `CHANGELOG.md` (newest first, plain words, for Cliff); `README.md` when something user-visible
+  changes; `docs/TOOL-LIST.md` when a step starts or finishes; `Legacy/INDEX.md` when a legacy item is
+  ported; a tool's own `Version` and `.VERSIONING` when it changes.
 
 ## PowerShell version
 
@@ -58,6 +69,28 @@ Cliff before any module code is written.
   (or tick "Use Windows PowerShell Policy setting"), and the health check must verify it. PS7 is only
   patched by Microsoft Update if the MSI was installed with that option.
 
+## Writing a tool
+
+- **The core loads modules, reads the domain, exports, logs and draws the results. A tool declares
+  what it needs and returns objects.** List `Services` (`AD`, `GPO`) in `$NmTool`; never
+  `Import-Module` ActiveDirectory or GroupPolicy yourself. `session-info` is the one exception: it
+  loads AD itself so it can report a missing module.
+- **One DC per run.** Splat `Get-NmADParams` onto every AD cmdlet and `Get-NmGPParams` onto every
+  GroupPolicy cmdlet, so a run reads and writes one copy of the directory.
+- **GroupPolicy objects come through Windows PowerShell in PowerShell 7.** Read properties; never call
+  methods on them.
+- **Questions only through the core helpers** (`Show-NmMenu`, `Read-NmMultiChoice`, `Read-NmInput`,
+  `Read-NmYesNo`, `Wait-NmKey`). Never `Read-Host`: a core test fails on it.
+- **Change tools** take `[switch]$WhatIf`, call `Confirm-NmChange -Action ... -Targets ... -WhatIf:$WhatIf`
+  before every write (`-DomainWide` for a change to the whole domain, such as a GPO linked at the root;
+  `-RequireTyped` for anything hard to undo), record each change with `Write-NmRunHistory`, and return
+  a row per target with a `Result` column ("Created", "Already there", "Failed: reason",
+  "WhatIf: not changed", "Cancelled").
+- **Placement:** `Area = '<area>/<Section>'`: `gpo`, `ad`, `ready`, `report`, `kit` (`$script:NmAdminCenters`
+  in `Core/ToolRegistry.ps1`). A new section name is allowed; an unknown area fails to load.
+- **Progress** with `Write-Progress -Status "[i/n] item"` and `-Completed`; **tables** with `Format-Table`
+  or `Format-List` piped to `Out-Host`. Don't cut text short.
+
 ## Hard rules (carried over from M365-Tools)
 
 - **No secrets or client data in the repo**: no passwords, keys, certificates, real
@@ -65,8 +98,30 @@ Cliff before any module code is written.
 - **Code files are ASCII only** (`.ps1`, `.psm1`, `.psd1`).
 - **Change tools** confirm every write with `Confirm-NmChange`, support `-WhatIf`, record run history and
   return a `Result` per target. Forest- or domain-wide changes need the domain name typed.
-- **Ask questions only through the core helpers**; never `Read-Host`.
 - **Cliff's script standard** for every tool file: header with `.NOTES` (Author, Date, Email, Version),
   `.SYNOPSIS`, `.DESCRIPTION` as bullets, `.EXAMPLE`, `.VERSIONING`; logging through `Write-NmLog`;
   menu-driven; exports under `C:\Temp`.
+- **Everything in the module runs in Windows PowerShell 5.1 too** (the launcher starts there): no `?:`,
+  `??`, `?.`, `ForEach-Object -Parallel` or `-AsHashtable`, and flatten `ConvertFrom-Json` results.
 - **Ask before building anything big or ambiguous.** Small fixes and clear requests: just do them.
+
+## Lessons from M365-Tools that apply here
+
+- `continue` inside a `switch` only leaves the switch, not the loop around it.
+- `-match` ignores case; use `-cmatch` when case matters.
+- An `if` whose result is one array element hands back the element: wrap it, `$x = @(if (...) { ... })`.
+- `return , @(...)` nests the array when the caller writes `@(f)`. Return plain arrays.
+- `$sender`, `$args`, `$input`, `$matches`, `$this` and `$event` are automatic variables; don't use them as parameter names.
+- `"$word:"` is read as a scope-qualified variable; write `"${word}:"`.
+- PowerShell 7's `-Encoding UTF8` writes no BOM; CSV exports use `Get-NmCsvArgs`.
+- A dot-sourced tool silently replaces a core function of the same name; check with `Get-Command` first.
+- Test fakes must refuse what the real cmdlet refuses, or they hide real bugs.
+- Tests never touch the technician's settings: each test file sets `$script:NmSettingsTestFile`.
+
+## Tests and checks
+
+- **Run everything:** `pwsh -File ./Tests/Invoke-AllTests.ps1` (fakes only: no domain, no AD module).
+- **Every tool change gets tests**, and every bug fix a test that fails without the fix.
+- **PSScriptAnalyzer** (Warning and Error) on what changed, with M365-Tools' excluded rules.
+- **ASCII** is checked by the core tests.
+- Nothing here has run on a real DC unless the PR says so: say plainly what was not tested on Windows.
