@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.2.8
+    Version: 0.2.9
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,7 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.2.9 - The window is left in the toolkit folder: the launcher moves there, the sign-in task starts there.
     0.2.8 - New Forest Build: Eastern Standard Time is the default time zone (Settings > New forest build).
     0.2.7 - One log across restarts: Get-NutmegAD.ps1 starts it, Start-NutmegAD.ps1 -LogPath and the build's state carry it on.
     0.2.6 - Log fixes from the VM run: each build step logs its result; time zone note; Closed vs Cancelled; no ((no domain)).
@@ -41,7 +42,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.2.8'
+$script:ModuleVersion = '0.2.9'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

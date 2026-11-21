@@ -191,7 +191,8 @@ function Register-NmResumeTask {
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$LauncherPath)
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoExit -NoProfile -File `"$LauncherPath`" -NewForest"
+    # Starts in the toolkit's folder (not System32), so the window is left there when the build is done.
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoExit -NoProfile -File `"$LauncherPath`" -NewForest" -WorkingDirectory (Split-Path -Parent $LauncherPath)
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $principal = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-544' -RunLevel Highest
     $null = Register-ScheduledTask -TaskName $script:NmResumeTaskName -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop
