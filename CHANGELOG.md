@@ -6,6 +6,25 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.2 - 11/21/2026
+
+New Forest Build, from Cliff's review:
+
+- **The server check comes first, in its own pop-up** in the window: the checks with their
+  badges, then **Continue** (or Cancel). The domain name question opens after it, on its own.
+- **A pending restart no longer risks the AD DS install:**
+  - At the check it is a Warning: "Windows is waiting for a restart: the build restarts the
+    server before installing AD DS."
+  - Phase 0 ends with a restart when the name changes (as before) **or** Windows is waiting for
+    one. A VM renamed by hand used to skip the restart and go straight to the roles; now the plan
+    says "Restart (Windows is waiting for one)" and does it.
+  - Just before AD DS is installed, the build checks again. If Windows is still waiting (an update
+    queued another restart), **it stops, installs nothing, and asks**: **Restart now** (in 60
+    seconds) or **Restart in 30 minutes**, with a reminder every 5 minutes ("The server restarts in
+    20 minutes": Remind me again / Restart now). Back leaves it to you. After the restart and
+    sign-in the build carries on.
+- Not run on Windows yet: tested against stand-ins (198 tests).
+
 ## 0.7.1 - 11/21/2026
 
 From Cliff's review of the first full window run on the VM:

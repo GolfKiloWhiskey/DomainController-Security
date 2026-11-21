@@ -169,6 +169,28 @@ function Test-NmTimeZoneId {
 
 function Set-NmTimeZone { [CmdletBinding()] param([Parameter(Mandatory)][string]$Id) Set-TimeZone -Id $Id -ErrorAction Stop }
 
+function Stop-NmScheduledRestart {
+    # Cancels a restart scheduled with shutdown.exe (before scheduling another: Windows allows one).
+    [CmdletBinding()]
+    param()
+    & shutdown.exe /a 2>$null | Out-Null
+}
+
+function Get-NmNow {
+    # The time now (a seam for tests of anything that waits).
+    [CmdletBinding()]
+    [OutputType([datetime])]
+    param()
+    return (Get-Date)
+}
+
+function Wait-NmRestartReminder {
+    # Waits between restart reminders. In the window the wait runs in the background, so it stays responsive.
+    [CmdletBinding()]
+    param([int]$Seconds = 300, [string]$Status = 'Waiting for the restart')
+    $null = Invoke-NmGuiBackground -Status $Status -Parameters @{ S = $Seconds } -ScriptBlock { param($S) Start-Sleep -Seconds $S }
+}
+
 function Restart-NmServer {
     # Restarts after a countdown the person sees (and can still read over a dropped RDP session).
     [CmdletBinding()]

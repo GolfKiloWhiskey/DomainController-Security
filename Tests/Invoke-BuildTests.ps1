@@ -59,7 +59,10 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmElevated { $script:FakeElevated }
     function script:Get-NmOsInfo { [pscustomobject]@{ Caption = 'Microsoft Windows Server 2025 Standard'; Version = '10.0.26100'; Build = 26100; ProductType = $script:FakeProductType } }
     function script:Get-NmLocalComputer { $script:FakePc }
-    function script:Test-NmPendingReboot { $false }
+    function script:Test-NmPendingReboot { [bool]$script:FakePending }
+    function script:Stop-NmScheduledRestart { $script:Calls.Add('Restart cancelled') }
+    function script:Get-NmNow { $script:FakeNow }
+    function script:Wait-NmRestartReminder { param($Seconds, $Status) $script:Calls.Add("Wait $Seconds"); $script:FakeNow = $script:FakeNow.AddSeconds($Seconds) }
     function script:Get-NmFreeSpaceGB { 80 }
     function script:Get-NmBlockedFile { $script:FakeBlocked }
     function script:Get-NmHypervisor { 'Hyper-V' }
@@ -94,6 +97,7 @@ function global:Reset-Server {
         $script:FakeWinPs = $true; $script:FakeElevated = $true; $script:FakeProductType = 3; $script:FakeBlocked = @()
         $script:FakePc = [pscustomobject]@{ Name = 'WIN-7Q2B4K9'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'WIN-7Q2B4K9' }
         $script:FakeNics = @([pscustomobject]@{ Name = 'Ethernet'; Index = 4; Mac = '00-15-5D-00-00-01'; Description = 'Microsoft Hyper-V Network Adapter'; IPv4 = '192.0.2.37'; PrefixLength = 24; Gateway = '192.0.2.1'; Dns = @('192.0.2.1'); Dhcp = $true })
+        $script:FakePending = $false; $script:FakeNow = [datetime]'2026-11-21 13:00:00'
         $script:FakeTz = 'UTC'; $script:FakeIpInUse = $false; $script:FakeDomainAnswers = $false; $script:FakePreCheck = 'Success'
         $p = Get-NmBuildStatePath
         if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
@@ -484,6 +488,87 @@ Test-That 'A domain that starts answering between phases stops the promotion' {
     $script:FakeDomainAnswers = $true
     $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
     (($rows | Where-Object Result -eq 'Failed').Detail -match 'answer on the network') -and ($script:Calls -notcontains 'Promote') -and $script:SecretAnswers.Count -eq 0
+}
+
+Test-That 'In the window the server check is its own pop-up first (Continue), before any question; the console goes straight on' {
+    Reset-Server
+    $script:FakePending = $true
+    # Continue at the check, the answers, then the approval dialog (approved).
+    Answer (@('') + @($global:StdAnswers[0..10]))
+    $script:NmGui.Active = $true; $script:NmGui.ConfirmProvider = { param($m) $true }
+    try { $null = Read-NmNewForestPlan } finally { $script:NmGui.Active = $false; $script:NmGui.ConfirmProvider = $null; Clear-NmGuiBuffer }
+    $inWindow = (Get-NmBuildState) -and $script:TestAnswers.Count -eq 0
+    Reset-Server
+    $script:FakePending = $true
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $row = @(Get-NmNewForestPreflight | Where-Object Check -eq 'No restart pending')[0]
+    $inWindow -and (Get-NmBuildState) -and $script:TestAnswers.Count -eq 0 -and ($row.Result -eq 'Warning') -and ($row.Detail -match 'the build restarts the server before installing AD DS')
+}
+
+Test-That 'Name unchanged but Windows waiting for a restart: phase 0 restarts anyway, and the plan says why' {
+    Reset-Server
+    $script:FakePending = $true
+    $script:FakePc = [pscustomobject]@{ Name = 'DC01'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'DC01' }
+    Answer $global:StdAnswers
+    $out = & { $null = Read-NmNewForestPlan } 6>&1 | Out-String
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    ($out -match 'Restart \(Windows is waiting for one\)') -and ($script:Calls -contains 'Restart 60') -and ($script:Calls -notcontains 'Features') -and
+        ((@($rows | Where-Object Step -eq 'Restart')[0].Result) -eq 'Done')
+}
+
+Test-That 'Still waiting for a restart before AD DS: nothing installed; Restart now restarts in 60 seconds' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    $script:FakePending = $true
+    Answer @('1')
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $w = @($rows | Where-Object Step -eq 'Restart before AD DS')[0]
+    ($script:Calls -notcontains 'Features') -and ($script:Calls -contains 'Restart 60') -and ($w.Result -eq 'Waiting') -and ($w.Detail -like 'restarting in 60 seconds*') -and
+        (-not (Test-NmBuildStepDone -State (Get-NmBuildState) -Name 'Features')) -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'Restart in 30 minutes: scheduled once, a reminder every 5 minutes, and Restart now at a reminder brings it forward' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    $script:FakePending = $true
+    Answer @('2', '1', '1', '2')
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $c = @($script:Calls) -join '|'
+    $w = @($rows | Where-Object Step -eq 'Restart before AD DS')[0]
+    ($c -eq 'Restart 1800|Wait 300|Wait 300|Wait 300|Restart cancelled|Restart 60') -and ($w.Detail -like '*brought forward*') -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'Restart in 30 minutes, reminders to the end: the last waits stop short of the restart' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    $script:FakePending = $true
+    Answer @('2', '', '', '', '', '')
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $waits = @($script:Calls | Where-Object { $_ -like 'Wait *' })
+    $w = @($rows | Where-Object Step -eq 'Restart before AD DS')[0]
+    ($waits.Count -eq 6) -and ($waits[-1] -eq 'Wait 240') -and ($script:Calls -notcontains 'Restart 60') -and ($w.Detail -like 'restart scheduled at 13:30*') -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'Not restarting before AD DS: nothing scheduled, nothing installed, the build carries on later' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    $script:FakePending = $true
+    Answer @('B')
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    ($script:Calls.Count -eq 0) -and (@($rows | Where-Object Step -eq 'Restart before AD DS')[0].Detail -like 'not restarted*')
 }
 
 Test-That 'The DSRM password is never written to the state file or the log' {
