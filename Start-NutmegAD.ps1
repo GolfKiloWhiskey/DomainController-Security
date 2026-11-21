@@ -33,6 +33,7 @@
     Builds the first DC of a new forest on this workgroup server, or carries on with the saved build.
 
 .VERSIONING
+    0.3.2 - Ignores a -LogPath that starts with '-' (a parameter name passed as the value).
     0.3.1 - Starts in its own folder, so the window is left in the toolkit folder (the sign-in task opened in System32).
     0.3.0 - -LogPath: carry on in an existing log (and pass it on when it starts itself again).
     0.2.0 - -NewForest: the New Forest Build, always in Windows PowerShell 5.1.
@@ -40,7 +41,7 @@
 #>
 param([switch]$Stay, [switch]$NewForest, [string]$LogPath)
 
-$ScriptVersion = '0.3.1'
+$ScriptVersion = '0.3.2'
 
 if ($PSVersionTable.PSVersion -lt [version]'5.1') {
     Write-Host 'The Nutmeg AD Toolkit needs Windows PowerShell 5.1 or PowerShell 7.' -ForegroundColor Red
@@ -52,6 +53,8 @@ if ($PSVersionTable.PSVersion -lt [version]'5.1') {
 Set-Location -LiteralPath $PSScriptRoot
 
 $onWindows = ($env:OS -eq 'Windows_NT')
+# A log path that is really a parameter name (or missing) is ignored, not passed on.
+if ($LogPath -and $LogPath.StartsWith('-')) { $LogPath = '' }
 if ($LogPath) { $env:NUTMEG_AD_LOG = $LogPath }
 # Passing the log on: a direct call quotes arguments itself; Start-Process needs the quotes added.
 $logArgs = @(); $logArgsQuoted = @()

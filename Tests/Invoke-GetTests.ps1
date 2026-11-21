@@ -160,11 +160,28 @@ Test-That 'The script starts the log in the toolkit''s format and hands it to th
     Write-Step 'Downloading...'
     Write-Step 'Something failed' Red
     $lines = @(Get-Content -LiteralPath $log)
-    $nf = @(Get-NutmegLauncherArgs -Choice NewForest -LogPath $log)
-    $menu = @(Get-NutmegLauncherArgs -Choice Menu -LogPath $log)
     $script:GetLogPath = $null
     (Split-Path -Leaf $log) -like 'NutmegAD_*.txt' -and $lines[0] -match '^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\] \[INFO\] Downloading\.\.\.$' -and
-        $lines[1] -match '\[ERROR\] Something failed$' -and ($nf -join '|') -eq "-NewForest|-LogPath|$log" -and ($menu -join '|') -eq "-LogPath|$log"
+        $lines[1] -match '\[ERROR\] Something failed$'
+}
+
+Test-That 'The launcher really receives -NewForest and -LogPath as given (a probe with its parameters)' {
+    # A stand-in with the launcher's own param block, called the way Get-NutmegAD.ps1 calls it.
+    $probe = Join-Path $work 'Probe.ps1'
+    $launcherText = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
+    $paramLine = ([regex]::Match($launcherText, '(?m)^param\(.*\)$')).Value
+    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ NewForest = [bool]$NewForest; LogPath = $LogPath }')
+    $log = 'C:\Temp\NutmegAD\Logs\NutmegAD_20261121-0119-47.txt'
+    $nfArgs = Get-NutmegLauncherArgs -Choice NewForest -LogPath $log
+    $menuArgs = Get-NutmegLauncherArgs -Choice Menu -LogPath $log
+    $nf = & $probe @nfArgs
+    $menu = & $probe @menuArgs
+    $paramLine -match 'LogPath' -and $nf.NewForest -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and $menu.LogPath -eq $log
+}
+
+Test-That 'The launcher ignores a -LogPath that is really a parameter name' {
+    $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
+    $text -match "if \(\`$LogPath -and \`$LogPath\.StartsWith\('-'\)\) \{ \`$LogPath = '' \}"
 }
 
 Test-That 'The script is ASCII only and never uses -ExecutionPolicy Bypass or saves the token' {
