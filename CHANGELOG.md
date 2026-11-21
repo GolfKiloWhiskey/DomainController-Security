@@ -2,6 +2,29 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.7 - 11/21/2026
+
+- **One log from download to finished DC** (Cliff). `Get-NutmegAD.ps1` starts the log in
+  `C:\Temp\NutmegAD\Logs` and hands it to the toolkit, which carries on in it. The New Forest Build
+  records the log in its state file, so after each restart the sign-in task's session writes to the
+  same file. Each new session in it starts with a line such as
+  `---- Session continued: Administrator on DC01, Windows PowerShell 5.1, toolkit 0.2.7 ----`.
+  Once the build is finished, sessions go back to a log each.
+- `Start-NutmegAD.ps1 -LogPath <file>` carries on in a given log (and passes it on when it starts
+  itself again as administrator or in another PowerShell).
+
+## 0.2.6 - 11/21/2026
+
+Log fixes from the second New Forest Build run on the VM (which passed):
+
+- **Each build step now logs what it did**, for example `Build step done: Static IP - 192.0.2.50/24
+  via 192.0.2.1`, or that the name or IP was already set. Before, the log only said a step started.
+- **The time zone step says the log's clock moves** ("log times from here on are in the new zone"),
+  so the jump in the times right after it (21:09 to 00:09 on the VM) is explained in the log itself.
+- **Leaving a tool after it ran logs "Closed <tool>"**, not "Cancelled." Cancelled is now only for
+  backing out before anything ran.
+- **"(no domain)" no longer shows as "((no domain))"** in confirmation lines.
+
 ## 0.2.5 - 11/21/2026
 
 - **Clean screen at start** (issue #6). `Get-NutmegAD.ps1` clears the window before its header, and

@@ -155,6 +155,18 @@ Test-That 'The script clears the screen before its header (issue #6)' {
     $clear -gt 0 -and $clear -lt $text.IndexOf("Nutmeg AD Toolkit: get or update'")
 }
 
+Test-That 'The script starts the log in the toolkit''s format and hands it to the launcher' {
+    $log = Start-NutmegLog -Folder (Join-Path $work 'Logs')
+    Write-Step 'Downloading...'
+    Write-Step 'Something failed' Red
+    $lines = @(Get-Content -LiteralPath $log)
+    $nf = @(Get-NutmegLauncherArgs -Choice NewForest -LogPath $log)
+    $menu = @(Get-NutmegLauncherArgs -Choice Menu -LogPath $log)
+    $script:GetLogPath = $null
+    (Split-Path -Leaf $log) -like 'NutmegAD_*.txt' -and $lines[0] -match '^\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\] \[INFO\] Downloading\.\.\.$' -and
+        $lines[1] -match '\[ERROR\] Something failed$' -and ($nf -join '|') -eq "-NewForest|-LogPath|$log" -and ($menu -join '|') -eq "-LogPath|$log"
+}
+
 Test-That 'The script is ASCII only and never uses -ExecutionPolicy Bypass or saves the token' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Raw
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot 'Get-NutmegAD.ps1'))

@@ -328,6 +328,7 @@ function Invoke-NmTool {
 
         # Outer loop: the tool's own options. Back from the results returns here, not to the
         # category menu. Back on the options screen leaves the tool.
+        $ranOnce = $false
         while ($true) {
             $entryArgs = @{}
             if ($Parameters) {
@@ -342,7 +343,8 @@ function Invoke-NmTool {
                     return
                 }
                 if ($null -eq $answers) {
-                    Write-NmLog 'Cancelled.' -Level INFO -NoConsole
+                    # Back from the tool's questions: before any run it was cancelled, after one it was just closed.
+                    Write-NmLog "$(if ($ranOnce) { 'Closed' } else { 'Cancelled' }) $($tool.Name)." -Level INFO -NoConsole
                     return
                 }
                 $entryArgs = $answers
@@ -361,6 +363,7 @@ function Invoke-NmTool {
 
                 try {
                     Write-NmLog "Running $($tool.Name) v$($tool.Version)." -Level INFO -NoConsole
+                    $ranOnce = $true
                     $raw = @(& $tool.Entry @entryArgs)
                 } catch {
                     Write-NmLog "$($tool.Name) failed: $($_.Exception.Message)" -Level ERROR
