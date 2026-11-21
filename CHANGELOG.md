@@ -2,6 +2,15 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.10 - 11/21/2026
+
+- **Fixed: `Get-NutmegAD.ps1` could not hand over to PowerShell 7** ("Missing an argument for parameter
+  'LogPath'", seen on the VM). It passed `-NewForest` and `-LogPath` as a list, and a PowerShell script
+  takes a list in order: the log path became the text `-LogPath`, and `-NewForest` was lost, so on a
+  fresh server the build would not have started either. They now go over as named parameters
+  (`Get-NutmegAD.ps1` 1.5), and the launcher ignores a log path that is really a parameter name
+  (0.3.2). The new test calls a copy of the launcher's parameters the way the script does.
+
 ## 0.2.9 - 11/21/2026
 
 - **The window is left in the toolkit folder** (Cliff), ready to run it again, instead of

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.4
+    Version: 1.5
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -44,6 +44,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.5 - Hands -NewForest and -LogPath to the launcher as named parameters (a list bound them in order: the log path became '-LogPath').
     1.4 - Starts the log (C:\Temp\NutmegAD\Logs) and hands it to the toolkit, so a build has one log throughout.
     1.3 - Clears the screen when it starts (issue #6).
     1.2 - Changes to the toolkit folder and starts it: the build on a workgroup server, the menu otherwise; -NoStart.
@@ -62,7 +63,7 @@ param(
     [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.4'
+$ScriptVersion = '1.5'
 $ErrorActionPreference = 'Stop'
 
 $script:GetLogPath = $null
@@ -86,11 +87,13 @@ function Write-Step {
 }
 
 function Get-NutmegLauncherArgs {
-    # The launcher's arguments for a start choice, carrying the log on.
+    # The launcher's parameters for a start choice, carrying the log on. A hashtable: splatting a list
+    # into a script binds the words in order, so '-LogPath' would become the log's path (and
+    # '-NewForest' would be lost), which is what broke the hand-off to PowerShell 7.
     param([Parameter(Mandatory)][string]$Choice, [string]$LogPath)
-    $a = @()
-    if ($Choice -eq 'NewForest') { $a += '-NewForest' }
-    if ($LogPath) { $a += @('-LogPath', $LogPath) }
+    $a = @{}
+    if ($Choice -eq 'NewForest') { $a.NewForest = $true }
+    if ($LogPath) { $a.LogPath = $LogPath }
     return $a
 }
 
