@@ -143,10 +143,11 @@ Test-That 'GitHub refusals come back in plain words' {
     $msgs[0] -match 'refused the token' -and $msgs[1] -match 'Contents: Read-only' -and $msgs[2] -match 'does not exist'
 }
 
-Test-That 'After the download: the build on a workgroup server, the menu on a domain member, nothing with -NoStart' {
-    (Get-NutmegStartChoice -PartOfDomain $false) -eq 'NewForest' -and (Get-NutmegStartChoice -PartOfDomain $true) -eq 'Menu' -and
+Test-That 'After the download: the build on a workgroup server, the window on a domain member, the menu with -Console, nothing with -NoStart' {
+    (Get-NutmegStartChoice -PartOfDomain $false) -eq 'NewForest' -and (Get-NutmegStartChoice -PartOfDomain $true) -eq 'Window' -and
+        (Get-NutmegStartChoice -PartOfDomain $true -Console) -eq 'Menu' -and
         (Get-NutmegStartChoice -PartOfDomain $false -NoStart) -eq 'None' -and (Get-NutmegStartChoice -PartOfDomain $true -StartBuild) -eq 'NewForest' -and
-        (Get-NutmegStartChoice -PartOfDomain $false -Start) -eq 'Menu'
+        (Get-NutmegStartChoice -PartOfDomain $false -Start) -eq 'Window'
 }
 
 Test-That 'The script clears the screen before its header (issue #6)' {
@@ -170,13 +171,16 @@ Test-That 'The launcher really receives -NewForest and -LogPath as given (a prob
     $probe = Join-Path $work 'Probe.ps1'
     $launcherText = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
     $paramLine = ([regex]::Match($launcherText, '(?m)^param\(.*\)$')).Value
-    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ NewForest = [bool]$NewForest; LogPath = $LogPath }')
+    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ NewForest = [bool]$NewForest; Gui = [bool]$Gui; LogPath = $LogPath }')
     $log = 'C:\Temp\NutmegAD\Logs\NutmegAD_20261121-0119-47.txt'
     $nfArgs = Get-NutmegLauncherArgs -Choice NewForest -LogPath $log
     $menuArgs = Get-NutmegLauncherArgs -Choice Menu -LogPath $log
     $nf = & $probe @nfArgs
     $menu = & $probe @menuArgs
-    $paramLine -match 'LogPath' -and $nf.NewForest -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and $menu.LogPath -eq $log
+    $winArgs = Get-NutmegLauncherArgs -Choice Window -LogPath $log
+    $win = & $probe @winArgs
+    $paramLine -match 'LogPath' -and $nf.NewForest -and (-not $nf.Gui) -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and (-not $menu.Gui) -and $menu.LogPath -eq $log -and
+        $win.Gui -and (-not $win.NewForest) -and $win.LogPath -eq $log
 }
 
 Test-That 'The launcher ignores a -LogPath that is really a parameter name' {

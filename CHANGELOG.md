@@ -2,6 +2,13 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.3.1 - 11/21/2026
+
+- **`Get-NutmegAD.ps1` opens the window** after the download on a domain-joined server or DC (Cliff),
+  instead of the console menu. `-Console` opens the console menu instead. A workgroup server still
+  gets the New Forest Build, in the console. The window carries on in the same log
+  (`Get-NutmegAD.ps1` 1.7).
+
 ## 0.3.0 - 11/21/2026
 
 **The window** (ported from the M365 toolkit's, now that the New Forest Build's first two phases
