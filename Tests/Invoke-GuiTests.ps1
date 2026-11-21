@@ -305,6 +305,28 @@ Test-That 'Launcher: the window by default and -Console for the console, carried
     $text.Contains('Start-NmToolkitGui -NewForest') -and $text.Contains("if (`$useWindow) {")
 }
 
+Test-That 'Start check: a build in progress or a workgroup server opens the build; a DC, a domain member or a finished build opens the toolkit' {
+    $wg = [pscustomobject]@{ Name = 'WIN-1'; PartOfDomain = $false }
+    $dc = [pscustomobject]@{ Name = 'DC01'; PartOfDomain = $true }
+    $going = [pscustomobject]@{ Answers = [pscustomobject]@{ Domain = 'clientx.local' }; Finished = $null }
+    $done = [pscustomobject]@{ Answers = [pscustomobject]@{ Domain = 'clientx.local' }; Finished = '2026-11-21 10:00:00' }
+    $a = Get-NmStartMode -Computer $wg -NoState
+    $b = Get-NmStartMode -Computer $dc -NoState
+    $c = Get-NmStartMode -Computer $dc -BuildState $going
+    $d = Get-NmStartMode -Computer $dc -BuildState $done
+    ($a.Mode -eq 'NewForest') -and ($a.Reason -like 'WIN-1 is in a workgroup*') -and ($b.Mode -eq 'Toolkit') -and
+    ($c.Mode -eq 'NewForest') -and ($c.Reason -like '*of clientx.local is in progress*') -and ($d.Mode -eq 'Toolkit') -and
+    (@((Get-Module Nutmeg.AD).ExportedFunctions.Keys) -contains 'Get-NmStartMode')
+}
+
+Test-That 'Launcher: the start check runs before the hand-over to Windows PowerShell; -Toolkit and -NewForest skip it' {
+    $text = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
+    $check = $text.IndexOf('$start = Get-NmStartMode'); $hop = $text.IndexOf('& powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest')
+    $import = $text.IndexOf('Import-Module $modulePath')
+    ($import -gt 0) -and ($import -lt $check) -and ($check -lt $hop) -and $text.Contains('if (-not $NewForest -and -not $Toolkit -and $onWindows) {') -and
+    $text.Contains("if (`$Toolkit) { `$modeArgs += '-Toolkit' }")
+}
+
 Test-That 'Launcher: PowerShell 7 is used without asking whenever it is installed (never for the build)' {
     $text = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
     (-not $text.Contains('Start the toolkit in PowerShell 7?')) -and $text.Contains("if (`$pwsh) {`n            Write-Host ""Starting the toolkit in PowerShell 7") -and

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/20/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.6.0
+    Version: 0.7.0
 
 .SYNOPSIS
     Launches the Nutmeg AD Toolkit.
@@ -19,6 +19,9 @@
     - Imports the Nutmeg.AD module from this folder (always the copy next to this file).
     - -LogPath carries on in that log instead of starting a new one (Get-NutmegAD.ps1 passes the log
       it started, so a build has one log from download to the finished DC).
+    - Not told which, it checks the server first (Get-NmStartMode): a workgroup server, or one with
+      a New Forest Build in progress, opens the build; a DC or domain member opens the toolkit.
+      -NewForest or -Toolkit says which.
     - -NewForest opens the New Forest Build on a fresh workgroup server, in the window unless
       -Console. It always runs in Windows PowerShell 5.1 (the server roles' modules live there), and
       the build's sign-in task starts it the same way (window or console) after each restart.
@@ -43,7 +46,12 @@
     .\Start-NutmegAD.ps1 -NewForest -Console
     The New Forest Build in the console.
 
+.EXAMPLE
+    .\Start-NutmegAD.ps1 -Toolkit
+    The toolkit, even on a workgroup server (its other tools need a domain).
+
 .VERSIONING
+    0.7.0 - Checks the server at start: a workgroup server or a build in progress opens the build; -Toolkit for the toolkit.
     0.6.0 - The window by default (-Console for the console); PowerShell 7 used without asking when installed.
     0.5.0 - -NewForest -Gui: the build in the window (Windows PowerShell 5.1); no longer sent to the console.
     0.4.0 - -Gui: the window (STA; carried through the elevation and PowerShell 7 offers). The build stays in the console.
@@ -53,9 +61,9 @@
     0.2.0 - -NewForest: the New Forest Build, always in Windows PowerShell 5.1.
     0.1.0 - Initial launcher.
 #>
-param([switch]$Stay, [switch]$NewForest, [switch]$Console, [switch]$Gui, [string]$LogPath)
+param([switch]$Stay, [switch]$NewForest, [switch]$Toolkit, [switch]$Console, [switch]$Gui, [string]$LogPath)
 
-$ScriptVersion = '0.6.0'
+$ScriptVersion = '0.7.0'
 
 if ($PSVersionTable.PSVersion -lt [version]'5.1') {
     Write-Host 'The Nutmeg AD Toolkit needs Windows PowerShell 5.1 or PowerShell 7.' -ForegroundColor Red
@@ -78,18 +86,29 @@ if ($LogPath) { $logArgs = @('-LogPath', $LogPath); $logArgsQuoted = @('-LogPath
 # script below passes the choice on.
 $useWindow = $onWindows -and -not $Console
 $modeArgs = @(); if (-not $useWindow) { $modeArgs = @('-Console') }
-
-# The build runs in Windows PowerShell 5.1: started from PowerShell 7, hand over to it.
-if ($NewForest -and $onWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
-    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @modeArgs @logArgs
-    return
-}
+if ($Toolkit) { $modeArgs += '-Toolkit' }
 
 $modulePath = Join-Path (Join-Path $PSScriptRoot 'Nutmeg.AD') 'Nutmeg.AD.psd1'
 try {
     Import-Module $modulePath -Force -ErrorAction Stop
 } catch {
     Write-Host "Could not load the toolkit: $($_.Exception.Message)" -ForegroundColor Red
+    return
+}
+
+# Not told which: a fresh workgroup server, or one with a build in progress, gets the New Forest
+# Build; a DC or domain member gets the toolkit (Get-NmStartMode).
+if (-not $NewForest -and -not $Toolkit -and $onWindows) {
+    $start = Get-NmStartMode
+    if ($start.Mode -eq 'NewForest') {
+        Write-Host $start.Reason -ForegroundColor Cyan
+        $NewForest = $true
+    }
+}
+
+# The build runs in Windows PowerShell 5.1: started from PowerShell 7, hand over to it.
+if ($NewForest -and $onWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
+    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @modeArgs @logArgs
     return
 }
 

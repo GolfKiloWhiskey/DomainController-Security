@@ -2,6 +2,17 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.7.0 - 11/21/2026
+
+- **`.\Start-NutmegAD.ps1` checks the server when it starts** (Cliff: on the workgroup VM it opened
+  the normal window, with no build in it). Without `-NewForest` or `-Toolkit`:
+  - a build in progress on this server: the build opens and carries on;
+  - a workgroup server (not joined to a domain): the New Forest Build opens;
+  - a DC, a domain member, or a server whose build is finished: the toolkit opens.
+  It says why in the console window, for example "WIN-1 is in a workgroup: opening the New Forest Build".
+- `-Toolkit` opens the toolkit anyway; `-NewForest` opens the build anyway.
+- Not run on Windows yet: tested against stand-ins (177 tests).
+
 ## 0.6.0 - 11/21/2026
 
 - **`.\Start-NutmegAD.ps1` opens the window** (Cliff). `-Console` opens the console menu instead;
