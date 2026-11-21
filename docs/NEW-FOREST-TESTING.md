@@ -31,9 +31,12 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
    cd C:\Tools\DomainController-Security
    .\Start-NutmegAD.ps1 -NewForest -Gui     # the window (leave out -Gui for the console)
    ```
-   In the window every question, the plan and the DSRM password are dialogs; the questions start on
-   their own (**Start or continue the build** starts them again). The window may stop responding
-   while the roles install and the forest is made: wait, it comes back.
+   In the window (0.5.0) the questions come one at a time, in the console's order, as clean
+   dialogs: the server check as a table in the first one, the suggested answer already in the box,
+   a red line when an answer is refused. The plan is an approval dialog (type the short name,
+   then Approve), and the DSRM password a password box. The role install, the pre-checks and the
+   forest run in the background: the window keeps responding, with the elapsed time at the bottom.
+   **Start or continue the build** starts the questions again.
 2. **Pre-flight table:** everything OK, or Warning only. A Not ready row stops the run and changes nothing.
 3. **Questions:** domain, NetBIOS, level, more DCs, computer name, time zone, adapter, IP (`.50` offered),
    prefix, gateway, DNS until promotion, folders.

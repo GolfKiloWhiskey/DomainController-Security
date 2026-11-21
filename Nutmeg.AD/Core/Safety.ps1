@@ -26,6 +26,8 @@ function Confirm-NmChange {
           be typed (-ConfirmWord sets another word, for a domain that does not exist yet).
         - While a confirmed plan runs (Set-NmPlanApproved), the change is shown and goes ahead
           without asking: the technician approved it with the plan.
+        - In the window, the same choice is one approval dialog (Read-NmGuiConfirm): the change, the
+          domain and DC, every target, and the box for the word or Approve / Cancel.
     .OUTPUTS
         $true to go ahead, $false to stop.
     .EXAMPLE
@@ -45,20 +47,23 @@ function Confirm-NmChange {
     $count   = @($Targets).Count
     $domain  = if ($session.Domain) { $session.Domain } else { 'no domain' }
 
-    Write-Host $script:NmBorder -ForegroundColor Yellow
-    Write-Host "   CHANGE: $Action" -ForegroundColor Yellow
-    Write-Host "   Domain: $domain" -ForegroundColor Yellow
-    if ($session.Server) { Write-Host "   DC:     $($session.Server)" -ForegroundColor Yellow }
-    if ($DomainWide) {
-        Write-Host '   Scope:  domain-wide' -ForegroundColor Yellow
-    } else {
-        Write-Host "   Scope:  $count object(s)" -ForegroundColor Yellow
+    $inWindow = [bool]($script:NmGui -and $script:NmGui.Active)
+    if (-not $inWindow) {
+        Write-Host $script:NmBorder -ForegroundColor Yellow
+        Write-Host "   CHANGE: $Action" -ForegroundColor Yellow
+        Write-Host "   Domain: $domain" -ForegroundColor Yellow
+        if ($session.Server) { Write-Host "   DC:     $($session.Server)" -ForegroundColor Yellow }
+        if ($DomainWide) {
+            Write-Host '   Scope:  domain-wide' -ForegroundColor Yellow
+        } else {
+            Write-Host "   Scope:  $count object(s)" -ForegroundColor Yellow
+        }
+        foreach ($t in (@($Targets) | Select-Object -First 10)) {
+            Write-Host "     - $t" -ForegroundColor DarkGray
+        }
+        if ($count -gt 10) { Write-Host "     ... and $($count - 10) more" -ForegroundColor DarkGray }
+        Write-Host $script:NmBorder -ForegroundColor Yellow
     }
-    foreach ($t in (@($Targets) | Select-Object -First 10)) {
-        Write-Host "     - $t" -ForegroundColor DarkGray
-    }
-    if ($count -gt 10) { Write-Host "     ... and $($count - 10) more" -ForegroundColor DarkGray }
-    Write-Host $script:NmBorder -ForegroundColor Yellow
 
     if ($WhatIf) {
         Write-NmLog "WhatIf: would run '$Action' on $(if ($DomainWide) { 'the whole domain' } else { "$count object(s)" }) in $domain." -Level WARN
@@ -71,9 +76,16 @@ function Confirm-NmChange {
     }
 
     $needsTyped = $DomainWide -or $RequireTyped -or ($count -gt $script:NmConfig.BulkConfirmCount)
+    $expected = ''
+    $kind = ''
     if ($needsTyped) {
         $expected = if ($ConfirmWord) { $ConfirmWord } else { Get-NmConfirmWord }
         $kind = if ($RequireTyped -and -not $DomainWide -and $count -le $script:NmConfig.BulkConfirmCount) { 'This change is hard to undo' } elseif ($DomainWide) { 'This changes the whole domain' } else { 'This is a bulk change' }
+    }
+    if ($inWindow) {
+        # The window: one approval dialog with the change, every target and the word to type.
+        $ok = Read-NmGuiConfirm -Action $Action -Domain $domain -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind
+    } elseif ($needsTyped) {
         Write-Host "$kind. Type '$expected' to continue, or anything else to cancel" -ForegroundColor Yellow -NoNewline
         $typed = "$(Read-NmHost -Prompt ' ')".Trim()
         $ok = ($typed -eq $expected)

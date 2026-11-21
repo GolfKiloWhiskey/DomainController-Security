@@ -36,6 +36,9 @@ $script:NmGui = @{
     Captures      = (New-Object System.Collections.Generic.List[object])   # tables the tool printed since the screen was cleared
     LastCaptures  = @()       # the captures that went with LastLeftover
     TableEnd      = 0         # buffer position where the last printed table ended
+    Marks         = @{}       # coloured lines written since the screen was cleared: text -> Red, Yellow, Green or Cyan
+    TableText     = $false    # set by Format-Table / Format-List: the next Out-Host is a captured table (kept as a table, not text)
+    ConfirmProvider = $null   # tests: scriptblock(model) -> $true / $false
     Progress      = $null     # Write-Progress records by Id while a tool runs
     ProgressClock = $null     # throttles progress repaints
     CardMode      = $true     # results as cards (Settings > Window); the toggle switches to the table
@@ -52,7 +55,7 @@ $script:NmGuiConsoleOnlyAreas = @('build')
 $script:NmGuiConsoleOnlyTools = @('new-forest')
 
 # Every named control Start-NmToolkitGui looks up in the main window (the tests check each is in the XAML).
-$script:NmGuiMainControls = @('VersionText', 'DomainButton', 'DomainText', 'ServicePanel', 'SettingsButton', 'SettingsGlyph', 'SearchBox', 'HistoryButton',
+$script:NmGuiMainControls = @('VersionText', 'DomainButton', 'DomainLabel', 'DomainText', 'ServicePanel', 'SettingsButton', 'SettingsGlyph', 'SearchBox', 'HistoryButton',
     'CenterPanel', 'ToolListCenter', 'ToolListTitle', 'ToolList', 'ToolTitle', 'ChangeTag', 'ToolMeta', 'OptionsBorder', 'OptionsPanel', 'ActionRow',
     'RunButton', 'GuidedButton', 'PreviewBox', 'ResultTitle', 'DetailsButton', 'SummaryButton', 'ExportTxtButton', 'ExportCsvButton',
     'AllColumnsBox', 'FilterBox', 'ResultsGrid', 'CardScroll', 'CardHost', 'ViewToggle', 'ClearButton', 'LogBox', 'StatusText', 'ProgressPanel', 'ProgressText', 'ProgressBar',
@@ -78,6 +81,11 @@ function Write-Host {
                     elseif ($Object -is [string]) { $Object }
                     elseif ($Object -is [System.Collections.IEnumerable]) { (@($Object) | ForEach-Object { "$_" }) -join "$Separator" }
                     else { "$Object" }
+            # Coloured lines (errors, warnings, headings) keep their meaning for the dialogs.
+            if (-not $NoNewline -and $PSBoundParameters.ContainsKey('ForegroundColor') -and "$text".Trim() -and @('Red', 'Yellow', 'Green', 'Cyan') -contains "$ForegroundColor") {
+                if ($null -eq $script:NmGui.Marks) { $script:NmGui.Marks = @{} }
+                $script:NmGui.Marks["$text".Trim()] = "$ForegroundColor"
+            }
             Add-NmGuiText -Text $text -NoNewline:$NoNewline
             return
         }
@@ -92,6 +100,13 @@ function Out-Host {
     process { $items.Add($InputObject) }
     end {
         if ($script:NmGui.Active) {
+            if ($items.Count -and $script:NmGui.TableText -and $items[0].GetType().FullName -like 'Microsoft.PowerShell.Commands.Internal.Format.*') {
+                # A table the window already kept (Format-Table / Format-List): it is shown as a
+                # table, so its text goes only to the Output panel, never into a dialog.
+                $script:NmGui.TableText = $false
+                [void]$script:NmGui.Transcript.Append((($items | Out-String -Width 220).TrimEnd()) + "`r`n")
+                return
+            }
             if ($items.Count) {
                 Add-NmGuiText -Text (($items | Out-String -Width 220).TrimEnd())
                 # Remember where printed tables end, so the next table is not titled by one of their rows.
@@ -194,7 +209,7 @@ function Format-Table {
     begin { $items = New-Object System.Collections.Generic.List[object] }
     process { if ($null -ne $InputObject) { $items.Add($InputObject) } }
     end {
-        if ($script:NmGui.Active) { Add-NmGuiCapture -Items $items.ToArray() -Property $Property -Kind 'Table' }
+        if ($script:NmGui.Active) { $was = $script:NmGui.Captures.Count; Add-NmGuiCapture -Items $items.ToArray() -Property $Property -Kind 'Table'; $script:NmGui.TableText = ($script:NmGui.Captures.Count -gt $was) }
         $pass = @{}; foreach ($k in $PSBoundParameters.Keys) { if ($k -ne 'InputObject') { $pass[$k] = $PSBoundParameters[$k] } }
         $items | Microsoft.PowerShell.Utility\Format-Table @pass
     }
@@ -211,7 +226,7 @@ function Format-List {
     begin { $items = New-Object System.Collections.Generic.List[object] }
     process { if ($null -ne $InputObject) { $items.Add($InputObject) } }
     end {
-        if ($script:NmGui.Active) { Add-NmGuiCapture -Items $items.ToArray() -Property $Property -Kind 'List' }
+        if ($script:NmGui.Active) { $was = $script:NmGui.Captures.Count; Add-NmGuiCapture -Items $items.ToArray() -Property $Property -Kind 'List'; $script:NmGui.TableText = ($script:NmGui.Captures.Count -gt $was) }
         $pass = @{}; foreach ($k in $PSBoundParameters.Keys) { if ($k -ne 'InputObject') { $pass[$k] = $PSBoundParameters[$k] } }
         $items | Microsoft.PowerShell.Utility\Format-List @pass
     }
@@ -354,7 +369,7 @@ function Add-NmGuiText {
     }
 }
 
-function Clear-NmGuiBuffer { [void]$script:NmGui.Buffer.Clear(); $script:NmGui.TableEnd = 0; if ($script:NmGui.Captures) { $script:NmGui.Captures.Clear() } }
+function Clear-NmGuiBuffer { [void]$script:NmGui.Buffer.Clear(); $script:NmGui.TableEnd = 0; if ($script:NmGui.Captures) { $script:NmGui.Captures.Clear() }; $script:NmGui.Marks = @{} }
 
 function Get-NmGuiChoice {
     <#
@@ -453,10 +468,19 @@ function Get-NmGuiDialogModel {
     <#
     .SYNOPSIS
         What a question dialog shows, from the screen text: Kind (Menu, YesNo, Text, Continue),
-        Title, Context (other text on the screen), Rows (choices to click), Footer (Back, Main menu,
-        Quit as buttons), Default (the key highlighted first). No WPF here, so it can be tested.
+        Title, Context (other plain text on the screen), Rows (choices to click), Footer (Back, Main
+        menu, Quit as buttons), Default (the key highlighted first). No WPF here, so it can be tested.
+    .DESCRIPTION
+        No console text reaches the dialog:
+        - Section: the last heading written in Cyan since the last answer ("The new forest").
+        - Notes: warnings, errors and successes since the last answer, from log lines
+          ("[time] [WARN] ...") and from lines written in Red, Yellow or Green (-Marks), as
+          Level + Text. INFO log lines are left out (they go to the status bar and Output).
+        - DefaultValue: from Read-NmInput's "(Press Enter for default: X)", for the answer box;
+          the title loses that part.
     #>
-    param([string]$Text, [string]$Prompt)
+    param([string]$Text, [string]$Prompt, [hashtable]$Marks = $script:NmGui.Marks)
+    if ($null -eq $Marks) { $Marks = @{} }
     $lines = @("$Text" -split "`r?`n")
     $start = 0
     for ($i = $lines.Count - 1; $i -ge 0; $i--) { if ($lines[$i] -match '^> ') { $start = $i + 1; break } }
@@ -500,13 +524,27 @@ function Get-NmGuiDialogModel {
         }
     }
     if (-not $title) { $title = switch ($kind) { 'Menu' { 'Choose an option' } 'Continue' { 'Results' } default { 'Answer' } } }
+    $defaultValue = ''
+    if ($title -match '^(.*?)\s*\(Press Enter for default: (.*)\)$') { $title = $Matches[1].Trim(); $defaultValue = $Matches[2].Trim() }
 
     $context = New-Object System.Collections.Generic.List[string]
+    $notes = New-Object System.Collections.Generic.List[object]
+    $section = ''
+    $logLine = '^\[\d{4}-\d{2}-\d{2} [\d:]{8}\] \[(\w+)\] (.*)$'
+    $levelOf = @{ Red = 'Error'; Yellow = 'Warning'; Green = 'Success' }
     for ($i = 0; $i -lt $tail.Count; $i++) {
         $l = "$($tail[$i])"
         if ($i -eq $titleIdx -or $i -eq $questionIdx) { continue }
         if ($hStart -ge 0 -and $i -ge $hStart -and $i -le $hEnd) { continue }
         if ($l -match $border -or $l -match $menuLine -or $l -match '^\s*Select an option\s*$' -or $l -match "is not an option\.?\s*$" -or $l -match '^\s*(Author|Version):' -or $l -match 'Press Enter to continue\s*$') { continue }
+        if ($l -match $logLine) {
+            $lv = switch ($Matches[1]) { 'WARN' { 'Warning' } 'ERROR' { 'Error' } 'SUCCESS' { 'Success' } default { '' } }
+            if ($lv) { $notes.Add([pscustomobject]@{ Level = $lv; Text = $Matches[2].Trim() }) }
+            continue
+        }
+        $color = "$($Marks[$l.Trim()])"
+        if ($color -eq 'Cyan') { $section = $l.Trim(); continue }
+        if ($levelOf.ContainsKey($color)) { $notes.Add([pscustomobject]@{ Level = $levelOf[$color]; Text = $l.Trim() }); continue }
         $context.Add($l.TrimEnd())
     }
     while ($context.Count -and -not $context[0].Trim()) { $context.RemoveAt(0) }
@@ -519,13 +557,29 @@ function Get-NmGuiDialogModel {
         if ($footerNames.ContainsKey($c.Key) -and $c.Name -eq $footerNames[$c.Key]) { $footer.Add($c) } else { $rows.Add($c) }
     }
     $default = if ($kind -eq 'YesNo') { if ("$($tail -join ' ') $Prompt" -cmatch '\[Y/n\]') { 'Y' } else { 'N' } } elseif ($rows.Count) { $rows[0].Key } else { '' }
-    [pscustomobject]@{ Kind = $kind; Title = $title; Context = ($context -join "`r`n"); Rows = $rows.ToArray(); Footer = $footer.ToArray(); Default = $default }
+    [pscustomobject]@{ Kind = $kind; Title = $title; Context = ($context -join "`r`n"); Rows = $rows.ToArray(); Footer = $footer.ToArray(); Default = $default
+        Section = $section; Notes = $notes.ToArray(); DefaultValue = $defaultValue }
 }
 
 function Test-NmGuiContinue {
     # True for "Press Enter to continue" (Wait-NmKey): the window shows only a Continue button.
     param([string]$Text, [string]$Prompt)
     return ("$Text".TrimEnd() -match 'Press Enter to continue$')
+}
+
+function Get-NmGuiContinueText {
+    # The text for a "Press Enter to continue" pop-up: its warnings and errors (which the pop-up shows
+    # as notes above the tables), then the plain text, successes included. No console borders or log stamps.
+    param([Parameter(Mandatory)]$Model)
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($n in @($Model.Notes)) {
+        if ($n.Level -eq 'Error') { $lines.Add("[note] [ERROR] $($n.Text)") }
+        elseif ($n.Level -eq 'Warning') { $lines.Add("[note] [WARN] $($n.Text)") }
+        else { $lines.Add("$($n.Text)") }
+    }
+    if ($Model.Section) { $lines.Insert(0, "$($Model.Section)") }
+    if ("$($Model.Context)".Trim()) { $lines.Add("$($Model.Context)".Trim()) }
+    return ($lines -join "`r`n")
 }
 
 function Read-NmGuiHost {
@@ -546,10 +600,10 @@ function Read-NmGuiHost {
         $model = Get-NmGuiDialogModel -Text $text -Prompt $Prompt
         $caps = @($script:NmGui.Captures.ToArray())
         $heading = if ($model.Title -ne 'Results' -or -not $caps.Count) { $model.Title } elseif ($caps[0].Title) { $caps[0].Title } else { 'Results' }
-        $null = Show-NmGuiDialog -Text $model.Context -Heading $heading -NoInput -OkLabel 'Continue' -Captures $caps
+        $null = Show-NmGuiDialog -Text (Get-NmGuiContinueText -Model $model) -Heading $heading -NoInput -OkLabel 'Continue' -Captures $caps
         $answer = ''   # closing the window counts as Continue too
     } else {
-        $answer = Show-NmGuiQuestion -Model (Get-NmGuiDialogModel -Text $text -Prompt $Prompt)
+        $answer = Show-NmGuiQuestion -Model (Get-NmGuiDialogModel -Text $text -Prompt $Prompt) -Captures @($script:NmGui.Captures.ToArray())
     }
     if ($null -eq $answer) { Clear-NmGuiBuffer; throw (New-Object System.OperationCanceledException 'Cancelled in the window.') }
     # Prompts are written without a line break: the echoed answer always starts its own line.
@@ -905,8 +959,12 @@ $script:NmGuiDialogXaml = @'
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
     <StackPanel Grid.Row="0" Margin="0,0,0,12">
+      <TextBlock x:Name="SectionText" FontSize="11" FontWeight="SemiBold" Foreground="#0E6B66" Margin="0,0,0,4" Visibility="Collapsed"/>
       <TextBlock x:Name="HeadingText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
       <TextBlock x:Name="SubText" FontSize="12" Foreground="#5B6370" Margin="0,3,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+      <StackPanel x:Name="NotePanel" Margin="0,10,0,0" Visibility="Collapsed"/>
+      <TextBlock x:Name="ContextText" FontSize="13" Foreground="#3D4450" Margin="0,10,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+      <StackPanel x:Name="TablePanel" Margin="0,10,0,0" Visibility="Collapsed"/>
     </StackPanel>
     <TextBox x:Name="OutputBox" Grid.Row="1" IsReadOnly="True" FontFamily="Consolas" FontSize="12" Background="#F6F7F9" BorderBrush="#E2E5EA" Padding="10,8"
              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" TextWrapping="NoWrap" VerticalContentAlignment="Stretch" Margin="0,0,0,12" Visibility="Collapsed"/>
@@ -1905,6 +1963,140 @@ function Show-NmGuiViewer {
     return ''
 }
 
+function Get-NmGuiConfirmModel {
+    <#
+    .SYNOPSIS
+        What the approval dialog shows (no WPF): Title, Action, Facts (Domain, DC, Scope), every
+        target, and whether a word must be typed (Expected) or Approve / Cancel is enough.
+    #>
+    param([Parameter(Mandatory)][string]$Action, [string]$Domain, [string]$Server, [switch]$DomainWide,
+          [object[]]$Targets = @(), [string]$Expected, [string]$Kind)
+    $facts = New-Object System.Collections.Generic.List[object]
+    $facts.Add([pscustomobject]@{ Name = 'Domain'; Value = $(if ($Domain) { $Domain } else { 'no domain' }) })
+    if ($Server) { $facts.Add([pscustomobject]@{ Name = 'DC'; Value = $Server }) }
+    $count = @($Targets).Count
+    $facts.Add([pscustomobject]@{ Name = 'Scope'; Value = $(if ($DomainWide) { 'domain-wide' } else { "$count object(s)" }) })
+    [pscustomobject]@{
+        Title    = 'Approve this change'
+        Action   = $Action
+        Facts    = $facts.ToArray()
+        Targets  = @($Targets | ForEach-Object { "$_" })
+        Expected = $Expected
+        Typed    = [bool]$Expected
+        Hint     = $(if ($Expected) { "$Kind. Type '$Expected' to approve." } else { 'Nothing changes until you approve.' })
+    }
+}
+
+function Read-NmGuiConfirm {
+    # Confirm-NmChange in the window: the approval dialog. $true only for Approve with the right word.
+    param([Parameter(Mandatory)][string]$Action, [string]$Domain, [string]$Server, [switch]$DomainWide,
+          [object[]]$Targets = @(), [string]$Expected, [string]$Kind)
+    $model = Get-NmGuiConfirmModel -Action $Action -Domain $Domain -Server $Server -DomainWide:$DomainWide -Targets $Targets -Expected $Expected -Kind $Kind
+    $ok = if ($script:NmGui.ConfirmProvider) { [bool](& $script:NmGui.ConfirmProvider $model) } else { [bool](Show-NmGuiConfirm -Model $model) }
+    [void]$script:NmGui.Transcript.Append("CHANGE: $Action ($($model.Facts[0].Value))`r`n> $(if ($ok) { 'approved' } else { 'not approved' })`r`n")
+    Clear-NmGuiBuffer
+    return $ok
+}
+
+$script:NmGuiConfirmXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Nutmeg AD Toolkit" Width="680" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#FFFFFF" FontFamily="Segoe UI" FontSize="13"
+        Foreground="#16191F" ShowInTaskbar="False" ResizeMode="NoResize">
+  <Window.Resources>
+    <!--NMSTYLES-->
+  </Window.Resources>
+  <StackPanel Margin="22,18,22,16">
+    <Border Background="#FFF1DC" CornerRadius="6" Padding="8,2" HorizontalAlignment="Left">
+      <TextBlock x:Name="TitleText" Foreground="#8A4B00" FontSize="11" FontWeight="SemiBold"/>
+    </Border>
+    <TextBlock x:Name="ActionText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0"/>
+    <WrapPanel x:Name="FactPanel" Margin="0,10,0,0"/>
+    <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Margin="0,12,0,0">
+      <StackPanel x:Name="TargetPanel"/>
+    </ScrollViewer>
+    <TextBlock x:Name="HintText" FontSize="13" Foreground="#3D4450" TextWrapping="Wrap" Margin="0,14,0,0"/>
+    <TextBox x:Name="WordBox" Margin="0,8,0,0" MinHeight="32" Padding="6,4" VerticalContentAlignment="Center" Visibility="Collapsed"/>
+    <DockPanel Margin="0,16,0,0" LastChildFill="False">
+      <Button x:Name="OkButton" DockPanel.Dock="Right" Content="Approve" MinWidth="110" Margin="0" Style="{StaticResource PrimaryButton}"/>
+      <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancel" MinWidth="96" IsCancel="True"/>
+    </DockPanel>
+  </StackPanel>
+</Window>
+'@
+$script:NmGuiConfirmControls = @('TitleText', 'ActionText', 'FactPanel', 'TargetPanel', 'HintText', 'WordBox', 'OkButton', 'CancelButton')
+
+function Show-NmGuiConfirm {
+    # The approval dialog. Approve is enabled only once the word is typed (when one is needed).
+    param([Parameter(Mandatory)]$Model)
+    $d = New-NmGuiXaml -Xaml ($script:NmGuiConfirmXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
+    if ($script:NmGui.Window -and $script:NmGui.Window.IsLoaded) { $d.Owner = $script:NmGui.Window } else { $d.WindowStartupLocation = 'CenterScreen' }
+    $ui = @{}; foreach ($n in $script:NmGuiConfirmControls) { $ui[$n] = $d.FindName($n) }
+    $ui.TitleText.Text = $Model.Title.ToUpper()
+    $ui.ActionText.Text = $Model.Action
+    foreach ($f in $Model.Facts) {
+        $chip = New-Object System.Windows.Controls.Border
+        $chip.Background = Get-NmGuiBrush '#F1F3F6'; $chip.CornerRadius = 12; $chip.Padding = '10,3'; $chip.Margin = '0,0,6,6'
+        $chip.Child = New-NmGuiTextBlock -Text "$($f.Name): $($f.Value)" -Size 12 -Color '#3D4450'
+        [void]$ui.FactPanel.Children.Add($chip)
+    }
+    foreach ($t in $Model.Targets) {
+        $row = New-Object System.Windows.Controls.Border
+        $row.BorderBrush = Get-NmGuiBrush '#EEF0F3'; $row.BorderThickness = '0,0,0,1'; $row.Padding = '2,7'
+        $dp = New-Object System.Windows.Controls.DockPanel
+        $g = New-NmGuiTextBlock -Text ([string][char]0xE73E) -Size 12 -Color '#0E6B66'
+        $g.FontFamily = 'Segoe MDL2 Assets'; $g.Margin = '0,2,10,0'; $g.VerticalAlignment = 'Top'
+        [System.Windows.Controls.DockPanel]::SetDock($g, 'Left'); [void]$dp.Children.Add($g)
+        [void]$dp.Children.Add((New-NmGuiTextBlock -Text $t -Size 13 -Wrap))
+        $row.Child = $dp
+        [void]$ui.TargetPanel.Children.Add($row)
+    }
+    $ui.HintText.Text = $Model.Hint
+    $state = @{ Ok = $false }
+    $box = $ui.WordBox; $okb = $ui.OkButton; $want = "$($Model.Expected)"
+    if ($Model.Typed) {
+        $box.Visibility = 'Visible'; $okb.IsEnabled = $false
+        $box.Add_TextChanged({ $okb.IsEnabled = ($box.Text.Trim() -eq $want) }.GetNewClosure())
+        $d.Add_ContentRendered({ $box.Focus() | Out-Null }.GetNewClosure())
+    } else {
+        $okb.IsDefault = $true
+    }
+    $okb.Add_Click({ $state.Ok = $true; $d.Close() }.GetNewClosure())
+    $ui.CancelButton.Add_Click({ $state.Ok = $false; $d.Close() }.GetNewClosure())
+    [void]$d.ShowDialog()
+    return $state.Ok
+}
+
+function Invoke-NmGuiBackground {
+    <#
+    .SYNOPSIS
+        Runs one long call (a role install, the forest promotion) so the window stays responsive:
+        in its own runspace while the window is open, with the elapsed time in the status bar.
+        Outside the window it simply runs here.
+    .DESCRIPTION
+        The script block must stand alone (it runs without the module): pass what it needs with
+        -Parameters. Its output is returned; its first error is thrown here.
+    #>
+    param([Parameter(Mandatory)][scriptblock]$ScriptBlock, [hashtable]$Parameters = @{}, [string]$Status = 'Working')
+    if (-not ($script:NmGui -and $script:NmGui.Active)) { return (& $ScriptBlock @Parameters) }
+    $ps = [powershell]::Create()
+    try {
+        [void]$ps.AddScript($ScriptBlock.ToString())
+        foreach ($k in $Parameters.Keys) { [void]$ps.AddParameter($k, $Parameters[$k]) }
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+        $handle = $ps.BeginInvoke()
+        while (-not $handle.IsCompleted) {
+            $view = Update-NmGuiProgressState -Id 7 -Activity $Status -Status ('{0:m\:ss} elapsed' -f $clock.Elapsed)
+            if ($script:NmGui.Window) { Show-NmGuiProgress -View $view -Force }
+            [void]$handle.AsyncWaitHandle.WaitOne(150)
+        }
+        $out = @($ps.EndInvoke($handle))
+        $view = Update-NmGuiProgressState -Id 7 -Completed
+        if ($script:NmGui.Window) { Show-NmGuiProgress -View $view -Force }
+        if ($ps.Streams.Error.Count) { throw $ps.Streams.Error[0].Exception }
+        return $out
+    } finally { $ps.Dispose() }
+}
+
 function Read-NmGuiSecret {
     <#
     .SYNOPSIS
@@ -1946,10 +2138,17 @@ $script:NmGuiSecretXaml = @'
 $script:NmGuiSecretControls = @('HeadingText', 'ContextText', 'SecretBox', 'OkButton', 'CancelButton')
 
 function Get-NmGuiSecretContext {
-    # The note above the password box: the last few lines written before it (why it is asked), no log stamps.
-    param([string]$Text)
-    $lines = @("$Text" -split "`r?`n" | ForEach-Object { ($_ -replace '^\[\d{4}-\d{2}-\d{2} [\d:]{8}\] \[\w+\] ', '').Trim() } | Where-Object { $_ -and $_ -notmatch '^[=\-_]{5,}$' })
-    return (@($lines | Select-Object -Last 3) -join "`n")
+    # The note above the password box: only the problems written just before it ("The two did not
+    # match."), from lines written in Red or ERROR / WARN log lines. Never console text.
+    param([string]$Text, [hashtable]$Marks = $script:NmGui.Marks)
+    if ($null -eq $Marks) { $Marks = @{} }
+    $out = foreach ($l in @("$Text" -split "`r?`n" | Select-Object -Last 6)) {
+        $t = "$l".Trim()
+        if (-not $t) { continue }
+        if ($t -match '^\[\d{4}-\d{2}-\d{2} [\d:]{8}\] \[(WARN|ERROR)\] (.*)$') { $Matches[2].Trim(); continue }
+        if ("$($Marks[$t])" -eq 'Red') { $t }
+    }
+    return (@($out) -join "`n")
 }
 
 function Show-NmGuiSecret {
@@ -2107,6 +2306,49 @@ function New-NmGuiChoiceRow {
     return [pscustomobject]@{ Button = $b; Box = $box; Glyph = $glyph; Key = $Choice.Key }
 }
 
+function Get-NmGuiNoteStyle {
+    # Colours and glyph for a note line in a dialog: Error red, Warning amber, Success green.
+    param([string]$Level)
+    switch ($Level) {
+        'Error'   { [pscustomobject]@{ Fore = '#A0281C'; Back = '#FDECEA'; Glyph = [string][char]0xE783 } }
+        'Warning' { [pscustomobject]@{ Fore = '#8A4B00'; Back = '#FFF4E0'; Glyph = [string][char]0xE7BA } }
+        'Success' { [pscustomobject]@{ Fore = '#1F6B35'; Back = '#E6F4EA'; Glyph = [string][char]0xE73E } }
+        default   { [pscustomobject]@{ Fore = '#3D4450'; Back = '#F1F3F6'; Glyph = [string][char]0xE946 } }
+    }
+}
+
+function Set-NmGuiDialogBody {
+    # Fills a question dialog's body from its model: section label, notes, plain text, tables.
+    param([Parameter(Mandatory)]$Dialog, [Parameter(Mandatory)]$Model, [object[]]$Captures = @())
+    if ($Model.Section) { $st = $Dialog.FindName('SectionText'); $st.Text = "$($Model.Section)".ToUpper(); $st.Visibility = 'Visible' }
+    $np = $Dialog.FindName('NotePanel')
+    foreach ($n in @($Model.Notes)) {
+        $style = Get-NmGuiNoteStyle -Level $n.Level
+        $b = New-Object System.Windows.Controls.Border
+        $b.Background = Get-NmGuiBrush $style.Back; $b.CornerRadius = 8; $b.Padding = '10,7'; $b.Margin = '0,0,0,6'
+        $dp = New-Object System.Windows.Controls.DockPanel
+        $g = New-NmGuiTextBlock -Text $style.Glyph -Size 14 -Color $style.Fore
+        $g.FontFamily = 'Segoe MDL2 Assets'; $g.Margin = '0,1,10,0'; $g.VerticalAlignment = 'Top'
+        [System.Windows.Controls.DockPanel]::SetDock($g, 'Left'); [void]$dp.Children.Add($g)
+        [void]$dp.Children.Add((New-NmGuiTextBlock -Text $n.Text -Size 13 -Color $style.Fore -Wrap))
+        $b.Child = $dp
+        [void]$np.Children.Add($b)
+    }
+    if (@($Model.Notes).Count) { $np.Visibility = 'Visible' }
+    if ("$($Model.Context)".Trim()) { $ct = $Dialog.FindName('ContextText'); $ct.Text = "$($Model.Context)".Trim(); $ct.Visibility = 'Visible' }
+    $tp = $Dialog.FindName('TablePanel')
+    foreach ($cap in @($Captures | Where-Object { $_ })) {
+        if ($cap.Title) {
+            $h = New-NmGuiTextBlock -Text "$($cap.Title)" -Size 12 -Weight 'SemiBold' -Color '#5B6370'
+            $h.Margin = '0,0,0,4'; [void]$tp.Children.Add($h)
+        }
+        $v = New-NmGuiViewGrid -Capture $cap
+        $v.Grid.MaxHeight = 300; $v.Grid.Margin = '0,0,0,10'
+        [void]$tp.Children.Add($v.Grid)
+    }
+    if ($tp.Children.Count) { $tp.Visibility = 'Visible'; $Dialog.Width = 880 }
+}
+
 function Show-NmGuiQuestion {
     <#
     .SYNOPSIS
@@ -2116,29 +2358,27 @@ function Show-NmGuiQuestion {
         Rows: click to pick; arrow keys and Enter; or press the option's key (1-9, letters; two-digit
         keys are typed in full). Back / Main menu / Quit are buttons at the bottom.
     #>
-    param([Parameter(Mandatory)]$Model)
+    param([Parameter(Mandatory)]$Model, [object[]]$Captures = @())
     $d = New-NmGuiDialogShell
     $script:NmGuiDialogStyleRow = $d.FindResource('ChoiceRow')
     $d.FindName('HeadingText').Text = $Model.Title
-    $out = $d.FindName('OutputBox'); $panel = $d.FindName('ChoicePanel'); $ok = $d.FindName('OkButton'); $cancel = $d.FindName('CancelButton')
+    $panel = $d.FindName('ChoicePanel'); $ok = $d.FindName('OkButton'); $cancel = $d.FindName('CancelButton')
     $hint = $d.FindName('HintText'); $footer = $d.FindName('FooterPanel'); $in = $d.FindName('InputBox')
     $state = @{ Answer = $null; Rows = @(); Index = -1; Typed = '' }
     $conv = New-Object System.Windows.Media.BrushConverter
 
-    if ($Model.Context) {
-        $out.Text = $Model.Context; $out.Visibility = 'Visible'
-        $out.MaxHeight = $(if ($Model.Kind -eq 'Text') { 340 } else { 180 })
-        $out.ScrollToEnd()
-    }
+    # No console text: a section label, notes as coloured lines, plain text wrapped, tables as tables.
+    Set-NmGuiDialogBody -Dialog $d -Model $Model -Captures $Captures
     $d.SizeToContent = 'Height'
     $d.MaxHeight = [Math]::Max(420, [System.Windows.SystemParameters]::WorkArea.Height * 0.88)
     $cancel.Add_Click({ $state.Answer = $null; $d.Close() }.GetNewClosure())
 
     if ($Model.Kind -eq 'Text') {
         $d.FindName('InputArea').Visibility = 'Visible'
-        $d.FindName('PromptText').Text = 'Your answer'
+        $d.FindName('PromptText').Text = $(if ($Model.DefaultValue) { 'Your answer (the suggested value is filled in)' } else { 'Your answer' })
+        if ($Model.DefaultValue) { $in.Text = $Model.DefaultValue }
         $ok.Add_Click({ $state.Answer = $in.Text; $d.Close() }.GetNewClosure())
-        $d.Add_ContentRendered({ $in.Focus() | Out-Null }.GetNewClosure())
+        $d.Add_ContentRendered({ $in.Focus() | Out-Null; $in.SelectAll() }.GetNewClosure())
         [void]$d.ShowDialog()
         return $state.Answer
     }
@@ -2261,7 +2501,7 @@ $script:NmGuiMainXaml = @'
         </StackPanel>
         <Button x:Name="DomainButton" DockPanel.Dock="Left" ToolTip="Domain and DC: status, work against another DC, read the domain again">
           <StackPanel>
-            <TextBlock Text="Domain and DC" FontSize="11" Foreground="#5B6370"/>
+            <TextBlock x:Name="DomainLabel" Text="Domain and DC" FontSize="11" Foreground="#5B6370"/>
             <TextBlock x:Name="DomainText" FontWeight="SemiBold" Foreground="#16191F"/>
           </StackPanel>
         </Button>
@@ -2386,6 +2626,13 @@ function Update-NmGuiBanner {
     if (Test-NmGuiTargetChanged -Target $target) { Reset-NmGuiTargetView -Target $target }
     $c.DomainText.Text = Get-NmGuiDomainText
     $c.ServicePanel.Children.Clear()
+    # Building a forest: the server itself, not a domain; no module chips (nothing to load yet).
+    if ($script:NmGui.BuildMode) {
+        if ($c.DomainLabel) { $c.DomainLabel.Text = 'This server' }
+        $c.DomainText.Text = Get-NmGuiServerText
+        $c.ServicePanel.Visibility = 'Collapsed'
+        return
+    }
     foreach ($svc in $script:NmKnownServices) {
         $up = [bool]$s.Services[$svc]
         $b = New-Object System.Windows.Controls.Border
@@ -2405,6 +2652,19 @@ function Get-NmGuiServiceLabel {
     # The header chip's name for a service: the module it loads.
     param([string]$Service)
     switch ($Service) { 'AD' { 'ActiveDirectory' } 'GPO' { 'GroupPolicy' } default { $Service } }
+}
+
+function Get-NmGuiServerText {
+    # The header in build mode: "WIN-1 (workgroup)  |  192.0.2.10 (DHCP)", or its domain once joined.
+    param($Computer, [object[]]$Adapters)
+    try {
+        if (-not $Computer) { $Computer = Get-NmLocalComputer }
+        if ($null -eq $Adapters) { $Adapters = @(Get-NmNetAdapterInfo) }
+    } catch { $null = $_ }
+    $who = if ($Computer) { "$($Computer.Name) ($(if ($Computer.PartOfDomain) { $Computer.Domain } else { 'workgroup' }))" } else { 'This server' }
+    $nic = @($Adapters | Where-Object { $_ -and $_.IPv4 })[0]
+    if ($nic) { return "$who  |  $($nic.IPv4) ($(if ($nic.Dhcp) { 'DHCP' } else { 'static' }))" }
+    return $who
 }
 
 function Get-NmGuiDomainText {
@@ -2695,7 +2955,7 @@ function Set-NmGuiResult {
     $has = $script:NmGui.Rows.Count -gt 0
     $c.ResultBar.Visibility = $(if ($has) { 'Visible' } else { 'Collapsed' })
     $c.ResultsGrid.Visibility = $(if ($has) { 'Visible' } else { 'Collapsed' })
-    $c.EmptyText.Text = $(if ($has) { '' } elseif ($Title) { "No results. $Title" } elseif ($script:NmGui.Tool) { 'Set the options and press Run, or use Guided... to answer the questions one at a time.' } else { '' })
+    $c.EmptyText.Text = $(if ($has) { '' } elseif ($Title) { "No results. $Title" } elseif ($script:NmGui.BuildMode) { 'The build asks its questions one at a time, as the console does. Nothing changes until you approve the plan.' } elseif ($script:NmGui.Tool) { 'Set the options and press Run, or use Guided... to answer the questions one at a time.' } else { '' })
     $c.ExportCsvButton.IsEnabled = $has; $c.ExportTxtButton.IsEnabled = $has
     $c.SummaryButton.IsEnabled = $has -and $script:NmGui.Tool -and [bool]$script:NmGui.Tool.Summary
     $c.DetailsButton.IsEnabled = $has

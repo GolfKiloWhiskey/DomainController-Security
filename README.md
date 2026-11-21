@@ -40,8 +40,10 @@ On a domain controller, as a domain admin:
 
 **In a window:** `.\Start-NutmegAD.ps1 -Gui` opens the same tools in a window: areas on the left,
 each tool's options as a form (or **Guided...** for its own questions), results as cards or a table
-with filter, export and row details. Every question and change confirmation becomes a dialog; logs
-and run history are the same as the console's. The header shows the domain and the DC (click it for
+with filter, export and row details. Questions come in the console's order as clean dialogs (no
+console text: notes, tables and the suggested answer), changes are approved in one approval dialog,
+and long steps run in the background so the window keeps responding. Logs and run history are the
+same as the console's. The header shows the domain and the DC (click it for
 **Domain and DC**) and which modules are loaded; the cog opens Settings. The normal window leaves the
 New Forest Build out; `-NewForest -Gui` opens the window on the build alone. New tools reach the window
 only after they pass QA in the console.
