@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.2
+    Version: 1.3
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -42,6 +42,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.3 - Clears the screen when it starts (issue #6).
     1.2 - Changes to the toolkit folder and starts it: the build on a workgroup server, the menu otherwise; -NoStart.
     1.1 - Downloads with the progress bar off (Windows PowerShell 5.1 was slowed to a few hundred KB/s by it).
     1.0 - First version: token prompt, branch, download, check, backup of the old copy, unblock, start.
@@ -57,7 +58,7 @@ param(
     [switch]$NoStart
 )
 
-$ScriptVersion = '1.2'
+$ScriptVersion = '1.3'
 $ErrorActionPreference = 'Stop'
 
 function Write-Step {
@@ -156,6 +157,7 @@ function Test-NutmegPartOfDomain {
 # Tests dot-source this file with NUTMEG_GET_TEST set, to reach the functions without running it.
 if ($env:NUTMEG_GET_TEST) { return }
 
+Clear-Host
 Write-Host '=============================================' -ForegroundColor Cyan
 Write-Host '   Nutmeg AD Toolkit: get or update' -ForegroundColor Yellow
 Write-Host '   Author: Cliff Waite' -ForegroundColor DarkGray
