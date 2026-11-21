@@ -43,14 +43,14 @@ PowerShell, the window or tests.
 
 Building, in the order in `docs/TOOL-LIST.md` (agreed with Cliff, Nov 2026). Done: step 1, the core and
 launcher (0.1.0) and `session-info`; the New Forest Build's phases 0 and 1 (0.2.0, moved ahead by Cliff
-to test on a checkpointed Server 2025 VM). The build runs in Windows PowerShell 5.1 only. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
+to test on a checkpointed Server 2025 VM, passed QA); the WPF window (0.3.0, `Core/Gui.ps1`,
+`Start-NutmegAD.ps1 -Gui`; the build stays console only). The build runs in Windows PowerShell 5.1 only. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
 Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 
 ## How work is delivered
 
 - **Console first, then the window** (Cliff, Nov 2026). Every step is built and passes Cliff's QA in
-  the console before it goes into the WPF window. The window itself is ported from M365-Tools right
-  after the New Forest Build's phases 0 and 1 pass QA on the VM. A step may go straight into the
+  the console before it goes into the WPF window (ported from M365-Tools in 0.3.0). A step may go straight into the
   window only when Cliff and Claude both agree to it for that step.
 
 - **Work on the session's branch and open the PR against `main`.** One PR per piece of work; Cliff

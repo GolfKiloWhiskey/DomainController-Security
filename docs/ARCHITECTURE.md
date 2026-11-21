@@ -26,7 +26,7 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
 | `Settings.ps1` | the technician's settings (Main menu > Settings): `$script:NmSettingDefs`, `Get-NmSetting` (environment, then saved, then default), `Set-NmSetting` / `Clear-NmSetting`, DPAPI for secrets, IP range helpers (`Test-NmIpRangeText`, `Test-NmIpInRange`), `Remove-NmOldLog`. File: `%APPDATA%\NutmegAD\Settings.json` |
 | `Modules.ps1` | `$script:NmServiceModules` (AD = ActiveDirectory, GPO = GroupPolicy), `Assert-NmModule` (checks and imports, never installs: they are Windows features), `Find-NmModule`, `Import-NmModule` (GroupPolicy through Windows PowerShell in 7) |
 | `Export.ps1` | `Export-NmResult` (CSV with BOM / TXT to `C:\Temp`), file names `<tool>_<domain>_<time>` |
-| `Menu.ps1` | `Read-NmHost` (the only place input is read), `Read-NmSecret` (passwords, as a SecureString), `Read-NmInput`, `Read-NmYesNo`, `Read-NmMultiChoice`, `Wait-NmKey`, `Show-NmHeader`, `Show-NmMenu`, `Show-NmResult` / `Show-NmResultMenu`, navigation (`Push-NmNav`, [M] Main menu). Copied from M365-Tools; its window hooks stay for when the window is ported |
+| `Menu.ps1` | `Read-NmHost` (the only place input is read; a dialog while the window is open), `Read-NmSecret` (passwords, as a SecureString), `Read-NmInput`, `Read-NmYesNo`, `Read-NmMultiChoice`, `Wait-NmKey`, `Show-NmHeader`, `Show-NmMenu`, `Show-NmResult` / `Show-NmResultMenu`, navigation (`Push-NmNav`, [M] Main menu). Copied from M365-Tools, with its window hooks |
 | `Safety.ps1` | `Confirm-NmChange` (lists targets, domain and DC; `-DomainWide` / `-RequireTyped` need the domain's short name typed, or `-ConfirmWord`; `-WhatIf`; goes ahead without asking while an approved plan runs) |
 | `Domain.ps1` | the session (`Get-NmSession`: domain, NetBIOS, forest, SID, DN, levels, PDC, the DC in use, what is loaded), `Assert-NmConnection` (loads modules, reads the domain once), `Get-NmADParams` / `Get-NmGPParams` (splat `-Server`, and `-Domain` for GPO cmdlets), `Set-NmServer`, `Get-NmLocalComputer`, `Test-NmElevated`, `Get-NmAdminMembership`, the banner, Main menu > Domain and DC |
 | `PowerShell7.ps1` | `Find-NmPwsh`, `Get-NmPwshLtsVersion` (PowerShell's release metadata), `Install-NmPowerShell7` (signed MSI, `USE_MU=1 ENABLE_MU=1 ADD_PATH=1`) |
@@ -34,6 +34,7 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
 | `Build.ps1` | the build's state file (`<DataRoot>\NewForest\State.json`: answers, never passwords; each step's status), `Invoke-NmBuildStep` (skips Done steps, records Done/Failed, run history), `Set-NmPlanApproved` (one confirmation for a whole plan) |
 | `ToolRegistry.ps1` | `Register-NmTool` (validates `$NmTool`), the areas (`$script:NmAdminCenters`: gpo, ad, ready, report, kit), `Get-NmTool`, `Get-NmAdminCenter`, `Invoke-NmTool` |
 | `Launcher.ps1` | `Start-NmToolkit`: the main menu (area > section > tool), Search, Domain and DC, Run history, Settings, tools not loaded |
+| `Gui.ps1` | `Start-NmToolkitGui`: the WPF window (`Start-NutmegAD.ps1 -Gui`), ported from M365-Tools. While it is open, module-scope proxies for `Write-Host`, `Out-Host`, `Format-Table`, `Format-List` and `Write-Progress` collect what tools print, and `Read-NmHost` turns each prompt into a dialog, so tools need nothing of their own for it. The header shows the domain and DC (`Get-NmGuiDomainText`; Domain and DC opens `Show-NmDomainMenu`); results are kept per tool and per domain and DC (`Get-NmGuiTarget`). Areas in `$script:NmGuiConsoleOnlyAreas` (build) are not shown. Logic that needs no WPF is in model functions (`Get-NmGuiSidebarModel`, `Get-NmGuiParamSpec`, `Get-NmGuiCardModel`, ...) tested in `Tests/Invoke-GuiTests.ps1` |
 
 ## A tool's life
 
@@ -78,3 +79,7 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
 4. Update `README.md` (tool table), `CHANGELOG.md`, the module version and `docs/TOOL-LIST.md`.
    If it ports a legacy script, update `Legacy/INDEX.md`.
 5. Run `Tests/Invoke-AllTests.ps1`, PSScriptAnalyzer and the ASCII check (the core tests include it).
+6. After it passes QA in the console, check it in the window (`-Gui`): its parameters become the form
+   (`[ValidateSet]` a drop-down, `[switch]` a tick box, `[int]` a number, `[string[]]` a comma list,
+   `[datetime]` a date; hashtables and objects are left to Guided), and a status column named
+   `Result`, `Status` or `State` becomes the cards' tags.

@@ -36,6 +36,13 @@ On a domain controller, as a domain admin:
   first (Microsoft's signed MSI, with Microsoft Update on).
 - `-Stay` skips both offers.
 
+**In a window:** `.\Start-NutmegAD.ps1 -Gui` opens the same tools in a window: areas on the left,
+each tool's options as a form (or **Guided...** for its own questions), results as cards or a table
+with filter, export and row details. Every question and change confirmation becomes a dialog; logs
+and run history are the same as the console's. The header shows the domain and the DC (click it for
+**Domain and DC**) and which modules are loaded; the cog opens Settings. The New Forest Build stays in
+the console. New tools reach the window only after they pass QA in the console.
+
 **A brand-new forest:** on a freshly installed Windows Server in a workgroup, run
 `.\Start-NutmegAD.ps1 -NewForest`. It checks the server, asks its questions once, shows the plan, and
 then sets the IP and name, installs AD DS and creates the forest, carrying on by itself after each

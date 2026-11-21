@@ -2,6 +2,35 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.3.0 - 11/21/2026
+
+**The window** (ported from the M365 toolkit's, now that the New Forest Build's first two phases
+passed QA on the VM).
+
+- **Start it with `.\Start-NutmegAD.ps1 -Gui`.** The same tools as the console menu, in a window:
+  - the areas on the left (Group Policy, Active Directory, and so on, as tools arrive), the tools of
+    the chosen section in the middle, and search across all of them at the top;
+  - each tool's options as a form built from its parameters (drop-downs, tick boxes, numbers, lists,
+    dates; required boxes marked `*`), or **Guided...** to answer the tool's own questions;
+  - results as cards (tags to filter by, such as Created or Failed) or as a table, with a filter,
+    Export CSV/TXT, Summary and Row details. Results stay with each tool until cleared;
+  - every question, menu and change confirmation the console would show becomes a dialog, with the
+    same rules: a domain-wide change still needs the domain's short name typed;
+  - the header shows the domain and the DC every tool works against. Click it for **Domain and DC**
+    (status, another DC, read the domain again). Moving to another DC clears what was on screen;
+  - chips show whether the ActiveDirectory and GroupPolicy modules are loaded (they still load only
+    when a tool needs them). The cog opens Settings, and **Run history** lists the last 200 runs.
+- **The New Forest Build stays in the console.** It is not in the window, and
+  `-NewForest -Gui` starts it in the console.
+- `-Gui` is carried through the offers to start as administrator and in PowerShell 7 (started with
+  `-STA`, which the window needs), and so is `-LogPath`.
+- **New setting:** Settings > Window > Show results as (Cards or Table).
+- Left out from the M365 window: the tenant chooser, the cloud switch, sign-in and disconnect, and the
+  part-of-a-name lookups for mailboxes and users.
+- **Not run on Windows yet.** The window can't run here (WPF is Windows only). Its logic was tested
+  without WPF, its layouts were checked as XML, and every control the code looks up was checked to be
+  in them. The first run on the VM is the real test.
+
 ## 0.2.11 - 11/21/2026
 
 - **`Get-NutmegAD.ps1` updates itself.** Run from outside the toolkit folder (Cliff keeps it in

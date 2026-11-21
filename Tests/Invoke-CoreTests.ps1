@@ -180,7 +180,7 @@ Test-That 'With nothing to carry on, a session starts its own NutmegAD_<time>.tx
 
 Test-That 'The launcher passes the log on: plain to direct calls, quoted to Start-Process' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
-    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @logArgs' -and $text -match '& \$pwsh -NoLogo -File \$PSCommandPath -Stay @logArgs' -and
+    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @logArgs' -and $text -match '& \$pwsh -NoLogo -STA -File \$PSCommandPath -Stay @guiArgs @logArgs' -and
         $text -match '\$relaunch \+= \$logArgsQuoted' -and $text -match '\$env:NUTMEG_AD_LOG = \$LogPath'
 }
 
@@ -394,7 +394,7 @@ Test-That 'Settings save, apply to the config, and refuse values out of range' {
 }
 
 Test-That 'Only the AD toolkit settings exist' {
-    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount,BuildTimeZone'
+    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount,BuildTimeZone,ResultsView'
 }
 
 # ---------------------------------------------------------------------------
