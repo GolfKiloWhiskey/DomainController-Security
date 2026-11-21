@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.3
+    Version: 1.4
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -18,6 +18,8 @@
       C:\Tools\DomainController-Security (or -Path). An existing copy is kept next to it as
       <folder>.previous, replacing the one before.
     - Unblocks the files, so Windows runs them and the New Forest Build's pre-flight passes.
+    - Writes what it does to a log in C:\Temp\NutmegAD\Logs (never the token) and hands that log to
+      the toolkit, which carries on in it (through every restart of a New Forest Build).
     - Shows the toolkit version and the commit it came from, then changes to the toolkit folder and
       starts it: the New Forest Build on a workgroup server, the main menu on a domain-joined server
       or DC. -StartBuild or -Start picks one; -NoStart only downloads.
@@ -42,6 +44,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.4 - Starts the log (C:\Temp\NutmegAD\Logs) and hands it to the toolkit, so a build has one log throughout.
     1.3 - Clears the screen when it starts (issue #6).
     1.2 - Changes to the toolkit folder and starts it: the build on a workgroup server, the menu otherwise; -NoStart.
     1.1 - Downloads with the progress bar off (Windows PowerShell 5.1 was slowed to a few hundred KB/s by it).
@@ -55,15 +58,40 @@ param(
     [switch]$Public,
     [switch]$StartBuild,
     [switch]$Start,
-    [switch]$NoStart
+    [switch]$NoStart,
+    [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.3'
+$ScriptVersion = '1.4'
 $ErrorActionPreference = 'Stop'
 
+$script:GetLogPath = $null
+
+function Start-NutmegLog {
+    # Starts the log the toolkit carries on in (NutmegAD_<time>.txt, the toolkit's own format).
+    param([Parameter(Mandatory)][string]$Folder)
+    if (-not (Test-Path -LiteralPath $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null }
+    $script:GetLogPath = Join-Path $Folder "NutmegAD_$(Get-Date -Format 'yyyyMMdd-HHmm-ss').txt"
+    return $script:GetLogPath
+}
+
 function Write-Step {
+    # On screen, and in the log once it is started. Never given the token.
     param([string]$Text, [string]$Color = 'Cyan')
     Write-Host "[$((Get-Date).ToString('HH:mm:ss'))] $Text" -ForegroundColor $Color
+    if ($script:GetLogPath) {
+        $level = switch ($Color) { 'Red' { 'ERROR' } 'Green' { 'SUCCESS' } 'DarkGray' { 'DETAIL' } default { 'INFO' } }
+        try { Add-Content -Path $script:GetLogPath -Value ('[{0}] [{1}] {2}' -f (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'), $level, $Text) -Encoding UTF8 -ErrorAction Stop } catch { $null = $_ }
+    }
+}
+
+function Get-NutmegLauncherArgs {
+    # The launcher's arguments for a start choice, carrying the log on.
+    param([Parameter(Mandatory)][string]$Choice, [string]$LogPath)
+    $a = @()
+    if ($Choice -eq 'NewForest') { $a += '-NewForest' }
+    if ($LogPath) { $a += @('-LogPath', $LogPath) }
+    return $a
 }
 
 function Get-NutmegZipUri {
@@ -164,6 +192,8 @@ Write-Host '   Author: Cliff Waite' -ForegroundColor DarkGray
 Write-Host '   Email: cliff.ps@nutmegtech.com' -ForegroundColor DarkGray
 Write-Host "   Version: $ScriptVersion" -ForegroundColor DarkGray
 Write-Host '=============================================' -ForegroundColor Cyan
+try { $null = Start-NutmegLog -Folder $LogFolder } catch { Write-Host "No log: $($_.Exception.Message)" -ForegroundColor Yellow }
+Write-Step "Get-NutmegAD.ps1 $ScriptVersion on $([Environment]::MachineName) as $([Environment]::UserName). Log: $script:GetLogPath" DarkGray
 Write-Step "Repository $Repository, branch $Branch, into $Path"
 
 if ($PSVersionTable.PSVersion.Major -lt 6) {
@@ -200,10 +230,10 @@ if ($choice -eq 'None') {
     return
 }
 Set-Location -LiteralPath $Path
+$launchArgs = Get-NutmegLauncherArgs -Choice $choice -LogPath $script:GetLogPath
 if ($choice -eq 'NewForest') {
-    Write-Step 'This server is in a workgroup: starting the New Forest Build.' DarkGray
-    & (Join-Path $Path 'Start-NutmegAD.ps1') -NewForest
+    Write-Step 'This server is in a workgroup: starting the New Forest Build (it carries on in this log).' DarkGray
 } else {
-    Write-Step 'Starting the toolkit.' DarkGray
-    & (Join-Path $Path 'Start-NutmegAD.ps1')
+    Write-Step 'Starting the toolkit (it carries on in this log).' DarkGray
 }
+& (Join-Path $Path 'Start-NutmegAD.ps1') @launchArgs

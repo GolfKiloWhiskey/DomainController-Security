@@ -49,7 +49,9 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 - `Get-ADDomain` and `Get-ADForest`: names and levels as answered.
 - `Get-ScheduledTask -TaskName 'Nutmeg AD Toolkit - New Forest Build'`: gone at the end.
 - `C:\Temp\NutmegAD\NewForest\State.json`: every step Done, and no password in it.
-- `C:\Temp\NutmegAD\Logs\NutmegAD_*.txt`: the session logs, for anything that went wrong.
+- `C:\Temp\NutmegAD\Logs\NutmegAD_*.txt`: since 0.2.7 the whole build, from `Get-NutmegAD.ps1` to the
+  finished DC, is one log (the newest file started before the build). Each restart shows as a
+  `---- Session continued ----` line, and each step as `Build step done: ...`.
 
 ## Things worth trying on purpose
 

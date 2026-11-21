@@ -15,6 +15,8 @@
       PowerShell 7 LTS release first (Microsoft's signed MSI, Microsoft Update on).
     - Imports the Nutmeg.AD module from this folder (always the copy next to this file) and opens
       the main menu.
+    - -LogPath carries on in that log instead of starting a new one (Get-NutmegAD.ps1 passes the log
+      it started, so a build has one log from download to the finished DC).
     - -NewForest opens the New Forest Build on a fresh workgroup server instead. It always runs in
       Windows PowerShell 5.1 (the server roles' modules live there), and the build's sign-in task
       starts it this way after each restart.
@@ -31,12 +33,13 @@
     Builds the first DC of a new forest on this workgroup server, or carries on with the saved build.
 
 .VERSIONING
+    0.3.0 - -LogPath: carry on in an existing log (and pass it on when it starts itself again).
     0.2.0 - -NewForest: the New Forest Build, always in Windows PowerShell 5.1.
     0.1.0 - Initial launcher.
 #>
-param([switch]$Stay, [switch]$NewForest)
+param([switch]$Stay, [switch]$NewForest, [string]$LogPath)
 
-$ScriptVersion = '0.2.0'
+$ScriptVersion = '0.3.0'
 
 if ($PSVersionTable.PSVersion -lt [version]'5.1') {
     Write-Host 'The Nutmeg AD Toolkit needs Windows PowerShell 5.1 or PowerShell 7.' -ForegroundColor Red
@@ -44,10 +47,14 @@ if ($PSVersionTable.PSVersion -lt [version]'5.1') {
 }
 
 $onWindows = ($env:OS -eq 'Windows_NT')
+if ($LogPath) { $env:NUTMEG_AD_LOG = $LogPath }
+# Passing the log on: a direct call quotes arguments itself; Start-Process needs the quotes added.
+$logArgs = @(); $logArgsQuoted = @()
+if ($LogPath) { $logArgs = @('-LogPath', $LogPath); $logArgsQuoted = @('-LogPath', "`"$LogPath`"") }
 
 # The build runs in Windows PowerShell 5.1: started from PowerShell 7, hand over to it.
 if ($NewForest -and $onWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
-    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest
+    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @logArgs
     return
 }
 
@@ -67,6 +74,7 @@ if ($onWindows -and -not $Stay) {
         if (Read-NmYesNo -Prompt 'Start it again as administrator?' -Default 'Y') {
             $relaunch = @('-NoExit', '-File', "`"$PSCommandPath`"")
             if ($NewForest) { $relaunch += '-NewForest' }
+            $relaunch += $logArgsQuoted
             Start-Process -FilePath $self -Verb RunAs -ArgumentList $relaunch
             return
         }
@@ -83,7 +91,7 @@ if ($onWindows -and -not $Stay) {
             }
         }
         if ($pwsh -and (Read-NmYesNo -Prompt 'Start the toolkit in PowerShell 7?' -Default 'Y')) {
-            & $pwsh -NoLogo -File $PSCommandPath -Stay
+            & $pwsh -NoLogo -File $PSCommandPath -Stay @logArgs
             return
         }
     }

@@ -2,6 +2,17 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.7 - 11/21/2026
+
+- **One log from download to finished DC** (Cliff). `Get-NutmegAD.ps1` starts the log in
+  `C:\Temp\NutmegAD\Logs` and hands it to the toolkit, which carries on in it. The New Forest Build
+  records the log in its state file, so after each restart the sign-in task's session writes to the
+  same file. Each new session in it starts with a line such as
+  `---- Session continued: Administrator on DC01, Windows PowerShell 5.1, toolkit 0.2.7 ----`.
+  Once the build is finished, sessions go back to a log each.
+- `Start-NutmegAD.ps1 -LogPath <file>` carries on in a given log (and passes it on when it starts
+  itself again as administrator or in another PowerShell).
+
 ## 0.2.6 - 11/21/2026
 
 Log fixes from the second New Forest Build run on the VM (which passed):

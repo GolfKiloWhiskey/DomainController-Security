@@ -12,21 +12,57 @@ $script:NmLevelColors = @{
     DETAIL  = 'DarkGray'
 }
 
+function Get-NmContinuedLogPath {
+    <#
+    .SYNOPSIS
+        The log this session should carry on in, or $null for a new one.
+    .DESCRIPTION
+        - NUTMEG_AD_LOG: set by Start-NutmegAD.ps1 -LogPath (Get-NutmegAD.ps1 passes the log it started).
+        - Otherwise, a New Forest Build still running on this server: its log, from the state file, so
+          the sessions after each restart write to the same file.
+    #>
+    [CmdletBinding()]
+    param()
+    if ($env:NUTMEG_AD_LOG) { return $env:NUTMEG_AD_LOG }
+    try {
+        if (Get-Command Get-NmBuildState -ErrorAction SilentlyContinue) {
+            $state = Get-NmBuildState
+            if ($state -and -not $state.Finished -and $state.PSObject.Properties['LogPath'] -and "$($state.LogPath)" -and (Test-Path -LiteralPath "$($state.LogPath)")) {
+                return "$($state.LogPath)"
+            }
+        }
+    } catch { $null = $_ }
+    return $null
+}
+
 function Get-NmLogPath {
     <#
     .SYNOPSIS
         Returns this session's log file path, creating the log folder on first use.
+    .DESCRIPTION
+        Carries on in an earlier log when there is one to continue (Get-NmContinuedLogPath), with a
+        line marking where this session starts; otherwise starts NutmegAD_<time>.txt.
     #>
     [CmdletBinding()]
     param()
 
     if (-not $script:NmLogPath) {
-        $logDir = Join-Path $script:NmConfig.DataRoot 'Logs'
-        if (-not (Test-Path $logDir)) {
-            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        $continued = Get-NmContinuedLogPath
+        if ($continued) {
+            $dir = Split-Path -Parent $continued
+            if ($dir -and -not (Test-Path $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+            $script:NmLogPath = $continued
+            $ps = "$(if ($PSVersionTable.PSVersion.Major -ge 6) { 'PowerShell' } else { 'Windows PowerShell' }) $($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor)"
+            $marker = Format-NmLogLine -Message "---- Session continued: $([Environment]::UserName) on $([Environment]::MachineName), $ps, toolkit $script:ModuleVersion ----" -Level INFO
+            try { Add-Content -Path $continued -Value $marker -Encoding UTF8 -ErrorAction Stop } catch { $null = $_ }
+        } else {
+            $logDir = Join-Path $script:NmConfig.DataRoot 'Logs'
+            if (-not (Test-Path $logDir)) {
+                New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+            }
+            $stamp = Get-Date -Format 'yyyyMMdd-HHmm-ss'
+            $script:NmLogPath = Join-Path $logDir "NutmegAD_$stamp.txt"
         }
-        $stamp = Get-Date -Format 'yyyyMMdd-HHmm-ss'
-        $script:NmLogPath = Join-Path $logDir "NutmegAD_$stamp.txt"
     }
     return $script:NmLogPath
 }

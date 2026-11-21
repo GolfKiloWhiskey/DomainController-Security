@@ -271,6 +271,35 @@ Test-That 'The log says what each step did, and when the time zone moves the log
         $log -match 'Time zone changed from UTC to Eastern Standard Time: log times from here on' -and $log -notmatch '\(\(no domain\)\)'
 }
 
+Test-That 'One log for the whole build: after each restart the session carries on in it' {
+    Reset-Server
+    $script:NmLogPath = $null
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $first = Get-NmLogPath
+    $recorded = (Get-NmBuildState).LogPath
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    $script:NmLogPath = $null                      # a new PowerShell after the restart
+    Secret @('Dsrm-Pass-1!', 'Dsrm-Pass-1!')
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    $second = $script:NmLogPath
+    Restart-Fake -Promoted
+    $script:NmLogPath = $null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    $third = $script:NmLogPath
+    $text = Get-Content -LiteralPath $first -Raw
+    $recorded -eq $first -and $second -eq $first -and $third -eq $first -and
+        ([regex]::Matches($text, '---- Session continued').Count -eq 2) -and $text -match 'Build step done: Static IP' -and $text -match 'Build step done: Finish'
+}
+
+Test-That 'Once the build is finished, the next session starts its own log' {
+    $before = $script:NmLogPath
+    $script:NmLogPath = $null
+    $next = Get-NmLogPath
+    (Get-NmBuildState).Finished -and $next -ne $before -and (Split-Path -Leaf $next) -like 'NutmegAD_*.txt'
+}
+
 Test-That 'Phase 0 with the name unchanged: no restart, straight on to phase 1 in the same run' {
     Reset-Server
     Answer (@($global:StdAnswers[0..3]) + '' + @($global:StdAnswers[5..11]))   # keep the current name

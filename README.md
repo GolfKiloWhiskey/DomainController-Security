@@ -46,7 +46,8 @@ Nothing is loaded at start. The first tool that needs the ActiveDirectory or Gro
 it and reads the domain from this DC. **Domain and DC** in the main menu shows the domain, its levels
 and the PDC, and can point the toolkit at another DC.
 
-Logs and run history: `C:\Temp\NutmegAD`. Exports: `C:\Temp`. Settings (per Windows user):
+Logs and run history: `C:\Temp\NutmegAD` (a New Forest Build keeps one log from `Get-NutmegAD.ps1`
+to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Windows user):
 `%APPDATA%\NutmegAD\Settings.json`.
 
 ## Tools

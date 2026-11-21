@@ -5,6 +5,7 @@
 #   <DataRoot>\NewForest\State.json
 # - Answers: what the technician typed (domain, names, IP...). Never a password.
 # - Steps: each step's Status (Done / Failed), time and detail.
+# - LogPath: the build's one log; every session until the build finishes writes to it.
 # A step that is Done is skipped on the next run, so a build can be re-run after a failure or a
 # restart and picks up where it stopped.
 #
@@ -27,6 +28,7 @@ function New-NmBuildState {
         Answers  = $null
         Steps    = [pscustomobject]@{}
         Finished = $null
+        LogPath  = (Get-NmLogPath)   # the sessions after each restart carry on in this log
     }
 }
 
