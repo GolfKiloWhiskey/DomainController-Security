@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.8
+    Version: 0.7.1
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,7 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
-    0.8 - Answers saved as they are given and checked again when the build carries on; domain and IP checked at their
+    0.7.1 - Answers saved as they are given and checked again when the build carries on; domain and IP checked at their
           question; time zone from a list of names; clearer questions; the plan shows the new forest; a card per phase;
           a restart notice.
     0.7 - The server check has a heading (the window shows it as a table in the first question).
@@ -50,7 +50,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.8'
+    Version  = '0.7.1'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')

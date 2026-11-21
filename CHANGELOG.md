@@ -2,7 +2,11 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
-## 0.8.0 - 11/21/2026
+How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.7.1, 0.7.2, ...
+0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
+whole package built and ready for testing as a release; **1.0.0** is the release.
+
+## 0.7.1 - 11/21/2026
 
 From Cliff's review of the first full window run on the VM:
 

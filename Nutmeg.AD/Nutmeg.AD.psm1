@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.8.0
+    Version: 0.7.1
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,7 +23,7 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
-    0.8.0 - From Cliff's VM review: build answers saved as given (Core\Build.ps1 drafts) and checked again on carry-on; domain and
+    0.7.1 - From Cliff's VM review: build answers saved as given (Core\Build.ps1 drafts) and checked again on carry-on; domain and
             IP checked at their question; time zone list; window dialogs fit the window, keep their section, show check
             badges; status bar per question; approval facts; a card per phase; restart notice; cleaner Output panel.
     0.7.0 - Launcher 0.7.0 checks the server at start (Get-NmStartMode): the build on a workgroup server or with a build
@@ -58,7 +58,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.8.0'
+$script:ModuleVersion = '0.7.1'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
