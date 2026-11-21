@@ -44,8 +44,9 @@ PowerShell, the window or tests.
 Building, in the order in `docs/TOOL-LIST.md` (agreed with Cliff, Nov 2026). Done: step 1, the core and
 launcher (0.1.0) and `session-info`; the New Forest Build's phases 0 and 1 (0.2.0, moved ahead by Cliff
 to test on a checkpointed Server 2025 VM, passed QA); the WPF window (0.3.0, `Core/Gui.ps1`,
-`Start-NutmegAD.ps1 -Gui`); the build in the window (0.4.0, `-NewForest -Gui`, opened by
-`Get-NutmegAD.ps1`, which also installs PowerShell 7). The build runs in Windows PowerShell 5.1 only. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
+now the launcher's default, `-Console` for the console); the build in the window (0.4.0, opened by
+`Get-NutmegAD.ps1`, which also installs PowerShell 7). The launcher uses PowerShell 7 whenever it is
+installed (0.6.0). The build runs in Windows PowerShell 5.1 only. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
 Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 
 ## How work is delivered

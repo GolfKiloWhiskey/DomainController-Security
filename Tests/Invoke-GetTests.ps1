@@ -185,7 +185,7 @@ Test-That 'The launcher really receives -NewForest and -LogPath as given (a prob
     $probe = Join-Path $work 'Probe.ps1'
     $launcherText = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
     $paramLine = ([regex]::Match($launcherText, '(?m)^param\(.*\)$')).Value
-    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ NewForest = [bool]$NewForest; Gui = [bool]$Gui; LogPath = $LogPath }')
+    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ NewForest = [bool]$NewForest; Console = [bool]$Console; LogPath = $LogPath }')
     $log = 'C:\Temp\NutmegAD\Logs\NutmegAD_20261121-0119-47.txt'
     $nfArgs = Get-NutmegLauncherArgs -Choice NewForest -LogPath $log
     $menuArgs = Get-NutmegLauncherArgs -Choice Menu -LogPath $log
@@ -195,8 +195,9 @@ Test-That 'The launcher really receives -NewForest and -LogPath as given (a prob
     $win = & $probe @winArgs
     $nfwArgs = Get-NutmegLauncherArgs -Choice NewForestWindow -LogPath $log
     $nfw = & $probe @nfwArgs
-    $paramLine -match 'LogPath' -and $nf.NewForest -and (-not $nf.Gui) -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and (-not $menu.Gui) -and $menu.LogPath -eq $log -and
-        $win.Gui -and (-not $win.NewForest) -and $win.LogPath -eq $log -and $nfw.Gui -and $nfw.NewForest -and $nfw.LogPath -eq $log
+    # The launcher opens the window unless -Console: the console choices must say so.
+    $paramLine -match 'LogPath' -and $nf.NewForest -and $nf.Console -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and $menu.Console -and $menu.LogPath -eq $log -and
+        (-not $win.Console) -and (-not $win.NewForest) -and $win.LogPath -eq $log -and (-not $nfw.Console) -and $nfw.NewForest -and $nfw.LogPath -eq $log
 }
 
 Test-That 'The launcher ignores a -LogPath that is really a parameter name' {

@@ -182,12 +182,13 @@ function Restart-NmServer {
 $script:NmResumeTaskName = 'Nutmeg AD Toolkit - New Forest Build'
 
 function Get-NmResumeTaskArgument {
-    # The sign-in task's command line for powershell.exe: the launcher with -NewForest (and -Gui).
+    # The sign-in task's command line for powershell.exe: the launcher with -NewForest, which opens the
+    # window; a build started in the console (no -Gui here) carries on there with -Console.
     [CmdletBinding()]
     [OutputType([string])]
     param([Parameter(Mandatory)][string]$LauncherPath, [switch]$Gui)
     $a = "-NoExit -NoProfile -File `"$LauncherPath`" -NewForest"
-    if ($Gui) { $a += ' -Gui' }
+    if (-not $Gui) { $a += ' -Console' }
     return $a
 }
 

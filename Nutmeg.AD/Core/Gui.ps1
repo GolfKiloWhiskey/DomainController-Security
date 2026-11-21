@@ -3183,7 +3183,7 @@ function Start-NmToolkitGui {
     .DESCRIPTION
         - The header shows the domain and the DC every tool works against (Domain and DC opens the
           same menu as the console), and which modules are loaded.
-        - -NewForest opens the New Forest Build instead (Start-NutmegAD.ps1 -NewForest -Gui, in
+        - -NewForest opens the New Forest Build instead (Start-NutmegAD.ps1 -NewForest, in
           Windows PowerShell 5.1): only the build is listed, and its questions start as soon as the
           window is up. The normal window leaves the build out.
     .EXAMPLE

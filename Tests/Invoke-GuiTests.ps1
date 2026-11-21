@@ -292,16 +292,23 @@ Test-That 'The window has the card view, its toggle, the selection bar, the Clea
     $grid.GetAttribute('MinRowHeight') -and -not $grid.GetAttribute('RowHeight') -and ($script:NmGui.Kept -is [hashtable])
 }
 
-Test-That 'Launcher -Gui: carried through elevation and PowerShell 7 (with -STA), STA relaunch keeps the log; -NewForest -Gui opens the build in the window' {
+Test-That 'Launcher: the window by default and -Console for the console, carried through elevation, PowerShell 7 and the build' {
     $text = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
     $paramLine = ([regex]::Match($text, '(?m)^param\(.*\)$')).Value
     $probe = Join-Path ([System.IO.Path]::GetTempPath()) ("NmProbe_" + [guid]::NewGuid().ToString('N') + '.ps1')
-    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ Gui = [bool]$Gui; Stay = [bool]$Stay; NewForest = [bool]$NewForest; LogPath = $LogPath }')
-    try { $p = & $probe -Stay -Gui -NewForest -LogPath 'C:\Temp\NutmegAD\Logs\x.txt' } finally { Remove-Item $probe -ErrorAction SilentlyContinue }
-    $p.Gui -and $p.Stay -and $p.NewForest -and ($p.LogPath -eq 'C:\Temp\NutmegAD\Logs\x.txt') -and
-    $text.Contains('$relaunch += $guiArgs') -and $text.Contains('& $pwsh -NoLogo -STA -File $PSCommandPath -Stay @guiArgs @logArgs') -and
-    $text.Contains("'-Stay', '-Gui') + `$logArgsQuoted)") -and $text.Contains('& powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @guiArgs @logArgs') -and
-    $text.Contains('Start-NmToolkitGui -NewForest') -and (-not $text.Contains('if ($NewForest -and $Gui)'))
+    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ Console = [bool]$Console; Gui = [bool]$Gui; Stay = [bool]$Stay; NewForest = [bool]$NewForest; LogPath = $LogPath }')
+    try { $p = & $probe -Stay -Console -NewForest -LogPath 'C:\Temp\NutmegAD\Logs\x.txt'; $old = & $probe -Gui } finally { Remove-Item $probe -ErrorAction SilentlyContinue }
+    $p.Console -and $p.Stay -and $p.NewForest -and ($p.LogPath -eq 'C:\Temp\NutmegAD\Logs\x.txt') -and $old.Gui -and
+    $text.Contains('$useWindow = $onWindows -and -not $Console') -and $text.Contains("if (-not `$useWindow) { `$modeArgs = @('-Console') }") -and
+    $text.Contains('$relaunch += $modeArgs') -and $text.Contains('& $pwsh -NoLogo -STA -File $PSCommandPath -Stay @modeArgs @logArgs') -and
+    $text.Contains('& powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @modeArgs @logArgs') -and
+    $text.Contains('Start-NmToolkitGui -NewForest') -and $text.Contains("if (`$useWindow) {")
+}
+
+Test-That 'Launcher: PowerShell 7 is used without asking whenever it is installed (never for the build)' {
+    $text = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
+    (-not $text.Contains('Start the toolkit in PowerShell 7?')) -and $text.Contains("if (`$pwsh) {`n            Write-Host ""Starting the toolkit in PowerShell 7") -and
+    $text.Contains('if ($PSVersionTable.PSVersion.Major -lt 7 -and -not $NewForest) {')
 }
 
 Test-That 'Build mode: the window lists only the New Forest Build, search finds only it, and Guided starts it' {
@@ -358,7 +365,7 @@ Test-That 'Sign-in task: reopens the window when the build ran in it, the consol
     $l = 'C:\Tools\DomainController-Security\Start-NutmegAD.ps1'
     $con = Get-NmResumeTaskArgument -LauncherPath $l
     $win = Get-NmResumeTaskArgument -LauncherPath $l -Gui
-    ($con -eq "-NoExit -NoProfile -File `"$l`" -NewForest") -and ($win -eq "-NoExit -NoProfile -File `"$l`" -NewForest -Gui")
+    ($con -eq "-NoExit -NoProfile -File `"$l`" -NewForest -Console") -and ($win -eq "-NoExit -NoProfile -File `"$l`" -NewForest")
 }
 
 Test-That 'Dialogs carry no console text: a kept table goes to the Output panel only; plain values still show' {

@@ -180,7 +180,7 @@ Test-That 'With nothing to carry on, a session starts its own NutmegAD_<time>.tx
 
 Test-That 'The launcher passes the log on: plain to direct calls, quoted to Start-Process' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
-    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @guiArgs @logArgs' -and $text -match '& \$pwsh -NoLogo -STA -File \$PSCommandPath -Stay @guiArgs @logArgs' -and
+    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @modeArgs @logArgs' -and $text -match '& \$pwsh -NoLogo -STA -File \$PSCommandPath -Stay @modeArgs @logArgs' -and
         $text -match '\$relaunch \+= \$logArgsQuoted' -and $text -match '\$env:NUTMEG_AD_LOG = \$LogPath'
 }
 
