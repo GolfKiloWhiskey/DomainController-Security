@@ -6,8 +6,8 @@ layout, GPO baselines, hardening, reports and health checks.
 
 **Building a DC is out of scope, with one planned exception.** No tool installs AD DS, runs
 `Install-ADDSForest` / `Install-ADDSDomainController` or demotes a DC, except the planned **New Forest
-Build** (`docs/TOOL-LIST.md`): one guarded run for the first DC of a brand-new forest, which refuses to
-run on a domain-joined server or when a domain of that name already answers. Existing domains are
+Build** (`docs/TOOL-LIST.md`): guarded runs for the first two DCs of a brand-new forest, which refuse to run
+on a domain-joined server, and for the second DC unless the domain has exactly one DC. Existing domains are
 always worked on with the individual tools.
 
 **Hardening is the GPO baselines.** DC and domain hardening is defined by Cliff's GPO reports in

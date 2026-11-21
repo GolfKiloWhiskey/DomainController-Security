@@ -73,21 +73,30 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 ## New Forest Build (planned)
 
-One guarded, mostly unattended run for the **first DC of a brand-new forest**: from a freshly installed
-Windows Server to a promoted, structured and baselined domain. It only runs on a workgroup server
-where no domain of that name answers; on an existing domain the individual tools are used instead.
+Guarded, mostly unattended runs that take freshly installed Windows Servers to a promoted, structured and
+baselined domain with **at least two DCs**. On an existing domain the individual tools are used instead.
+
+- **First DC (new forest):** runs only on a workgroup server, when no domain of that name answers.
+- **Second DC (into that new domain):** runs only on a workgroup server, when the domain answers and has
+  exactly one DC. Anything else is refused.
 
 Each step calls the same tool a technician would run by hand, so one set of code and tests covers both.
 Every change tool therefore must run without prompts when given its parameters (a rule from step 2 on).
 
-Phases, with a reboot where marked:
+**Questions are asked during the first run** (no answer file to prepare). The answers, never passwords,
+are saved in the run's state file, so a resume after a reboot asks nothing again, and the saved answers
+are the record of how the client was built. Passwords (DSRM, the domain admin credential for the second
+DC) are typed when needed and held in memory only.
 
-0. **Prepare the server** (workgroup only): pick the network adapter (if there are several); static IP
-   (default: the current DHCP subnet with `.50`, Cliff's standard for DCs; any address can be typed),
-   prefix and gateway from the current lease, pre-promotion DNS (gateway or an external resolver);
-   check nothing answers on the new IP; computer name; time zone. The IP change goes last and asks
-   nothing after it, because it drops an RDP session to the DHCP address: show the new address, then
-   restart on a countdown. IPv6 stays on (Microsoft doesn't support disabling it on DCs). *Reboot.*
+### First DC
+
+0. **Prepare the server** (workgroup only): pick the network adapter; warn if more than one adapter is
+   connected (Microsoft advises against DCs on several networks; nothing is changed). Static IP (default:
+   the current DHCP subnet with `.50`, Cliff's standard; any address can be typed), prefix and gateway
+   from the current lease, pre-promotion DNS (gateway or an external resolver); check nothing answers on
+   the new IP; computer name; time zone. Advanced adapter properties are left alone (VLANs are the
+   hypervisor's). The IP change goes last and asks nothing after it, because it drops an RDP session to
+   the DHCP address: show the new address, then restart on a countdown. IPv6 stays on. *Reboot.*
 1. **Promote:** install AD DS, DNS and GPMC; `Install-ADDSForest`. *Reboot.*
 2. **After promotion:** DNS client to its own IP then `127.0.0.1`; DNS forwarders, scavenging, reverse
    zone; sites and subnets; the PDC's external time source; Recycle Bin; KDS root key; PowerShell 7;
@@ -97,20 +106,24 @@ Phases, with a reboot where marked:
    exceptions are added afterwards with the individual tools.
 5. **Report:** `session-info`, `ad-report`, and a summary of every step and its result.
 
-Design points:
-- **Answer file** per client (domain, NetBIOS, company OU, IPs, NTP source, banner text and so on); the
-  repo holds only a template. Reviewed in a dry run of the whole plan before anything changes.
-- **DSRM password** typed once at the start, held in memory only, never written anywhere.
-- **Resumable:** a state file records each finished step; after a reboot or a failure, the run picks up
+### Second DC
+
+0. **Prepare the server:** as above, IP default `.51`, DNS pointing at the first DC. *Reboot.*
+1. **Promote:** install AD DS, DNS and GPMC; `Install-ADDSDomainController` into the new domain with the
+   domain admin credential. *Reboot.*
+2. **After promotion:** DNS clients as Microsoft recommends (each DC points to the other first, itself
+   second, on both DCs); replication between the two checked; FSMO roles stay on the first DC.
+3. **Report:** `session-info`, replication, and a summary.
+
+### Design points
+
+- **Resumable:** the state file records each finished step; after a reboot or a failure the run picks up
   where it stopped and skips what is done.
-- **One confirmation:** the domain name typed once approves the whole plan (a "plan approved" mode in
-  `Confirm-NmChange`); every change still goes to run history.
+- **One confirmation per run:** the domain name typed once approves the plan shown (a "plan approved"
+  mode in `Confirm-NmChange`); every change still goes to run history. A dry run shows the whole plan
+  first.
 - **Day-one hardening:** Kerberos AES-only, NTLMv2, LDAP signing and SCHANNEL apply from the start; the
   summary warns that legacy devices joining later need `ready`.
-
-Open: first DC only, or also a second DC into the domain it just built; answer file or up-front
-questions (wizard); adapter settings beyond IP, gateway and DNS (rename, power management, DNS
-registration).
 
 ## Compliance profiles (next project)
 
