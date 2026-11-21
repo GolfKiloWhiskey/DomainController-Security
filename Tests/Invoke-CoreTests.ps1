@@ -457,7 +457,7 @@ Test-That 'Main menu: Domain and DC > another DC moves the session there' {
 # Code rules
 # ---------------------------------------------------------------------------
 Test-That 'Code files are ASCII only' {
-    $files = Get-ChildItem -Path (Join-Path $repoRoot 'Nutmeg.AD'), (Join-Path $repoRoot 'Tests'), (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Include *.ps1, *.psm1, *.psd1 -Recurse -File
+    $files = Get-ChildItem -Path (Join-Path $repoRoot 'Nutmeg.AD'), (Join-Path $repoRoot 'Tests'), (Join-Path $repoRoot 'Start-NutmegAD.ps1'), (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Include *.ps1, *.psm1, *.psd1 -Recurse -File
     $bad = @($files | Where-Object { [System.IO.File]::ReadAllBytes($_.FullName) | Where-Object { $_ -gt 127 } | Select-Object -First 1 })
     if ($bad.Count) { throw "non-ASCII in: $($bad.Name -join ', ')" }
     $true

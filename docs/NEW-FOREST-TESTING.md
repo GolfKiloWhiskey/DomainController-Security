@@ -5,8 +5,14 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 
 ## Before the first run
 
-1. Copy the repo onto the VM, for example `C:\Tools\DomainController-Security`.
-2. If it came as a download (zip), unblock it once, in an elevated Windows PowerShell:
+1. Copy `Get-NutmegAD.ps1` onto the VM and run it in Windows PowerShell as administrator. While the
+   build is still in review, name its branch:
+   ```powershell
+   .\Get-NutmegAD.ps1 -Branch claude/zen-franklin-4swcvy
+   ```
+   It asks for a GitHub token (hidden, never saved), puts the toolkit in
+   `C:\Tools\DomainController-Security` and unblocks the files. After a fix, run it again to update.
+2. (Done by `Get-NutmegAD.ps1`.) Copied any other way, unblock the files once:
    ```powershell
    Get-ChildItem C:\Tools\DomainController-Security -Recurse | Unblock-File
    ```

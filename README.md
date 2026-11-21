@@ -8,6 +8,19 @@ reports and day-to-day AD admin. Hardening (DC and domain) comes from the GPO ba
 It follows the Nutmeg M365 Toolkit's pattern (M365-Tools): one core for menus, logging, safety
 prompts, exports and settings, and one file per tool. The plan is `docs/TOOL-LIST.md`.
 
+## Get it onto a server
+
+Copy `Get-NutmegAD.ps1` to the server (or paste it into Windows PowerShell as administrator) and run:
+
+```powershell
+.\Get-NutmegAD.ps1
+```
+
+It asks for a GitHub token (fine-grained, this repository only, Contents: Read-only; typed hidden and
+never saved), downloads `main` into `C:\Tools\DomainController-Security`, keeps any copy already there
+as `.previous`, and unblocks the files. `-Branch <name>` gets a branch still in review, `-Path` puts it
+elsewhere, and `-StartBuild` opens the New Forest Build straight after. Run it again to update.
+
 ## Run it
 
 On a domain controller, as a domain admin:
@@ -57,6 +70,7 @@ Invoke-NmTool -Id session-info -NoMenu
 
 ```
 Start-NutmegAD.ps1          launcher
+Get-NutmegAD.ps1            downloads or updates the toolkit on a server (standalone, not loaded by the module)
 Nutmeg.AD/
   Nutmeg.AD.psd1 / .psm1    module manifest and loader
   Core/                     domain session, modules, logging, menus, exports, safety, settings, registry, launcher,
@@ -65,6 +79,7 @@ Nutmeg.AD/
   Data/                     OuStandard.csv, GpoDefaultLinks.csv
 Tests/Invoke-CoreTests.ps1  core tests (no domain or AD module needed)
 Tests/Invoke-BuildTests.ps1 New Forest Build tests (a fake fresh server)
+Tests/Invoke-GetTests.ps1   Get-NutmegAD.ps1 tests (fake GitHub zips)
 Tests/Invoke-AllTests.ps1   runs every test file and prints a total
 Legacy/                     source material: scripts, GPO reports, screenshots; INDEX.md tracks each item
 docs/                       ARCHITECTURE.md, TOOL-LIST.md, baselines/

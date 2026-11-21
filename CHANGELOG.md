@@ -2,6 +2,16 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.1 - 11/21/2026
+
+- **`Get-NutmegAD.ps1` puts the toolkit on a server**, or updates it. It is a standalone script,
+  not part of the module: copy the one file to the server (or paste it into Windows PowerShell).
+  - Asks for a GitHub token without showing it, and never saves or logs it. Use a fine-grained token
+    for this repository only, with Contents: Read-only.
+  - Downloads the branch you name (`main` by default) into `C:\Tools\DomainController-Security`, checks
+    it really is the toolkit, keeps the copy that was there as `.previous`, and unblocks the files.
+  - Shows the toolkit version and commit. `-StartBuild` goes straight into the New Forest Build.
+
 ## 0.2.0 - 11/21/2026
 
 The New Forest Build's first two phases: a freshly installed Windows Server to the first DC of a new
