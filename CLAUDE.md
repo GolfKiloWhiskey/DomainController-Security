@@ -48,6 +48,11 @@ Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 
 ## How work is delivered
 
+- **Console first, then the window** (Cliff, Nov 2026). Every step is built and passes Cliff's QA in
+  the console before it goes into the WPF window. The window itself is ported from M365-Tools right
+  after the New Forest Build's phases 0 and 1 pass QA on the VM. A step may go straight into the
+  window only when Cliff and Claude both agree to it for that step.
+
 - **Work on the session's branch and open the PR against `main`.** One PR per piece of work; Cliff
   merges, never merge yourself.
 - **Every PR also updates:** the version in `Nutmeg.AD.psd1` (`ModuleVersion`) and in `Nutmeg.AD.psm1`

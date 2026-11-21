@@ -59,6 +59,10 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 ## Order of work
 
+Each step is built for the console first and goes into the window after it passes Cliff's QA there
+(unless both agree to skip that for a step). The window is ported once the New Forest Build's phases
+0 and 1 pass QA on the VM.
+
 1. Core and launcher (copied from M365-Tools and adapted), `session-info`. **Done in 0.1.0.**
 2. The baseline file format, and `gpo-build` and `gpo-compare` for the easy kinds (template settings,
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
