@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.6
+    Version: 1.7
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -23,8 +23,9 @@
     - Run from outside the toolkit folder (C:\Temp, say), it replaces itself with the copy just
       downloaded, so the next run uses the latest version.
     - Shows the toolkit version and the commit it came from, then changes to the toolkit folder and
-      starts it: the New Forest Build on a workgroup server, the main menu on a domain-joined server
-      or DC. -StartBuild or -Start picks one; -NoStart only downloads.
+      starts it: the New Forest Build on a workgroup server (console only), the window on a
+      domain-joined server or DC. -Console starts the console menu instead, -StartBuild the build,
+      -Start the window; -NoStart only downloads.
     - Runs in Windows PowerShell 5.1 and PowerShell 7. Run it as administrator when the folder is
       under C:\Tools or another protected place.
 
@@ -38,6 +39,10 @@
     Gets a branch that is still in review and starts the New Forest Build.
 
 .EXAMPLE
+    .\Get-NutmegAD.ps1 -Console
+    Updates, then opens the console menu instead of the window.
+
+.EXAMPLE
     .\Get-NutmegAD.ps1 -NoStart
     Only downloads or updates; starts nothing.
 
@@ -46,6 +51,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.7 - Opens the window on a domain-joined server or DC (-Console for the menu); the build stays in the console.
     1.6 - Updates itself from the download when run from elsewhere; steps out of the toolkit folder before replacing it.
     1.5 - Hands -NewForest and -LogPath to the launcher as named parameters (a list bound them in order: the log path became '-LogPath').
     1.4 - Starts the log (C:\Temp\NutmegAD\Logs) and hands it to the toolkit, so a build has one log throughout.
@@ -62,11 +68,12 @@ param(
     [switch]$Public,
     [switch]$StartBuild,
     [switch]$Start,
+    [switch]$Console,
     [switch]$NoStart,
     [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.6'
+$ScriptVersion = '1.7'
 $ErrorActionPreference = 'Stop'
 
 $script:GetLogPath = $null
@@ -96,6 +103,7 @@ function Get-NutmegLauncherArgs {
     param([Parameter(Mandatory)][string]$Choice, [string]$LogPath)
     $a = @{}
     if ($Choice -eq 'NewForest') { $a.NewForest = $true }
+    if ($Choice -eq 'Window') { $a.Gui = $true }
     if ($LogPath) { $a.LogPath = $LogPath }
     return $a
 }
@@ -179,12 +187,14 @@ function Install-NutmegPackage {
 }
 
 function Get-NutmegStartChoice {
-    # What to start after the download: 'NewForest', 'Menu' or 'None'. A workgroup server gets the build.
-    param([bool]$PartOfDomain, [switch]$StartBuild, [switch]$Start, [switch]$NoStart)
+    # What to start after the download: 'NewForest', 'Window', 'Menu' or 'None'. A workgroup server gets
+    # the build (console only); a domain member or DC gets the window, or the menu with -Console.
+    param([bool]$PartOfDomain, [switch]$StartBuild, [switch]$Start, [switch]$Console, [switch]$NoStart)
     if ($NoStart) { return 'None' }
     if ($StartBuild) { return 'NewForest' }
-    if ($Start) { return 'Menu' }
-    if ($PartOfDomain) { return 'Menu' }
+    if ($Console) { return 'Menu' }
+    if ($Start) { return 'Window' }
+    if ($PartOfDomain) { return 'Window' }
     return 'NewForest'
 }
 
@@ -257,16 +267,18 @@ try {
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
 }
 
-$choice = Get-NutmegStartChoice -PartOfDomain (Test-NutmegPartOfDomain) -StartBuild:$StartBuild -Start:$Start -NoStart:$NoStart
+$choice = Get-NutmegStartChoice -PartOfDomain (Test-NutmegPartOfDomain) -StartBuild:$StartBuild -Start:$Start -Console:$Console -NoStart:$NoStart
 if ($choice -eq 'None') {
-    Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest)   or   .\Start-NutmegAD.ps1   (the menu)" DarkGray
+    Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest),   .\Start-NutmegAD.ps1 -Gui   (the window)   or   .\Start-NutmegAD.ps1   (the menu)" DarkGray
     return
 }
 Set-Location -LiteralPath $Path
 $launchArgs = Get-NutmegLauncherArgs -Choice $choice -LogPath $script:GetLogPath
 if ($choice -eq 'NewForest') {
     Write-Step 'This server is in a workgroup: starting the New Forest Build (it carries on in this log).' DarkGray
+} elseif ($choice -eq 'Window') {
+    Write-Step 'Opening the toolkit window (it carries on in this log). For the console menu: .\Get-NutmegAD.ps1 -Console, or .\Start-NutmegAD.ps1' DarkGray
 } else {
-    Write-Step 'Starting the toolkit (it carries on in this log).' DarkGray
+    Write-Step 'Starting the toolkit menu (it carries on in this log).' DarkGray
 }
 & (Join-Path $Path 'Start-NutmegAD.ps1') @launchArgs
