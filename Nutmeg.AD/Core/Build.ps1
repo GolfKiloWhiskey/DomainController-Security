@@ -90,6 +90,7 @@ function Invoke-NmBuildStep {
     try {
         $detail = "$(& $Action)"
         Set-NmBuildStep -State $State -Name $Name -Status Done -Detail $detail
+        Write-NmLog "Build step done: $Label - $detail" -Level SUCCESS -NoConsole
         Write-NmRunHistory -ToolId 'new-forest' -Kind Change -ItemCount 1 -Notes "$Label ($detail)"
         return [pscustomobject]@{ Phase = $Phase; Step = $Label; Result = 'Done'; Detail = $detail }
     } catch {

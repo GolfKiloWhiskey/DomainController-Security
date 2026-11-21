@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.2
+    Version: 0.3
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.3 - The log says what each step did, and when the time zone change moves the log's clock.
     0.2 - Opens on a clean screen with the toolkit header (issue #6).
     0.1 - Pre-flight, questions, phase 0 (prepare the server) and phase 1 (promote), then a check of the new DC.
 #>
@@ -42,7 +43,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.2'
+    Version  = '0.3'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -347,8 +348,10 @@ function Invoke-NmNewForestBuild {
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'TimeZone' -Phase '0 Prepare' -Label 'Time zone' -Action {
                 if ((Get-NmTimeZoneId) -eq $a.TimeZone) { return "$($a.TimeZone) (already set)" }
                 $null = Confirm-NmChange -Action "Set the time zone to $($a.TimeZone)"
+                $was = Get-NmTimeZoneId
                 Set-NmTimeZone -Id $a.TimeZone
-                return $a.TimeZone
+                Write-NmLog "Time zone changed from $was to $($a.TimeZone): log times from here on are in the new zone." -Level INFO -NoConsole
+                return "$($a.TimeZone) (was $was)"
             }))
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'ComputerName' -Phase '0 Prepare' -Label 'Computer name' -Action {
                 $now = "$((Get-NmLocalComputer).Name)"

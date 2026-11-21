@@ -2,6 +2,18 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.6 - 11/21/2026
+
+Log fixes from the second New Forest Build run on the VM (which passed):
+
+- **Each build step now logs what it did**, for example `Build step done: Static IP - 192.0.2.50/24
+  via 192.0.2.1`, or that the name or IP was already set. Before, the log only said a step started.
+- **The time zone step says the log's clock moves** ("log times from here on are in the new zone"),
+  so the jump in the times right after it (21:09 to 00:09 on the VM) is explained in the log itself.
+- **Leaving a tool after it ran logs "Closed <tool>"**, not "Cancelled." Cancelled is now only for
+  backing out before anything ran.
+- **"(no domain)" no longer shows as "((no domain))"** in confirmation lines.
+
 ## 0.2.5 - 11/21/2026
 
 - **Clean screen at start** (issue #6). `Get-NutmegAD.ps1` clears the window before its header, and

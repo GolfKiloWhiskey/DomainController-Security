@@ -43,7 +43,7 @@ function Confirm-NmChange {
 
     $session = Get-NmSession
     $count   = @($Targets).Count
-    $domain  = if ($session.Domain) { $session.Domain } else { '(no domain)' }
+    $domain  = if ($session.Domain) { $session.Domain } else { 'no domain' }
 
     Write-Host $script:NmBorder -ForegroundColor Yellow
     Write-Host "   CHANGE: $Action" -ForegroundColor Yellow

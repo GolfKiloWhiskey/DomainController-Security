@@ -452,6 +452,29 @@ Test-That 'A tool whose module is missing stops before it runs, and the run is r
     (-not $global:TestToolRan) -and (@(Get-NmRunHistory -Last 1)[0].Result -eq 'Failed')
 }
 
+Test-That 'Leaving a tool after a run logs Closed; backing out before one logs Cancelled' {
+    Reset-Fake
+    $global:PromptAnswers = New-Object System.Collections.Generic.Queue[object]
+    function global:Read-NmPromptTool { if ($global:PromptAnswers.Count) { $global:PromptAnswers.Dequeue() } else { $null } }
+    function global:Invoke-NmPromptTool { param($X) [pscustomobject]@{ X = $X } }
+    Register-NmTool -Path 'g.ps1' -Definition @{ Name = 'Prompt Tool'; Id = 'prompt-tool'; Category = 'Directory'; Synopsis = 's'; Version = '1.0'; Kind = 'Report'; Services = @(); Prompt = 'Read-NmPromptTool'; Entry = 'Invoke-NmPromptTool' }
+    $null = Invoke-NmTool -Id prompt-tool *>$null
+    $cancelled = (Get-Content (Get-NmLogPath))[-1]
+    $global:PromptAnswers.Enqueue(@{ X = 1 })
+    Answer @('B')
+    $null = Invoke-NmTool -Id prompt-tool *>$null
+    $closed = (Get-Content (Get-NmLogPath))[-1]
+    $cancelled -match 'Cancelled Prompt Tool\.$' -and $closed -match 'Closed Prompt Tool\.$'
+}
+
+Test-That 'Change confirmations before any domain is read say (no domain), not ((no domain))' {
+    Reset-Fake
+    Answer @('y')
+    $null = Confirm-NmChange -Action 'Set the time zone' 6>$null
+    $line = (Get-Content (Get-NmLogPath))[-1]
+    $line -match 'Confirmed: Set the time zone \(no domain\)$'
+}
+
 # ---------------------------------------------------------------------------
 # Menus
 # ---------------------------------------------------------------------------

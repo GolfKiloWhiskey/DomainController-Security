@@ -261,6 +261,16 @@ Test-That 'Phase 0: time zone, name, sign-in task, then the IP last, then a rest
         @($rows | Where-Object Result -eq 'Failed').Count -eq 0 -and $script:TestAnswers.Count -eq 0
 }
 
+Test-That 'The log says what each step did, and when the time zone moves the log''s clock' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    $log = Get-Content -LiteralPath (Get-NmLogPath) -Raw
+    $log -match 'Build step done: Static IP - 192\.0\.2\.50/24 via 192\.0\.2\.1' -and $log -match 'Build step done: Computer name - DC01 \(was WIN-7Q2B4K9' -and
+        $log -match 'Time zone changed from UTC to Eastern Standard Time: log times from here on' -and $log -notmatch '\(\(no domain\)\)'
+}
+
 Test-That 'Phase 0 with the name unchanged: no restart, straight on to phase 1 in the same run' {
     Reset-Server
     Answer (@($global:StdAnswers[0..3]) + '' + @($global:StdAnswers[5..11]))   # keep the current name
