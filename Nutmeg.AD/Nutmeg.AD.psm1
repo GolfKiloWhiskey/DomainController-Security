@@ -1,9 +1,9 @@
 <#
 .NOTES
     Author:  Cliff Waite
-    Date:    11/20/2026
+    Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.1.0
+    Version: 0.2.1
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.2.1 - Get-NutmegAD.ps1 (standalone, next to the launcher): download or update the toolkit on a server.
+    0.2.0 - New Forest Build, phases 0 and 1 (new-forest): pre-flight, questions, static IP, name, AD DS, promotion,
+            resume after restarts (Core\Server.ps1, Core\Build.ps1); one-confirmation plans in Confirm-NmChange; Read-NmSecret.
     0.1.0 - Core adapted from the Nutmeg M365 Toolkit (logging, settings, menus, exports, safety, tool registry,
             launcher), the domain session (Core\Domain.ps1), the AD and GroupPolicy modules (Core\Modules.ps1),
             the PowerShell 7 install (Core\PowerShell7.ps1) and the first tool, session-info.
@@ -31,7 +34,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.1.0'
+$script:ModuleVersion = '0.2.1'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -51,7 +54,7 @@ $script:NmConfig = [pscustomobject]@{
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'ToolRegistry', 'Launcher')
+$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Build', 'ToolRegistry', 'Launcher')
 foreach ($name in $coreFiles) {
     . (Join-Path (Join-Path $PSScriptRoot 'Core') "$name.ps1")
 }
@@ -110,7 +113,7 @@ $publicCore = @(
     'Read-NmInput', 'Read-NmYesNo', 'Read-NmMultiChoice', 'Wait-NmKey'
     'Export-NmResult', 'Confirm-NmChange', 'Assert-NmModule'
     'Get-NmSetting', 'Set-NmSetting', 'Clear-NmSetting'
-    'Find-NmPwsh', 'Install-NmPowerShell7'
+    'Find-NmPwsh', 'Install-NmPowerShell7', 'Read-NmSecret'
 )
 $toolEntries = @($script:NmTools | ForEach-Object { $_.Entry })
 Export-ModuleMember -Function ($publicCore + $toolEntries)

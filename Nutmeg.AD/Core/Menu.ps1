@@ -33,6 +33,18 @@ function Read-NmHost {
     return (Read-Host -Prompt $Prompt)
 }
 
+function Read-NmSecret {
+    <#
+    .SYNOPSIS
+        Asks for a password without showing it, and returns it as a SecureString. Never logged or saved.
+    #>
+    [CmdletBinding()]
+    [OutputType([securestring])]
+    param([Parameter(Mandatory)][string]$Prompt)
+    Write-Host $Prompt -ForegroundColor Yellow -NoNewline
+    return (Read-Host -Prompt ' ' -AsSecureString)
+}
+
 function Wait-NmKey {
     Write-Host 'Press Enter to continue' -ForegroundColor DarkGray -NoNewline
     $null = Read-NmHost -Prompt ' '

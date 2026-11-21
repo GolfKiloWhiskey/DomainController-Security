@@ -23,7 +23,9 @@ function Confirm-NmChange {
         - Up to BulkConfirmCount targets: a Y/N prompt.
         - More than that, -DomainWide (a change to the whole domain or forest, a GPO linked at the
           domain root) or -RequireTyped (destructive or hard to undo): the domain's short name must
-          be typed.
+          be typed (-ConfirmWord sets another word, for a domain that does not exist yet).
+        - While a confirmed plan runs (Set-NmPlanApproved), the change is shown and goes ahead
+          without asking: the technician approved it with the plan.
     .OUTPUTS
         $true to go ahead, $false to stop.
     .EXAMPLE
@@ -35,6 +37,7 @@ function Confirm-NmChange {
         [AllowEmptyCollection()][object[]]$Targets = @(),
         [switch]$DomainWide,
         [switch]$RequireTyped,
+        [string]$ConfirmWord,
         [switch]$WhatIf
     )
 
@@ -62,9 +65,14 @@ function Confirm-NmChange {
         return $false
     }
 
+    if ($script:NmPlanApproved) {
+        Write-NmLog "Approved with the plan '$script:NmPlanApproved': $Action ($domain)" -Level INFO -NoConsole
+        return $true
+    }
+
     $needsTyped = $DomainWide -or $RequireTyped -or ($count -gt $script:NmConfig.BulkConfirmCount)
     if ($needsTyped) {
-        $expected = Get-NmConfirmWord
+        $expected = if ($ConfirmWord) { $ConfirmWord } else { Get-NmConfirmWord }
         $kind = if ($RequireTyped -and -not $DomainWide -and $count -le $script:NmConfig.BulkConfirmCount) { 'This change is hard to undo' } elseif ($DomainWide) { 'This changes the whole domain' } else { 'This is a bulk change' }
         Write-Host "$kind. Type '$expected' to continue, or anything else to cancel" -ForegroundColor Yellow -NoNewline
         $typed = "$(Read-NmHost -Prompt ' ')".Trim()

@@ -59,6 +59,10 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 ## Order of work
 
+Each step is built for the console first and goes into the window after it passes Cliff's QA there
+(unless both agree to skip that for a step). The window is ported once the New Forest Build's phases
+0 and 1 pass QA on the VM.
+
 1. Core and launcher (copied from M365-Tools and adapted), `session-info`. **Done in 0.1.0.**
 2. The baseline file format, and `gpo-build` and `gpo-compare` for the easy kinds (template settings,
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
@@ -69,6 +73,60 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 6. The AD admin tools.
 7. `gpo-capture`.
 8. Compliance profiles (next project, to revisit with Cliff): see below.
+9. New Forest Build: see below. Moved ahead by Cliff (Nov 2026) to test on a checkpointed Server 2025 VM.
+   **Phases 0 and 1 done in 0.2.0** (`new-forest`); phases 2 to 5 follow, each using the tools above
+   as they are built.
+
+## New Forest Build (phases 0 and 1 built)
+
+One guarded, mostly unattended run for the **first DC of a brand-new forest** (Cliff: one DC per run),
+from a freshly installed Windows Server to a promoted, structured and baselined domain. It runs only on
+a workgroup server when no domain of that name answers; anything else is refused, and existing domains
+are always worked on with the individual tools.
+
+Each step calls the same tool a technician would run by hand, so one set of code and tests covers both.
+Every change tool therefore must run without prompts when given its parameters (a rule from step 2 on).
+
+**Questions are asked during the first run** (Cliff; no answer file to prepare). One of them is whether
+more DCs are planned (below). The answers, never passwords, are saved in the run's state file, so a
+resume after a reboot asks nothing again, and they are exported as the record of how the client was
+built. The DSRM password is typed when needed and held in memory only.
+
+### Phases
+
+0. **Prepare the server** (workgroup only): pick the network adapter; warn if more than one adapter is
+   connected (Microsoft advises against DCs on several networks; nothing is changed). Static IP (default:
+   the current DHCP subnet with `.50`, Cliff's standard; any address can be typed), prefix and gateway
+   from the current lease, pre-promotion DNS (gateway or an external resolver); check nothing answers on
+   the new IP; computer name; time zone. Advanced adapter properties are left alone (Cliff: VLANs are
+   the hypervisor's). The IP change goes last and asks nothing after it, because it drops an RDP session
+   to the DHCP address: show the new address, then restart on a countdown. IPv6 stays on. *Reboot.*
+1. **Promote:** install AD DS, DNS and GPMC; `Install-ADDSForest`. *Reboot.*
+2. **After promotion:** DNS client to its own IP then `127.0.0.1`; DNS forwarders, scavenging, reverse
+   zone; sites and subnets; the PDC's external time source, and on Hyper-V the guest's Hyper-V time
+   provider turned off on the PDC (`VMICTimeProvider` `Enabled` = 0, Microsoft's guidance) so it follows
+   NTP, not the host (on VMware that setting is on the host: detected and warned about); Recycle Bin;
+   KDS root key; PowerShell 7; ADMX central store.
+3. **Structure:** `ou-layout` from `Data/OuStandard.csv`, new computers and users redirected.
+4. **GPOs:** every baseline built and linked per `Data/GpoDefaultLinks.csv`, standard filtering. Client
+   exceptions are added afterwards with the individual tools.
+5. **Report:** `session-info`, `ad-report`, and a summary of every step and its result.
+
+### Single or multiple DCs
+
+The run asks whether more DCs are planned. It still builds only this one; the answer changes:
+- the summary's next steps: promoting the next DC with the individual tools, then pointing each DC's DNS
+  at its partner first and itself second (Microsoft's guidance once there are two);
+- what the report flags for a multi-DC domain (sites and subnets, replication once the second DC exists).
+
+### Design points
+
+- **Resumable:** the state file records each finished step; after a reboot or a failure the run picks up
+  where it stopped and skips what is done.
+- **One confirmation:** the domain name typed once approves the plan shown (a "plan approved" mode in
+  `Confirm-NmChange`); every change still goes to run history. A dry run shows the whole plan first.
+- **Day-one hardening:** Kerberos AES-only, NTLMv2, LDAP signing and SCHANNEL apply from the start; the
+  summary warns that legacy devices joining later need `ready`.
 
 ## Compliance profiles (next project)
 

@@ -202,8 +202,8 @@ Test-That 'session-info loads from the Tools folder into Toolkit > Diagnostics' 
     $t -and $t.AdminCenter -eq 'kit' -and $t.Section -eq 'Diagnostics' -and @($script:NmToolLoadErrors | Where-Object { $_.File -like '*Get-NmSessionInfo*' }).Count -eq 0
 }
 
-Test-That 'The areas are Group Policy, Active Directory, Hardening readiness, Reports and Toolkit, in that order' {
-    (@($script:NmAdminCenters.Name) -join '|') -eq 'Group Policy|Active Directory|Hardening readiness|Reports|Toolkit|Other'
+Test-That 'The areas are Group Policy, Active Directory, Hardening readiness, Reports, New forest build and Toolkit, in that order' {
+    (@($script:NmAdminCenters.Name) -join '|') -eq 'Group Policy|Active Directory|Hardening readiness|Reports|New forest build|Toolkit|Other'
 }
 
 # ---------------------------------------------------------------------------
@@ -457,7 +457,7 @@ Test-That 'Main menu: Domain and DC > another DC moves the session there' {
 # Code rules
 # ---------------------------------------------------------------------------
 Test-That 'Code files are ASCII only' {
-    $files = Get-ChildItem -Path (Join-Path $repoRoot 'Nutmeg.AD'), (Join-Path $repoRoot 'Tests'), (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Include *.ps1, *.psm1, *.psd1 -Recurse -File
+    $files = Get-ChildItem -Path (Join-Path $repoRoot 'Nutmeg.AD'), (Join-Path $repoRoot 'Tests'), (Join-Path $repoRoot 'Start-NutmegAD.ps1'), (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Include *.ps1, *.psm1, *.psd1 -Recurse -File
     $bad = @($files | Where-Object { [System.IO.File]::ReadAllBytes($_.FullName) | Where-Object { $_ -gt 127 } | Select-Object -First 1 })
     if ($bad.Count) { throw "non-ASCII in: $($bad.Name -join ', ')" }
     $true
