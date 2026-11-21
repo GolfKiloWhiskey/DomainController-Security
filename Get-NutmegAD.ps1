@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.0
+    Version: 1.1
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -36,6 +36,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.1 - Downloads with the progress bar off (Windows PowerShell 5.1 was slowed to a few hundred KB/s by it).
     1.0 - First version: token prompt, branch, download, check, backup of the old copy, unblock, start.
 #>
 [CmdletBinding()]
@@ -48,7 +49,7 @@ param(
     [switch]$Start
 )
 
-$ScriptVersion = '1.0'
+$ScriptVersion = '1.1'
 $ErrorActionPreference = 'Stop'
 
 function Write-Step {
@@ -75,6 +76,8 @@ function Get-NutmegPackage {
         Downloads the branch zip to a file. Throws a plain reason on 401, 403 or 404.
     #>
     param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][string]$OutFile, [securestring]$Token)
+    # Windows PowerShell 5.1's progress bar slows downloads to a crawl; with it off they run at full speed.
+    $ProgressPreference = 'SilentlyContinue'
     $headers = @{ 'User-Agent' = 'NutmegAD-Get'; Accept = 'application/vnd.github+json' }
     $plain = $null
     if ($Token) { $plain = ConvertFrom-NutmegSecure -Secure $Token; $headers.Authorization = "Bearer $plain" }

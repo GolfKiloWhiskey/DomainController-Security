@@ -60,6 +60,7 @@ function global:Invoke-RestMethod {
 function global:Invoke-WebRequest {
     param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec, $ErrorAction)
     $global:WebCalls.Add("GET $Uri")
+    $global:ProgressAtDownload = $ProgressPreference
     Set-Content -Path $OutFile -Value 'not really an msi'
 }
 $global:Started = New-Object System.Collections.Generic.List[string]
@@ -366,6 +367,17 @@ Test-That 'The install runs the MSI with Microsoft Update on, after the signatur
     try { Answer @('y'); $r = Install-NmPowerShell7 } finally { $script:NmOnWindows = $was }
     $cmd = @($global:Started)[0]
     $r.Result -eq 'Installed' -and $r.Version -eq '7.6.10' -and $cmd -like 'msiexec.exe*' -and $cmd -match 'USE_MU=1' -and $cmd -match 'ENABLE_MU=1' -and $cmd -match 'ADD_PATH=1' -and $cmd -match '/qn'
+}
+
+Test-That 'The PowerShell 7 download runs with the progress bar off (5.1 crawls with it on)' {
+    Reset-Fake
+    $global:ProgressAtDownload = $null
+    $was = $script:NmOnWindows; $script:NmOnWindows = $true
+    function script:Test-NmMicrosoftSignature { param($Path) $true }
+    # Inside the module, so it reads the preference the toolkit set, as the real cmdlet does.
+    function script:Invoke-WebRequest { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec, $ErrorAction) $global:ProgressAtDownload = $ProgressPreference; Set-Content -Path $OutFile -Value 'x' }
+    try { Answer @('y'); $null = Install-NmPowerShell7 } finally { $script:NmOnWindows = $was; Remove-Item -Path Function:\Invoke-WebRequest -ErrorAction SilentlyContinue }
+    "$global:ProgressAtDownload" -eq 'SilentlyContinue' -and "$ProgressPreference" -ne 'SilentlyContinue'
 }
 
 Test-That 'An unsigned download is never run' {
