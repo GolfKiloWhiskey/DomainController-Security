@@ -69,6 +69,48 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 6. The AD admin tools.
 7. `gpo-capture`.
 8. Compliance profiles (next project, to revisit with Cliff): see below.
+9. New Forest Build (planned with Cliff, Nov 2026): see below. Built last, because it runs the tools above.
+
+## New Forest Build (planned)
+
+One guarded, mostly unattended run for the **first DC of a brand-new forest**: from a freshly installed
+Windows Server to a promoted, structured and baselined domain. It only runs on a workgroup server
+where no domain of that name answers; on an existing domain the individual tools are used instead.
+
+Each step calls the same tool a technician would run by hand, so one set of code and tests covers both.
+Every change tool therefore must run without prompts when given its parameters (a rule from step 2 on).
+
+Phases, with a reboot where marked:
+
+0. **Prepare the server** (workgroup only): pick the network adapter (if there are several); static IP
+   (default: the current DHCP subnet with `.50`, Cliff's standard for DCs; any address can be typed),
+   prefix and gateway from the current lease, pre-promotion DNS (gateway or an external resolver);
+   check nothing answers on the new IP; computer name; time zone. The IP change goes last and asks
+   nothing after it, because it drops an RDP session to the DHCP address: show the new address, then
+   restart on a countdown. IPv6 stays on (Microsoft doesn't support disabling it on DCs). *Reboot.*
+1. **Promote:** install AD DS, DNS and GPMC; `Install-ADDSForest`. *Reboot.*
+2. **After promotion:** DNS client to its own IP then `127.0.0.1`; DNS forwarders, scavenging, reverse
+   zone; sites and subnets; the PDC's external time source; Recycle Bin; KDS root key; PowerShell 7;
+   ADMX central store.
+3. **Structure:** `ou-layout` from `Data/OuStandard.csv`, new computers and users redirected.
+4. **GPOs:** every baseline built and linked per `Data/GpoDefaultLinks.csv`, standard filtering. Client
+   exceptions are added afterwards with the individual tools.
+5. **Report:** `session-info`, `ad-report`, and a summary of every step and its result.
+
+Design points:
+- **Answer file** per client (domain, NetBIOS, company OU, IPs, NTP source, banner text and so on); the
+  repo holds only a template. Reviewed in a dry run of the whole plan before anything changes.
+- **DSRM password** typed once at the start, held in memory only, never written anywhere.
+- **Resumable:** a state file records each finished step; after a reboot or a failure, the run picks up
+  where it stopped and skips what is done.
+- **One confirmation:** the domain name typed once approves the whole plan (a "plan approved" mode in
+  `Confirm-NmChange`); every change still goes to run history.
+- **Day-one hardening:** Kerberos AES-only, NTLMv2, LDAP signing and SCHANNEL apply from the start; the
+  summary warns that legacy devices joining later need `ready`.
+
+Open: first DC only, or also a second DC into the domain it just built; answer file or up-front
+questions (wizard); adapter settings beyond IP, gateway and DNS (rename, power management, DNS
+registration).
 
 ## Compliance profiles (next project)
 

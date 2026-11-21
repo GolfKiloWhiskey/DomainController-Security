@@ -4,9 +4,11 @@ Read this before changing anything. Nutmeg.AD is Cliff Waite's PowerShell toolki
 an MSP) for Active Directory domain controller onboarding: what happens after a DC is built, such as OU
 layout, GPO baselines, hardening, reports and health checks.
 
-**Out of scope: building a DC.** Installing AD DS, creating a forest or domain and promoting DCs are
-always done by hand. No tool installs AD DS, runs `Install-ADDSForest` / `Install-ADDSDomainController`
-or demotes a DC.
+**Building a DC is out of scope, with one planned exception.** No tool installs AD DS, runs
+`Install-ADDSForest` / `Install-ADDSDomainController` or demotes a DC, except the planned **New Forest
+Build** (`docs/TOOL-LIST.md`): one guarded run for the first DC of a brand-new forest, which refuses to
+run on a domain-joined server or when a domain of that name already answers. Existing domains are
+always worked on with the individual tools.
 
 **Hardening is the GPO baselines.** DC and domain hardening is defined by Cliff's GPO reports in
 `Legacy/GPO-Reports/`. Tools build, link and check those GPOs; don't add separate hardening scripts that
