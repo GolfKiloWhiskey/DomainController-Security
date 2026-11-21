@@ -33,6 +33,25 @@ function Enable-NmTls12 {
     }
 }
 
+function Save-NmDownload {
+    <#
+    .SYNOPSIS
+        Downloads a file with the progress bar off, then logs its size and how long it took.
+    .DESCRIPTION
+        Windows PowerShell 5.1 redraws Invoke-WebRequest's progress bar for every chunk it receives,
+        which slows a large download to a few hundred KB/s (the same file comes down at full speed in
+        a browser). With the bar off it runs at the connection's speed.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Uri, [Parameter(Mandatory)][string]$OutFile, [int]$TimeoutSec = 600)
+    $ProgressPreference = 'SilentlyContinue'
+    $sw = [Diagnostics.Stopwatch]::StartNew()
+    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing -TimeoutSec $TimeoutSec -ErrorAction Stop
+    $sw.Stop()
+    $mb = if (Test-Path -LiteralPath $OutFile) { [math]::Round((Get-Item -LiteralPath $OutFile).Length / 1MB, 1) } else { 0 }
+    Write-NmLog "Downloaded $mb MB in $([math]::Round($sw.Elapsed.TotalSeconds, 1)) s." -Level INFO
+}
+
 function Get-NmPwshLtsVersion {
     <#
     .SYNOPSIS
@@ -42,6 +61,7 @@ function Get-NmPwshLtsVersion {
     [OutputType([string])]
     param()
     Enable-NmTls12
+    $ProgressPreference = 'SilentlyContinue'
     $meta = Invoke-RestMethod -Uri $script:NmPwshMetadataUri -TimeoutSec 30 -ErrorAction Stop
     $tag = "$(@($meta.LTSReleaseTag)[0])"
     if ($tag -notmatch '^v?(\d+\.\d+\.\d+)$') { throw "PowerShell's release metadata gave no LTS version ('$tag')." }
@@ -96,7 +116,7 @@ function Install-NmPowerShell7 {
     try {
         Enable-NmTls12
         Write-NmLog "Downloading PowerShell $Version..." -Level INFO
-        Invoke-WebRequest -Uri $uri -OutFile $msi -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop
+        Save-NmDownload -Uri $uri -OutFile $msi
         if (-not (Test-NmMicrosoftSignature -Path $msi)) {
             Write-NmRunHistory -ToolId 'install-pwsh' -Kind Change -Result Failed -Notes 'Signature not valid'
             return (& $row $Version 'Failed: the download is not signed by Microsoft, so it was not run')

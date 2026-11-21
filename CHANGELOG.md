@@ -2,6 +2,13 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.2 - 11/21/2026
+
+- **Downloads are fast in Windows PowerShell 5.1 now.** The PowerShell 7 install and
+  `Get-NutmegAD.ps1` were crawling at a few hundred KB/s while a browser got the same file at once.
+  The cause was 5.1's download progress bar, which it redraws for every piece it receives. Both
+  now download with it off, and the PowerShell 7 install says how big the file was and how long it took.
+
 ## 0.2.1 - 11/21/2026
 
 - **`Get-NutmegAD.ps1` puts the toolkit on a server**, or updates it. It is a standalone script,

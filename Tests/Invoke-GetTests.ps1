@@ -32,7 +32,7 @@ $global:WebFail = $null
 $global:ZipToServe = $null
 function global:Invoke-WebRequest {
     param($Uri, $Headers, $OutFile, [switch]$UseBasicParsing, $TimeoutSec)
-    $global:WebSeen = [pscustomobject]@{ Uri = $Uri; Auth = "$($Headers.Authorization)" }
+    $global:WebSeen = [pscustomobject]@{ Uri = $Uri; Auth = "$($Headers.Authorization)"; Progress = "$ProgressPreference" }
     if ($global:WebFail) { throw "Response status code does not indicate success: $global:WebFail" }
     Copy-Item -LiteralPath $global:ZipToServe -Destination $OutFile
 }
@@ -117,6 +117,13 @@ Test-That 'The token goes only into the request header, never into the files' {
     $null = Install-NutmegPackage -ZipPath $out -Path $target
     $leak = @(Get-ChildItem -Path $work -Recurse -File | Select-String -SimpleMatch 'not-a-real-token-123')
     $global:WebSeen.Auth -eq 'Bearer not-a-real-token-123' -and $leak.Count -eq 0
+}
+
+Test-That 'The download runs with the progress bar off (5.1 crawls with it on)' {
+    $global:WebFail = $null
+    $global:ZipToServe = New-FakeZip -Name '8888888'
+    Get-NutmegPackage -Uri 'https://api.github.com/repos/x/y/zipball/main' -OutFile (Join-Path $work 'speed.zip')
+    $global:WebSeen.Progress -eq 'SilentlyContinue'
 }
 
 Test-That 'Without a token (-Public) no Authorization header is sent' {
