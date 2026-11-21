@@ -71,7 +71,7 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmIpInUse { param($IPAddress) $script:FakeIpInUse }
     function script:Set-NmStaticIp { param($InterfaceIndex, $IPAddress, $PrefixLength, $Gateway, $DnsServers) $script:Calls.Add("StaticIp $InterfaceIndex $IPAddress/$PrefixLength gw $Gateway dns $($DnsServers -join ',')") }
     function script:Test-NmDomainAnswers { param($Domain) $script:FakeDomainAnswers }
-    function script:Register-NmResumeTask { param($LauncherPath) $script:Calls.Add("ResumeTask $LauncherPath") }
+    function script:Register-NmResumeTask { param($LauncherPath, [switch]$Gui) $script:Calls.Add("ResumeTask $LauncherPath$(if ($Gui) { ' -Gui' })") }
     function script:Unregister-NmResumeTask { $script:Calls.Add('ResumeTask removed') }
     function script:Restart-NmServer { param($Seconds) $script:Calls.Add("Restart $Seconds") }
     function script:Install-NmAddsFeature { $script:Calls.Add('Features'); [pscustomobject]@{ Success = $true; RestartNeeded = 'No' } }
@@ -295,6 +295,17 @@ Test-That 'Phase 0: time zone, name, sign-in task, then the IP last, then a rest
     $c.Count -eq 5 -and $c[0] -eq 'TimeZone Eastern Standard Time' -and $c[1] -eq 'Rename DC01' -and $c[2] -like 'ResumeTask *Start-NutmegAD.ps1' -and
         $c[3] -eq 'StaticIp 4 192.0.2.50/24 gw 192.0.2.1 dns 192.0.2.1' -and $c[4] -eq 'Restart 60' -and
         @($rows | Where-Object Result -eq 'Failed').Count -eq 0 -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'Phase 0 in the window: the sign-in task reopens the window (-Gui)' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $script:NmGui.Active = $true
+    try { $rows = @(Invoke-NmNewForestBuild -Resume) } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
+    $c = @($script:Calls)
+    ($c[2] -like 'ResumeTask *Start-NutmegAD.ps1 -Gui') -and (@($rows | Where-Object Result -eq 'Failed').Count -eq 0) -and
+        ((@($rows | Where-Object Step -eq 'Sign-in task')[0].Detail) -like '*in the window*')
 }
 
 Test-That 'The log says what each step did, and when the time zone moves the log''s clock' {

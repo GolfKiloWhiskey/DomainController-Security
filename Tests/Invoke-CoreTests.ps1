@@ -180,7 +180,7 @@ Test-That 'With nothing to carry on, a session starts its own NutmegAD_<time>.tx
 
 Test-That 'The launcher passes the log on: plain to direct calls, quoted to Start-Process' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Start-NutmegAD.ps1') -Raw
-    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @logArgs' -and $text -match '& \$pwsh -NoLogo -STA -File \$PSCommandPath -Stay @guiArgs @logArgs' -and
+    $text -match 'powershell\.exe -NoLogo -NoProfile -File \$PSCommandPath -NewForest @guiArgs @logArgs' -and $text -match '& \$pwsh -NoLogo -STA -File \$PSCommandPath -Stay @guiArgs @logArgs' -and
         $text -match '\$relaunch \+= \$logArgsQuoted' -and $text -match '\$env:NUTMEG_AD_LOG = \$LogPath'
 }
 
@@ -421,6 +421,18 @@ Test-That 'The install runs the MSI with Microsoft Update on, after the signatur
     try { Answer @('y'); $r = Install-NmPowerShell7 } finally { $script:NmOnWindows = $was }
     $cmd = @($global:Started)[0]
     $r.Result -eq 'Installed' -and $r.Version -eq '7.6.10' -and $cmd -like 'msiexec.exe*' -and $cmd -match 'USE_MU=1' -and $cmd -match 'ENABLE_MU=1' -and $cmd -match 'ADD_PATH=1' -and $cmd -match '/qn'
+}
+
+Test-That 'Install with -ApprovedBy asks nothing, logs the approval, and puts the plan back afterwards' {
+    Reset-Fake
+    $global:Started.Clear(); $global:MsiExitCode = 0
+    $was = $script:NmOnWindows; $script:NmOnWindows = $true
+    function script:Test-NmMicrosoftSignature { param($Path) $true }
+    $script:NmPlanApproved = $null
+    try { $r = Install-NmPowerShell7 -ApprovedBy 'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server' 6>$null } finally { $script:NmOnWindows = $was }
+    $log = Get-Content -LiteralPath (Get-NmLogPath) -Raw
+    $r.Result -eq 'Installed' -and $script:TestAnswers.Count -eq 0 -and (-not $script:NmPlanApproved) -and
+        $log -match "Approved with the plan 'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server': Install PowerShell 7.6.10"
 }
 
 Test-That 'The PowerShell 7 download runs with the progress bar off (5.1 crawls with it on)' {

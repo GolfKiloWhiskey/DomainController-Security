@@ -302,15 +302,72 @@ Test-That 'The window has the card view, its toggle, the selection bar, the Clea
     $grid.GetAttribute('MinRowHeight') -and -not $grid.GetAttribute('RowHeight') -and ($script:NmGui.Kept -is [hashtable])
 }
 
-Test-That 'Launcher -Gui: carried through elevation and PowerShell 7 (with -STA), STA relaunch keeps the log, the build stays in the console' {
+Test-That 'Launcher -Gui: carried through elevation and PowerShell 7 (with -STA), STA relaunch keeps the log; -NewForest -Gui opens the build in the window' {
     $text = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
     $paramLine = ([regex]::Match($text, '(?m)^param\(.*\)$')).Value
     $probe = Join-Path ([System.IO.Path]::GetTempPath()) ("NmProbe_" + [guid]::NewGuid().ToString('N') + '.ps1')
-    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ Gui = [bool]$Gui; Stay = [bool]$Stay; LogPath = $LogPath }')
-    try { $p = & $probe -Stay -Gui -LogPath 'C:\Temp\NutmegAD\Logs\x.txt' } finally { Remove-Item $probe -ErrorAction SilentlyContinue }
-    $p.Gui -and $p.Stay -and ($p.LogPath -eq 'C:\Temp\NutmegAD\Logs\x.txt') -and
+    Set-Content -Path $probe -Value ($paramLine + "`n" + '[pscustomobject]@{ Gui = [bool]$Gui; Stay = [bool]$Stay; NewForest = [bool]$NewForest; LogPath = $LogPath }')
+    try { $p = & $probe -Stay -Gui -NewForest -LogPath 'C:\Temp\NutmegAD\Logs\x.txt' } finally { Remove-Item $probe -ErrorAction SilentlyContinue }
+    $p.Gui -and $p.Stay -and $p.NewForest -and ($p.LogPath -eq 'C:\Temp\NutmegAD\Logs\x.txt') -and
     $text.Contains('$relaunch += $guiArgs') -and $text.Contains('& $pwsh -NoLogo -STA -File $PSCommandPath -Stay @guiArgs @logArgs') -and
-    $text.Contains("'-Stay', '-Gui') + `$logArgsQuoted)") -and $text.Contains('if ($NewForest -and $Gui)') -and $text.Contains('Start-NmToolkitGui')
+    $text.Contains("'-Stay', '-Gui') + `$logArgsQuoted)") -and $text.Contains('& powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @guiArgs @logArgs') -and
+    $text.Contains('Start-NmToolkitGui -NewForest') -and (-not $text.Contains('if ($NewForest -and $Gui)'))
+}
+
+Test-That 'Build mode: the window lists only the New Forest Build, search finds only it, and Guided starts it' {
+    $script:NmGui.BuildMode = $true
+    try {
+        $areas = @(Get-NmGuiArea | ForEach-Object Id)
+        $s = Get-NmGuiToolListModel -Search 'forest'
+        $o = Get-NmGuiToolListModel -Search 'session'
+        $ready = Get-NmGuiReadyText
+    } finally { $script:NmGui.BuildMode = $false }
+    $normal = @(Get-NmGuiArea | ForEach-Object Id)
+    $code = (Get-Command Start-NmToolkitGui).ScriptBlock.ToString()
+    (($areas -join ',') -eq 'build') -and (@($s.Items | Where-Object { $_.Tool.Id -eq 'new-forest' }).Count -eq 1) -and (@($o.Items).Count -eq 0) -and
+    ($normal -notcontains 'build') -and ($code -match 'if \(\$script:NmGui\.BuildMode -and \$script:NmGui\.Tool\) \{ Invoke-NmGuiGuided \}') -and
+    ($code -match "Select-NmGuiTool -Id 'new-forest'") -and (($ready -like 'New Forest Build:*') -or ($ready -like 'Not running as administrator*'))
+}
+
+Test-That 'Password in the window: a SecureString from the dialog, only "(hidden)" in the output, Cancel stops' {
+    $script:NmGui.Active = $true
+    try {
+        Write-Host 'Microsoft''s pre-checks run next.'
+        $script:NmGui.SecretProvider = { param($prompt) $script:AskedFor = $prompt; ConvertTo-SecureString 'Not-A-Real-Pw1' -AsPlainText -Force }
+        $p = Read-NmSecret -Prompt 'Directory Services Restore Mode (DSRM) password'
+        $script:NmGui.SecretProvider = { param($prompt) $null }
+        $cancelled = $false
+        try { $null = Read-NmSecret -Prompt 'Type it again' } catch [System.OperationCanceledException] { $cancelled = $true }
+        $log = $script:NmGui.Transcript.ToString()
+    } finally { $script:NmGui.SecretProvider = $null; $script:NmGui.Active = $false }
+    $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($p))
+    ($p -is [securestring]) -and ($plain -eq 'Not-A-Real-Pw1') -and $cancelled -and ($script:AskedFor -like 'Directory Services*') -and
+    ($log -match '> \(hidden\)') -and ($log -notmatch 'Not-A-Real-Pw1')
+}
+
+Test-That 'Password dialog: well-formed, a PasswordBox (never a TextBox), every control there; its note drops log stamps' {
+    $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $x = [xml]($script:NmGuiSecretXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
+    $names = @($x.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object { $_.GetAttribute('Name', $ns) })
+    $box = @($x.SelectNodes('//*[local-name()="PasswordBox"]'))
+    $note = Get-NmGuiSecretContext -Text "=====`r`n[2026-11-21 10:00:00] [INFO] Running Microsoft's pre-checks...`r`nThe two did not match.`r`n"
+    (@($script:NmGuiSecretControls | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($box.Count -eq 1) -and (@($x.SelectNodes('//*[local-name()="TextBox"]')).Count -eq 0) -and
+    ($note -eq "Running Microsoft's pre-checks...`nThe two did not match.")
+}
+
+Test-That 'Build mode controls: Run, options and WhatIf hidden; Guided is the way in' {
+    $mk = { [pscustomobject]@{ Visibility = 'Visible'; Content = 'x'; ToolTip = '' } }
+    $c = @{ RunButton = (& $mk); OptionsBorder = (& $mk); PreviewBox = (& $mk); GuidedButton = (& $mk) }
+    Set-NmGuiBuildModeControl -Controls $c
+    ($c.RunButton.Visibility -eq 'Collapsed') -and ($c.OptionsBorder.Visibility -eq 'Collapsed') -and ($c.PreviewBox.Visibility -eq 'Collapsed') -and
+    ($c.GuidedButton.Content -eq 'Start or continue the build') -and ($c.GuidedButton.Visibility -eq 'Visible')
+}
+
+Test-That 'Sign-in task: reopens the window when the build ran in it, the console otherwise' {
+    $l = 'C:\Tools\DomainController-Security\Start-NutmegAD.ps1'
+    $con = Get-NmResumeTaskArgument -LauncherPath $l
+    $win = Get-NmResumeTaskArgument -LauncherPath $l -Gui
+    ($con -eq "-NoExit -NoProfile -File `"$l`" -NewForest") -and ($win -eq "-NoExit -NoProfile -File `"$l`" -NewForest -Gui")
 }
 
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.5
+    Version: 0.6
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.6 - Runs in the window too (Start-NutmegAD.ps1 -NewForest -Gui); the sign-in task then reopens the window.
     0.5 - Sign-in task starts in the toolkit folder; the finished message says what to run next.
     0.4 - Time zone defaults to Eastern Standard Time (Settings > New forest build), not the server's own.
     0.3 - The log says what each step did, and when the time zone change moves the log's clock.
@@ -45,7 +46,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.5'
+    Version  = '0.6'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -366,9 +367,11 @@ function Invoke-NmNewForestBuild {
             }))
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'ResumeTask' -Phase '0 Prepare' -Label 'Sign-in task' -Action {
                 $launcher = Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1'
-                $null = Confirm-NmChange -Action 'Add a sign-in task that reopens the build after a restart'
-                Register-NmResumeTask -LauncherPath $launcher
-                return 'reopens the build at the next administrator sign-in'
+                # Started in the window: the task reopens the window; from the console, the console.
+                $inWindow = [bool]($script:NmGui -and $script:NmGui.Active)
+                $null = Confirm-NmChange -Action "Add a sign-in task that reopens the build$(if ($inWindow) { ' (in the window)' }) after a restart"
+                Register-NmResumeTask -LauncherPath $launcher -Gui:$inWindow
+                return "reopens the build$(if ($inWindow) { ' in the window' }) at the next administrator sign-in"
             }))
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'StaticIp' -Phase '0 Prepare' -Label 'Static IP' -Action {
                 $nic = @(Get-NmNetAdapterInfo | Where-Object { $_.Index -eq [int]$a.AdapterIndex })[0]

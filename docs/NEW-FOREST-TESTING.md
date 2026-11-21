@@ -11,7 +11,9 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
    .\Get-NutmegAD.ps1 -Branch claude/zen-franklin-4swcvy
    ```
    It asks for a GitHub token (hidden, never saved), puts the toolkit in
-   `C:\Tools\DomainController-Security` and unblocks the files. After a fix, run it again to update.
+   `C:\Tools\DomainController-Security`, unblocks the files, installs PowerShell 7 if it is missing
+   (no question; a minute or two), and opens the New Forest Build **in the window** (since 0.4.0).
+   `-Console` runs the build in the console as before. After a fix, run it again to update.
 2. (Done by `Get-NutmegAD.ps1`.) Copied any other way, unblock the files once:
    ```powershell
    Get-ChildItem C:\Tools\DomainController-Security -Recurse | Unblock-File
@@ -23,23 +25,27 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 
 ## A run
 
-1. Sign in as the local Administrator, open **Windows PowerShell** (not 7) as administrator and run:
+1. `Get-NutmegAD.ps1` opens the build in the window. To start it yourself, sign in as the local
+   Administrator, open **Windows PowerShell** as administrator and run:
    ```powershell
    cd C:\Tools\DomainController-Security
-   .\Start-NutmegAD.ps1 -NewForest
+   .\Start-NutmegAD.ps1 -NewForest -Gui     # the window (leave out -Gui for the console)
    ```
+   In the window every question, the plan and the DSRM password are dialogs; the questions start on
+   their own (**Start or continue the build** starts them again). The window may stop responding
+   while the roles install and the forest is made: wait, it comes back.
 2. **Pre-flight table:** everything OK, or Warning only. A Not ready row stops the run and changes nothing.
 3. **Questions:** domain, NetBIOS, level, more DCs, computer name, time zone, adapter, IP (`.50` offered),
    prefix, gateway, DNS until promotion, folders.
 4. **Plan:** read it, then type the domain's short name (`clientx` for clientx.local).
 5. **Phase 0:** time zone, name, sign-in task, static IP. If you are on RDP to the DHCP address, it
    drops here: reconnect to the new IP. With a new name it restarts after 60 seconds.
-6. **After the restart:** sign in as the local Administrator. Windows PowerShell opens on the build:
-   answer **Y** to continue.
+6. **After the restart:** sign in as the local Administrator. The build reopens (the window, if it
+   was started there, with a Windows PowerShell console behind it): answer **Yes** to continue.
 7. **Phase 1:** roles install (a few minutes), then the DSRM password twice, Microsoft's pre-checks,
    the forest (several minutes), and a restart after 60 seconds.
 8. **After the second restart:** sign in as `<NETBIOS>\Administrator` (same password as the local one
-   was). The build reopens: **Y**. It checks the DC, removes the sign-in task and saves a record.
+   was). The build reopens: **Yes**. It checks the DC, removes the sign-in task and saves a record.
 
 ## What to check, and send back
 
@@ -47,7 +53,10 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 - `Get-NetIPConfiguration`: the static IP, gateway and DNS (after promotion DNS should be `127.0.0.1`,
   set by Windows itself).
 - `Get-ADDomain` and `Get-ADForest`: names and levels as answered.
-- `Get-ScheduledTask -TaskName 'Nutmeg AD Toolkit - New Forest Build'`: gone at the end.
+- `Get-ScheduledTask -TaskName 'Nutmeg AD Toolkit - New Forest Build'`: gone at the end (while the
+  build runs in the window, its action ends in `-NewForest -Gui`).
+- `pwsh -v`: PowerShell 7 installed by `Get-NutmegAD.ps1`, and the log says `Approved with the plan
+  'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server'`.
 - `C:\Temp\NutmegAD\NewForest\State.json`: every step Done, and no password in it.
 - `C:\Temp\NutmegAD\Logs\NutmegAD_*.txt`: since 0.2.7 the whole build, from `Get-NutmegAD.ps1` to the
   finished DC, is one log (the newest file started before the build). Each restart shows as a
@@ -59,4 +68,6 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 - Answer a single-label domain (`clientx`) or a 16-character NetBIOS name: asked again.
 - Type the wrong word at the plan: nothing changes, no state file.
 - Close the window during phase 1 before the DSRM password, then run step 1 again: it continues.
+- Cancel the DSRM password dialog: the build stops with nothing made; run it again and it continues.
+- `.\Get-NutmegAD.ps1 -Console`: the same build in the console.
 - Keep the computer name: no restart after phase 0; phase 1 follows straight away.

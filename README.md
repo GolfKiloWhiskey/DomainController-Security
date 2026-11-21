@@ -18,10 +18,11 @@ Copy `Get-NutmegAD.ps1` to the server (or paste it into Windows PowerShell as ad
 
 It asks for a GitHub token (fine-grained, this repository only, Contents: Read-only; typed hidden and
 never saved), downloads `main` into `C:\Tools\DomainController-Security`, keeps any copy already there
-as `.previous`, and unblocks the files. Then it changes to that folder and starts the toolkit: the New
-Forest Build on a workgroup server (always in the console), the window on a domain-joined server or
-DC. `-Console` opens the console menu instead, `-Branch <name>` gets a branch still in review, `-Path`
-puts it elsewhere, `-NoStart` only downloads. Run it again to update.
+as `.previous`, and unblocks the files. It installs PowerShell 7 if it is missing (the current LTS,
+Microsoft's signed MSI, Microsoft Update on; no question, `-SkipPowerShell7` leaves it out). Then it
+changes to that folder and opens the window: the New Forest Build on a workgroup server, the toolkit
+on a domain-joined server or DC. `-Console` uses the console instead, `-Branch <name>` gets a branch
+still in review, `-Path` puts it elsewhere, `-NoStart` only downloads. Run it again to update.
 
 ## Run it
 
@@ -41,13 +42,15 @@ On a domain controller, as a domain admin:
 each tool's options as a form (or **Guided...** for its own questions), results as cards or a table
 with filter, export and row details. Every question and change confirmation becomes a dialog; logs
 and run history are the same as the console's. The header shows the domain and the DC (click it for
-**Domain and DC**) and which modules are loaded; the cog opens Settings. The New Forest Build stays in
-the console. New tools reach the window only after they pass QA in the console.
+**Domain and DC**) and which modules are loaded; the cog opens Settings. The normal window leaves the
+New Forest Build out; `-NewForest -Gui` opens the window on the build alone. New tools reach the window
+only after they pass QA in the console.
 
-**A brand-new forest:** on a freshly installed Windows Server in a workgroup, run
-`.\Start-NutmegAD.ps1 -NewForest`. It checks the server, asks its questions once, shows the plan, and
+**A brand-new forest:** on a freshly installed Windows Server in a workgroup, `Get-NutmegAD.ps1`
+opens it in the window, or run `.\Start-NutmegAD.ps1 -NewForest -Gui` (leave out `-Gui` for the
+console). It always runs in Windows PowerShell 5.1. It checks the server, asks its questions once, shows the plan, and
 then sets the IP and name, installs AD DS and creates the forest, carrying on by itself after each
-restart (sign in as an administrator and it reopens). It refuses to run on a domain-joined server or
+restart (sign in as an administrator and it reopens, in the window if it started there). It refuses to run on a domain-joined server or
 for a domain that already answers. See `docs/NEW-FOREST-TESTING.md`.
 
 Nothing is loaded at start. The first tool that needs the ActiveDirectory or GroupPolicy module loads

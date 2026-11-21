@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/20/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.4.0
+    Version: 0.5.0
 
 .SYNOPSIS
     Launches the Nutmeg AD Toolkit.
@@ -21,7 +21,8 @@
       needs an STA thread: Windows PowerShell 5.1 has one; PowerShell 7 is started with -STA.
     - -NewForest opens the New Forest Build on a fresh workgroup server instead. It always runs in
       Windows PowerShell 5.1 (the server roles' modules live there), and the build's sign-in task
-      starts it this way after each restart. It stays in the console: with -Gui too, -Gui is ignored.
+      starts it this way after each restart. With -Gui it runs in the window (still Windows
+      PowerShell 5.1), and the sign-in task then reopens the window.
 
 .EXAMPLE
     .\Start-NutmegAD.ps1
@@ -35,10 +36,15 @@
     Opens the toolkit in a window: the same tools, confirmations, logs and run history.
 
 .EXAMPLE
+    .\Start-NutmegAD.ps1 -NewForest -Gui
+    The New Forest Build in the window: questions, plan and DSRM password as dialogs.
+
+.EXAMPLE
     .\Start-NutmegAD.ps1 -NewForest
     Builds the first DC of a new forest on this workgroup server, or carries on with the saved build.
 
 .VERSIONING
+    0.5.0 - -NewForest -Gui: the build in the window (Windows PowerShell 5.1); no longer sent to the console.
     0.4.0 - -Gui: the window (STA; carried through the elevation and PowerShell 7 offers). The build stays in the console.
     0.3.2 - Ignores a -LogPath that starts with '-' (a parameter name passed as the value).
     0.3.1 - Starts in its own folder, so the window is left in the toolkit folder (the sign-in task opened in System32).
@@ -48,7 +54,7 @@
 #>
 param([switch]$Stay, [switch]$NewForest, [switch]$Gui, [string]$LogPath)
 
-$ScriptVersion = '0.4.0'
+$ScriptVersion = '0.5.0'
 
 if ($PSVersionTable.PSVersion -lt [version]'5.1') {
     Write-Host 'The Nutmeg AD Toolkit needs Windows PowerShell 5.1 or PowerShell 7.' -ForegroundColor Red
@@ -67,16 +73,11 @@ if ($LogPath) { $env:NUTMEG_AD_LOG = $LogPath }
 $logArgs = @(); $logArgsQuoted = @()
 if ($LogPath) { $logArgs = @('-LogPath', $LogPath); $logArgsQuoted = @('-LogPath', "`"$LogPath`"") }
 
-# The build is console only (Windows PowerShell 5.1, through restarts): never in the window.
-if ($NewForest -and $Gui) {
-    Write-Host 'The New Forest Build runs in the console only; starting it there.' -ForegroundColor Yellow
-    $Gui = $false
-}
 $guiArgs = @(); if ($Gui) { $guiArgs = @('-Gui') }
 
 # The build runs in Windows PowerShell 5.1: started from PowerShell 7, hand over to it.
 if ($NewForest -and $onWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
-    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @logArgs
+    & powershell.exe -NoLogo -NoProfile -File $PSCommandPath -NewForest @guiArgs @logArgs
     return
 }
 
@@ -122,6 +123,15 @@ if ($onWindows -and -not $Stay) {
 }
 
 if ($NewForest) {
+    if ($Gui -and $onWindows) {
+        # Windows PowerShell 5.1 is STA already; started otherwise, start it again so.
+        if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+            Start-Process -FilePath 'powershell.exe' -ArgumentList (@('-STA', '-NoExit', '-NoProfile', '-File', "`"$PSCommandPath`"", '-Stay', '-NewForest', '-Gui') + $logArgsQuoted)
+            return
+        }
+        Start-NmToolkitGui -NewForest
+        return
+    }
     Invoke-NmTool -Id new-forest
     return
 }

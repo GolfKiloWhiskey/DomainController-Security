@@ -41,6 +41,9 @@ function Read-NmSecret {
     [CmdletBinding()]
     [OutputType([securestring])]
     param([Parameter(Mandatory)][string]$Prompt)
+    # In the window: a hidden-password dialog (Read-NmGuiSecret). The password never reaches the
+    # window's output or the log; only "(hidden)" is echoed.
+    if ($script:NmGui -and $script:NmGui.Active) { return (Read-NmGuiSecret -Prompt $Prompt) }
     Write-Host $Prompt -ForegroundColor Yellow -NoNewline
     return (Read-Host -Prompt ' ' -AsSecureString)
 }

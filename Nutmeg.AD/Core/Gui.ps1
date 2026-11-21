@@ -22,6 +22,8 @@ $script:NmGui = @{
     Window        = $null
     Controls      = @{}
     InputProvider = $null     # tests: scriptblock(text, prompt) -> answer
+    SecretProvider = $null    # tests: scriptblock(prompt) -> SecureString or $null (cancel)
+    BuildMode     = $false    # opened with -NewForest: the New Forest Build only, its questions start at once
     Tool          = $null
     Rows          = @()
     Table         = $null
@@ -44,7 +46,8 @@ $script:NmGui = @{
     ShownIndex    = @()       # the rows the cards show now (filter and tag applied), for Select all shown
 }
 
-# Areas whose tools run only in the console (the New Forest Build: Windows PowerShell 5.1, restarts).
+# The New Forest Build's area and tool. The normal window leaves them out (they are for a fresh
+# workgroup server); the window opened with -NewForest shows only them.
 $script:NmGuiConsoleOnlyAreas = @('build')
 $script:NmGuiConsoleOnlyTools = @('new-forest')
 
@@ -1902,6 +1905,72 @@ function Show-NmGuiViewer {
     return ''
 }
 
+function Read-NmGuiSecret {
+    <#
+    .SYNOPSIS
+        Read-NmSecret while the window is open: a dialog with a password box (the characters are
+        never shown), returning a SecureString. Cancel stops the action. Nothing but "(hidden)"
+        reaches the window's output.
+    #>
+    param([Parameter(Mandatory)][string]$Prompt)
+    $context = $script:NmGui.Buffer.ToString()
+    $secret = if ($script:NmGui.SecretProvider) { & $script:NmGui.SecretProvider $Prompt } else { Show-NmGuiSecret -Prompt $Prompt -Context $context }
+    if ($null -eq $secret) { Clear-NmGuiBuffer; throw (New-Object System.OperationCanceledException 'Cancelled in the window.') }
+    foreach ($sb in @($script:NmGui.Transcript, $script:NmGui.Buffer)) {
+        if ($sb.Length -and $sb[$sb.Length - 1] -ne "`n") { [void]$sb.Append("`r`n") }
+    }
+    [void]$script:NmGui.Transcript.Append("$Prompt`r`n> (hidden)`r`n")
+    Clear-NmGuiBuffer
+    return $secret
+}
+
+$script:NmGuiSecretXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Nutmeg AD Toolkit" Width="520" SizeToContent="Height" WindowStartupLocation="CenterOwner" Background="#FFFFFF" FontFamily="Segoe UI" FontSize="13"
+        Foreground="#16191F" ShowInTaskbar="False" ResizeMode="NoResize">
+  <Window.Resources>
+    <!--NMSTYLES-->
+  </Window.Resources>
+  <StackPanel Margin="22,18,22,16">
+    <TextBlock x:Name="HeadingText" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap"/>
+    <TextBlock x:Name="ContextText" FontSize="12" Foreground="#5B6370" Margin="0,6,0,0" TextWrapping="Wrap" Visibility="Collapsed"/>
+    <PasswordBox x:Name="SecretBox" Margin="0,14,0,0" MinHeight="32" Padding="6,4" VerticalContentAlignment="Center"/>
+    <TextBlock Text="Not shown, saved or logged." FontSize="12" Foreground="#8A919C" Margin="0,6,0,0"/>
+    <DockPanel Margin="0,16,0,0" LastChildFill="False">
+      <Button x:Name="OkButton" DockPanel.Dock="Right" Content="OK" MinWidth="104" Margin="0" IsDefault="True" Style="{StaticResource PrimaryButton}"/>
+      <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancel" MinWidth="96" IsCancel="True"/>
+    </DockPanel>
+  </StackPanel>
+</Window>
+'@
+$script:NmGuiSecretControls = @('HeadingText', 'ContextText', 'SecretBox', 'OkButton', 'CancelButton')
+
+function Get-NmGuiSecretContext {
+    # The note above the password box: the last few lines written before it (why it is asked), no log stamps.
+    param([string]$Text)
+    $lines = @("$Text" -split "`r?`n" | ForEach-Object { ($_ -replace '^\[\d{4}-\d{2}-\d{2} [\d:]{8}\] \[\w+\] ', '').Trim() } | Where-Object { $_ -and $_ -notmatch '^[=\-_]{5,}$' })
+    return (@($lines | Select-Object -Last 3) -join "`n")
+}
+
+function Show-NmGuiSecret {
+    # The password dialog itself. Returns the SecureString, or $null for Cancel.
+    param([Parameter(Mandatory)][string]$Prompt, [string]$Context)
+    $d = New-NmGuiXaml -Xaml ($script:NmGuiSecretXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
+    if ($script:NmGui.Window -and $script:NmGui.Window.IsLoaded) { $d.Owner = $script:NmGui.Window } else { $d.WindowStartupLocation = 'CenterScreen' }
+    $ui = @{}; foreach ($n in $script:NmGuiSecretControls) { $ui[$n] = $d.FindName($n) }
+    $ui.HeadingText.Text = "$Prompt".Trim()
+    $note = Get-NmGuiSecretContext -Text $Context
+    if ($note) { $ui.ContextText.Text = $note; $ui.ContextText.Visibility = 'Visible' }
+    $state = @{ Secret = $null }
+    $box = $ui.SecretBox
+    $ui.OkButton.Add_Click({ $state.Secret = $box.SecurePassword.Copy(); $d.Close() }.GetNewClosure())
+    $ui.CancelButton.Add_Click({ $state.Secret = $null; $d.Close() }.GetNewClosure())
+    $d.Add_ContentRendered({ $box.Focus() | Out-Null }.GetNewClosure())
+    [void]$d.ShowDialog()
+    $box.Clear()
+    return $state.Secret
+}
+
 function New-NmGuiDialogShell {
     # The dialog window with the theme, owned by the main window when it is open.
     param([string]$Title)
@@ -2474,7 +2543,8 @@ function Get-NmGuiToolListModel {
     [CmdletBinding()]
     param([string]$Center, [string]$Section, [string]$Search)
     if ($Search) {
-        $tools = @(Get-NmTool -Search $Search | Where-Object { $script:NmGuiConsoleOnlyTools -notcontains $_.Id -and $script:NmGuiConsoleOnlyAreas -notcontains $_.AdminCenter } | Sort-Object Name)
+        $areas = @(Get-NmGuiArea | ForEach-Object Id)
+        $tools = @(Get-NmTool -Search $Search | Where-Object { $areas -contains $_.AdminCenter -and ($script:NmGui.BuildMode -or $script:NmGuiConsoleOnlyTools -notcontains $_.Id) } | Sort-Object Name)
         $items = foreach ($t in $tools) {
             $cn = ($script:NmAdminCenters | Where-Object { $_.Id -eq $t.AdminCenter } | Select-Object -First 1).Name
             [pscustomobject]@{ Tool = $t; Note = "$cn > $($t.Section)" }
@@ -2536,6 +2606,8 @@ function Select-NmGuiTool {
     $c.PreviewBox.IsChecked = $false
     Build-NmGuiOptionForm
     $c.ActionRow.Visibility = 'Visible'
+    # Build mode: one way in, the build's own questions (the Resume and WhatIf boxes would only confuse).
+    if ($script:NmGui.BuildMode) { Set-NmGuiBuildModeControl -Controls $c }
     # The tool's last results stay until cleared or the domain or DC changes.
     $k = $script:NmGui.Kept[$t.Id]
     if ($k -and $k.Target -eq (Get-NmGuiTarget)) { Set-NmGuiResult -Rows $k.Rows -Title "$($k.Title)" }
@@ -2851,13 +2923,16 @@ function Start-NmToolkitGui {
     .DESCRIPTION
         - The header shows the domain and the DC every tool works against (Domain and DC opens the
           same menu as the console), and which modules are loaded.
-        - The New Forest Build stays in the console (Start-NutmegAD.ps1 -NewForest): it is not
-          offered here.
+        - -NewForest opens the New Forest Build instead (Start-NutmegAD.ps1 -NewForest -Gui, in
+          Windows PowerShell 5.1): only the build is listed, and its questions start as soon as the
+          window is up. The normal window leaves the build out.
     .EXAMPLE
         Import-Module .\Nutmeg.AD\Nutmeg.AD.psd1; Start-NmToolkitGui
+    .EXAMPLE
+        Start-NmToolkitGui -NewForest
     #>
     [CmdletBinding()]
-    param()
+    param([switch]$NewForest)
 
     if (-not $script:NmOnWindows) { Write-NmLog 'The window needs Windows (WPF). Use Start-NmToolkit for the console menu.' -Level ERROR; return }
     if ([System.Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
@@ -2866,7 +2941,8 @@ function Start-NmToolkitGui {
     }
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
-    Write-NmLog "Nutmeg AD Toolkit $script:ModuleVersion window started. Log: $(Get-NmLogPath)" -Level INFO -NoConsole
+    Write-NmLog "Nutmeg AD Toolkit $script:ModuleVersion window started$(if ($NewForest) { ' (New Forest Build)' }). Log: $(Get-NmLogPath)" -Level INFO -NoConsole
+    $script:NmGui.BuildMode = [bool]$NewForest
     $null = Remove-NmOldLog
     $script:NmGui.CardMode = ("$(Get-NmSetting -Key ResultsView)" -ne 'Table')
     $script:NmGui.Kept = @{}
@@ -2902,19 +2978,7 @@ function Start-NmToolkitGui {
             catch { [void][System.Windows.MessageBox]::Show($script:NmGui.Window, $_.Exception.Message, 'Check the options', 'OK', 'Warning'); return }
             Invoke-NmGuiRun -EntryArgs $a
         })
-        $c.GuidedButton.Add_Click({
-            $t = $script:NmGui.Tool
-            if (-not $t -or -not $t.Prompt) { return }
-            $state = @{ Answers = $null }
-            Invoke-NmGuiAction -Busy "$($t.Name): questions..." -Action {
-                if (-not (Assert-NmConnection -Services $t.Services)) { throw "Could not load what $($t.Name) needs (the modules, or the domain from this DC)." }
-                $state.Answers = & $t.Prompt
-            }
-            if ($state.Answers -is [hashtable]) {
-                Set-NmGuiFormValue -Answers $state.Answers
-                Invoke-NmGuiRun -EntryArgs $state.Answers.Clone()
-            }
-        })
+        $c.GuidedButton.Add_Click({ Invoke-NmGuiGuided })
         $c.FilterBox.Add_TextChanged({
             $script:NmGui.Controls.FilterHint.Visibility = $(if ($script:NmGui.Controls.FilterBox.Text) { 'Collapsed' } else { 'Visible' })
             if ($script:NmGui.Table) {
@@ -2976,6 +3040,8 @@ function Start-NmToolkitGui {
             if ($script:NmGui.Started) { return }
             $script:NmGui.Started = $true
             $script:NmGui.Controls.StatusText.Text = Get-NmGuiReadyText
+            # The New Forest Build: its questions (or "Continue it?" after a restart) start at once.
+            if ($script:NmGui.BuildMode -and $script:NmGui.Tool) { Invoke-NmGuiGuided }
         })
 
         $script:NmGui.Started = $false
@@ -2983,22 +3049,56 @@ function Start-NmToolkitGui {
         $script:NmGui.Progress = $null
         $script:NmGui.ProgressClock = $null
         Update-NmGuiBanner
-        # Start on the first area's first section, opened.
+        # Start on the first area's first section, opened (the build, with its tool picked, in build mode).
         $script:NmGui.Open = @{}
         $first = @(Get-NmGuiArea) | Select-Object -First 1
         if ($first) { Select-NmGuiSection -Center $first.Id -Section $first.Sections[0].Name } else { Update-NmGuiCenters }
+        if ($NewForest) {
+            $w.Title = 'Nutmeg AD Toolkit: New Forest Build'
+            $c.VersionText.Text = "v$script:ModuleVersion  |  New Forest Build"
+            Select-NmGuiTool -Id 'new-forest'
+        }
         [void]$w.ShowDialog()
     } finally {
         $script:NmGui.Active = $false
+        $script:NmGui.BuildMode = $false
         $script:NmGui.Window = $null
         $script:NmGui.Controls = @{}
         Write-NmLog 'Nutmeg AD Toolkit window closed.' -Level INFO -NoConsole
     }
 }
 
+function Set-NmGuiBuildModeControl {
+    # Build mode: the Run button, the options form and the WhatIf box go; Guided becomes the one
+    # button that starts (or continues) the build.
+    param([Parameter(Mandatory)][hashtable]$Controls)
+    $Controls.RunButton.Visibility = 'Collapsed'
+    $Controls.OptionsBorder.Visibility = 'Collapsed'
+    $Controls.PreviewBox.Visibility = 'Collapsed'
+    $Controls.GuidedButton.Content = 'Start or continue the build'
+    $Controls.GuidedButton.ToolTip = 'Checks the server, asks the questions once and shows the plan; after a restart, carries on where it stopped'
+}
+
+function Invoke-NmGuiGuided {
+    # Guided...: the tool's own questions as dialogs, then the run with the answers (also how the
+    # New Forest Build starts in build mode).
+    $t = $script:NmGui.Tool
+    if (-not $t -or -not $t.Prompt) { return }
+    $state = @{ Answers = $null }
+    Invoke-NmGuiAction -Busy "$($t.Name): questions..." -Action {
+        if (-not (Assert-NmConnection -Services $t.Services)) { throw "Could not load what $($t.Name) needs (the modules, or the domain from this DC)." }
+        $state.Answers = & $t.Prompt
+    }
+    if ($state.Answers -is [hashtable]) {
+        Set-NmGuiFormValue -Answers $state.Answers
+        Invoke-NmGuiRun -EntryArgs $state.Answers.Clone()
+    }
+}
+
 function Get-NmGuiReadyText {
     # The status line once the window is up: elevation first, since every change needs it.
     if (-not (Test-NmElevated)) { return 'Not running as administrator: checks may be incomplete and changes will fail. Start it again elevated.' }
+    if ($script:NmGui.BuildMode) { return 'New Forest Build: answer the questions to start, or continue a saved build.' }
     $s = $script:NmSession
     if ($s -and $s.Domain) { return "Ready. Domain $($s.Domain), working against $($s.Server)." }
     return 'Ready. Pick a tool: the domain is read from this DC when a tool needs it.'
@@ -3007,10 +3107,11 @@ function Get-NmGuiReadyText {
 function Get-NmGuiArea {
     <#
     .SYNOPSIS
-        The areas the window shows: every area with tools, except the New Forest Build, which runs
-        in the console only (Windows PowerShell 5.1, through restarts).
+        The areas the window shows: every area with tools except the New Forest Build, or, in build
+        mode (Start-NmToolkitGui -NewForest), the build only.
     #>
     [CmdletBinding()]
     param()
+    if ($script:NmGui.BuildMode) { return @(Get-NmAdminCenter | Where-Object { $script:NmGuiConsoleOnlyAreas -contains $_.Id }) }
     @(Get-NmAdminCenter | Where-Object { $script:NmGuiConsoleOnlyAreas -notcontains $_.Id })
 }

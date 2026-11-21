@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.7
+    Version: 1.8
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -22,17 +22,20 @@
       the toolkit, which carries on in it (through every restart of a New Forest Build).
     - Run from outside the toolkit folder (C:\Temp, say), it replaces itself with the copy just
       downloaded, so the next run uses the latest version.
+    - Installs PowerShell 7 if it is missing, without asking (Cliff's rule: every toolkit server
+      has it): the current LTS, Microsoft's signed MSI, Microsoft Update on, through the toolkit's
+      own Install-NmPowerShell7. Needs administrator; -SkipPowerShell7 leaves it out.
     - Shows the toolkit version and the commit it came from, then changes to the toolkit folder and
-      starts it: the New Forest Build on a workgroup server (console only), the window on a
-      domain-joined server or DC. -Console starts the console menu instead, -StartBuild the build,
-      -Start the window; -NoStart only downloads.
+      starts it in the window: the New Forest Build on a workgroup server (in Windows PowerShell
+      5.1), the toolkit on a domain-joined server or DC. -Console uses the console instead (the
+      build or the menu), -StartBuild starts the build, -Start the toolkit; -NoStart only downloads.
     - Runs in Windows PowerShell 5.1 and PowerShell 7. Run it as administrator when the folder is
       under C:\Tools or another protected place.
 
 .EXAMPLE
     .\Get-NutmegAD.ps1
-    Asks for the token, puts the main branch in C:\Tools\DomainController-Security and starts it
-    (the New Forest Build on a fresh workgroup server).
+    Asks for the token, puts the main branch in C:\Tools\DomainController-Security, installs
+    PowerShell 7 if needed and opens the window (the New Forest Build on a fresh workgroup server).
 
 .EXAMPLE
     .\Get-NutmegAD.ps1 -Branch claude/zen-franklin-4swcvy -StartBuild
@@ -40,7 +43,7 @@
 
 .EXAMPLE
     .\Get-NutmegAD.ps1 -Console
-    Updates, then opens the console menu instead of the window.
+    Updates, then uses the console instead of the window (the build on a workgroup server, the menu otherwise).
 
 .EXAMPLE
     .\Get-NutmegAD.ps1 -NoStart
@@ -51,6 +54,7 @@
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.8 - Installs PowerShell 7 when missing, without asking (-SkipPowerShell7); the New Forest Build opens in the window (-Console for the console).
     1.7 - Opens the window on a domain-joined server or DC (-Console for the menu); the build stays in the console.
     1.6 - Updates itself from the download when run from elsewhere; steps out of the toolkit folder before replacing it.
     1.5 - Hands -NewForest and -LogPath to the launcher as named parameters (a list bound them in order: the log path became '-LogPath').
@@ -70,10 +74,11 @@ param(
     [switch]$Start,
     [switch]$Console,
     [switch]$NoStart,
+    [switch]$SkipPowerShell7,
     [string]$LogFolder = $(if ($env:OS -eq 'Windows_NT') { 'C:\Temp\NutmegAD\Logs' } else { Join-Path ([System.IO.Path]::GetTempPath()) 'NutmegAD/Logs' })
 )
 
-$ScriptVersion = '1.7'
+$ScriptVersion = '1.8'
 $ErrorActionPreference = 'Stop'
 
 $script:GetLogPath = $null
@@ -102,8 +107,8 @@ function Get-NutmegLauncherArgs {
     # '-NewForest' would be lost), which is what broke the hand-off to PowerShell 7.
     param([Parameter(Mandatory)][string]$Choice, [string]$LogPath)
     $a = @{}
-    if ($Choice -eq 'NewForest') { $a.NewForest = $true }
-    if ($Choice -eq 'Window') { $a.Gui = $true }
+    if ($Choice -eq 'NewForest' -or $Choice -eq 'NewForestWindow') { $a.NewForest = $true }
+    if ($Choice -eq 'Window' -or $Choice -eq 'NewForestWindow') { $a.Gui = $true }
     if ($LogPath) { $a.LogPath = $LogPath }
     return $a
 }
@@ -187,15 +192,35 @@ function Install-NutmegPackage {
 }
 
 function Get-NutmegStartChoice {
-    # What to start after the download: 'NewForest', 'Window', 'Menu' or 'None'. A workgroup server gets
-    # the build (console only); a domain member or DC gets the window, or the menu with -Console.
+    # What to start after the download: 'NewForestWindow', 'NewForest' (the build in the console),
+    # 'Window', 'Menu' or 'None'. A workgroup server gets the build, a domain member or DC the
+    # toolkit; both in the window unless -Console.
     param([bool]$PartOfDomain, [switch]$StartBuild, [switch]$Start, [switch]$Console, [switch]$NoStart)
     if ($NoStart) { return 'None' }
-    if ($StartBuild) { return 'NewForest' }
+    $build = [bool]$StartBuild -or (-not $Start -and -not $PartOfDomain)
+    if ($build) { if ($Console) { return 'NewForest' } else { return 'NewForestWindow' } }
     if ($Console) { return 'Menu' }
-    if ($Start) { return 'Window' }
-    if ($PartOfDomain) { return 'Window' }
-    return 'NewForest'
+    return 'Window'
+}
+
+function Install-NutmegPowerShell7 {
+    <#
+    .SYNOPSIS
+        After the download: PowerShell 7 if it is missing, installed without asking with the
+        toolkit's own Install-NmPowerShell7 (signed MSI, Microsoft Update on). Returns what happened.
+    .DESCRIPTION
+        The toolkit is loaded from the folder just installed, writing to this script's log. It never
+        stops the rest: a failure is reported and the toolkit still starts.
+    #>
+    param([Parameter(Mandatory)][string]$Path, [switch]$Skip)
+    if ($Skip) { return 'Skipped (-SkipPowerShell7)' }
+    if ($env:OS -ne 'Windows_NT') { return 'Skipped (not Windows)' }
+    if ($script:GetLogPath) { $env:NUTMEG_AD_LOG = $script:GetLogPath }
+    Import-Module (Join-Path (Join-Path $Path 'Nutmeg.AD') 'Nutmeg.AD.psd1') -Force -ErrorAction Stop
+    $pwsh = Find-NmPwsh
+    if ($pwsh) { return "Already installed ($pwsh)" }
+    $r = Install-NmPowerShell7 -ApprovedBy 'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server'
+    return "$($r.Result) (PowerShell $($r.Version))"
 }
 
 function Test-NutmegPartOfDomain {
@@ -267,6 +292,12 @@ try {
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
 }
 
+Write-Step 'Checking for PowerShell 7...'
+try {
+    $ps7 = Install-NutmegPowerShell7 -Path $Path -Skip:$SkipPowerShell7
+    Write-Step "PowerShell 7: $ps7" $(if ($ps7 -like 'Failed*') { 'Yellow' } else { 'DarkGray' })
+} catch { Write-Step "PowerShell 7 was not checked: $($_.Exception.Message)" Yellow }
+
 $choice = Get-NutmegStartChoice -PartOfDomain (Test-NutmegPartOfDomain) -StartBuild:$StartBuild -Start:$Start -Console:$Console -NoStart:$NoStart
 if ($choice -eq 'None') {
     Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest),   .\Start-NutmegAD.ps1 -Gui   (the window)   or   .\Start-NutmegAD.ps1   (the menu)" DarkGray
@@ -274,8 +305,10 @@ if ($choice -eq 'None') {
 }
 Set-Location -LiteralPath $Path
 $launchArgs = Get-NutmegLauncherArgs -Choice $choice -LogPath $script:GetLogPath
-if ($choice -eq 'NewForest') {
-    Write-Step 'This server is in a workgroup: starting the New Forest Build (it carries on in this log).' DarkGray
+if ($choice -eq 'NewForestWindow') {
+    Write-Step 'This server is in a workgroup: opening the New Forest Build in the window (it carries on in this log). For the console: .\Get-NutmegAD.ps1 -Console' DarkGray
+} elseif ($choice -eq 'NewForest') {
+    Write-Step 'This server is in a workgroup: starting the New Forest Build in the console (it carries on in this log).' DarkGray
 } elseif ($choice -eq 'Window') {
     Write-Step 'Opening the toolkit window (it carries on in this log). For the console menu: .\Get-NutmegAD.ps1 -Console, or .\Start-NutmegAD.ps1' DarkGray
 } else {

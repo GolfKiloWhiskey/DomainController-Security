@@ -2,12 +2,37 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.4.0 - 11/21/2026
+
+From a fresh server to the window in one run of `Get-NutmegAD.ps1` (Cliff):
+
+- **`Get-NutmegAD.ps1` installs PowerShell 7** after the download if it is missing, without asking:
+  the current LTS, Microsoft's signed MSI, Microsoft Update on (the toolkit's own install, so the
+  signature check and the log are the same). It needs administrator; `-SkipPowerShell7` leaves it out.
+  A failure is reported and the rest carries on.
+- **Then it opens the window**: the New Forest Build on a workgroup server, the toolkit on a
+  domain-joined server or DC. `-Console` uses the console instead, for either.
+- **The New Forest Build runs in the window** (`.\Start-NutmegAD.ps1 -NewForest -Gui`):
+  - the window shows only the build, and its pre-flight and questions start as soon as it opens;
+    **Start or continue the build** starts them again;
+  - the plan approval (type the short name) and every question are dialogs;
+  - the DSRM password is a password box: never shown, saved or logged (the output shows "(hidden)").
+    Cancel stops the build with nothing made;
+  - the sign-in task reopens the window after each restart, so the whole build stays in it. A build
+    started in the console still reopens in the console;
+  - it still runs in Windows PowerShell 5.1 (the server roles' modules live there), even with
+    PowerShell 7 installed. The window may stop responding while the roles install and the forest
+    is made (a few minutes each): wait, it comes back.
+- PowerShell 7 isn't needed for the window itself: Windows PowerShell 5.1 runs it too.
+- Not run on Windows yet: tested against stand-ins (165 tests). `docs/NEW-FOREST-TESTING.md` has the
+  window run.
+
 ## 0.3.1 - 11/21/2026
 
 - **`Get-NutmegAD.ps1` opens the window** after the download on a domain-joined server or DC (Cliff),
   instead of the console menu. `-Console` opens the console menu instead. A workgroup server still
   gets the New Forest Build, in the console. The window carries on in the same log
-  (`Get-NutmegAD.ps1` 1.7).
+  (`Get-NutmegAD.ps1` 1.7). (Merged into 0.4.0.)
 
 ## 0.3.0 - 11/21/2026
 
