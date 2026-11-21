@@ -73,4 +73,8 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 - Close the window during phase 1 before the DSRM password, then run step 1 again: it continues.
 - Cancel the DSRM password dialog: the build stops with nothing made; run it again and it continues.
 - `.\Get-NutmegAD.ps1 -Console`: the same build in the console.
+- Cancel at the NetBIOS question, then **Start or continue the build**: it offers the saved answers
+  (Yes skips the domain name; No asks everything again). Change the domain name when carrying on:
+  NetBIOS is asked again.
+- Type an address that answers (the gateway) at the static IP question: refused in red, asked again.
 - Keep the computer name: no restart after phase 0; phase 1 follows straight away.

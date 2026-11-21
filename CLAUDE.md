@@ -62,6 +62,12 @@ Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
   `CHANGELOG.md` (newest first, plain words, for Cliff); `README.md` when something user-visible
   changes; `docs/TOOL-LIST.md` when a step starts or finishes; `Legacy/INDEX.md` when a legacy item is
   ported; a tool's own `Version` and `.VERSIONING` when it changes.
+- **Version numbers move slowly** (Cliff, Nov 2026). Every PR adds 1 to the last number only:
+  0.7.1, 0.7.2, ... (0.7.15 is fine; it never rolls over into the middle number). The middle number
+  moves only at a milestone Cliff names. `1.0.0-beta` is the whole package built and ready for
+  release testing; `1.0.0` is the release. Tools follow the same rule for their own `Version`
+  (0.7 -> 0.7.1 -> 0.7.2). The module manifest's `ModuleVersion` takes only the numbers, so the beta
+  is also marked with `Prerelease = 'beta'` in `PrivateData.PSData` then.
 
 ## PowerShell version
 

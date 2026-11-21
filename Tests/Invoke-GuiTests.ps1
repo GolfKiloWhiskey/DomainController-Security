@@ -499,6 +499,76 @@ Test-That 'Continue pop-ups keep the warnings, errors and successes (as notes an
     ($t -match '^Server check') -and ($t -match 'Build finished\.') -and ($t -match 'Nothing was changed\.') -and ($n.Count -eq 1) -and ($n[0].Level -eq 'ERROR') -and ($n[0].Text -eq 'This server is not ready')
 }
 
+Test-That 'The section label stays until the next heading (NetBIOS is still under "The new forest")' {
+    $text = "The new forest`r`nDomain name (DNS, for example clientx.local)`r`n> clientx.local`r`nNetBIOS name (Press Enter for default: CLIENTX)"
+    $m = Get-NmGuiDialogModel -Text $text -Prompt ' ' -Marks @{ 'The new forest' = 'Cyan' }
+    $text2 = $text + "`r`n> CLIENTX`r`n" + ('=' * 45) + "`r`n   Forest and domain functional level`r`n" + ('=' * 45) + "`r`n   [1] Windows Server 2025`r`n   [B] Back`r`n" + ('=' * 45) + "`r`nSelect an option (Enter for 1)"
+    $m2 = Get-NmGuiDialogModel -Text $text2 -Prompt ' ' -Marks @{ 'The new forest' = 'Cyan' }
+    ($m.Section -eq 'The new forest') -and ($m.Title -eq 'NetBIOS name') -and ($m2.Section -eq 'The new forest') -and ($m2.Kind -eq 'Menu') -and
+    ((Get-NmGuiQuestionStatus -Model $m) -eq 'Question: The new forest > NetBIOS name')
+}
+
+Test-That 'Borders written in Cyan are never headings' {
+    Clear-NmGuiBuffer
+    $script:NmGui.Active = $true
+    try { Write-Host ('=' * 45) -ForegroundColor Cyan; Write-Host 'Folders' -ForegroundColor Cyan; $marks = $script:NmGui.Marks.Clone() } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
+    (@($marks.Keys).Count -eq 1) -and ($marks['Folders'] -eq 'Cyan')
+}
+
+Test-That 'Output panel: no header furniture, and a cancelled question ends its line' {
+    Clear-NmGuiBuffer; [void]$script:NmGui.Transcript.Clear()
+    $script:NmGui.Active = $true
+    try {
+        Show-NmHeader -Title 'New Forest Build (first DC)'
+        Write-Host 'Domain name' -NoNewline
+        $script:NmGui.InputProvider = { param($t, $p) $null }
+        try { $null = Read-NmHost -Prompt ' ' } catch [System.OperationCanceledException] { $null = $_ }
+        $log = $script:NmGui.Transcript.ToString()
+    } finally { $script:NmGui.InputProvider = $null; $script:NmGui.Active = $false }
+    ($log -match 'New Forest Build \(first DC\)') -and ($log -notmatch 'Author:') -and ($log -notmatch '=====') -and ($log -match "Domain name\r?\n> \(cancelled\)")
+}
+
+Test-That 'Dialogs fit inside the window: same width each time, never wider or taller than it' {
+    $a = Get-NmGuiDialogSize -Want 720 -OwnerWidth 1600 -OwnerHeight 800
+    $b = Get-NmGuiDialogSize -Want 880 -OwnerWidth 900 -OwnerHeight 600
+    $c = Get-NmGuiDialogSize -Want 720 -ScreenWidth 1024 -ScreenHeight 700
+    ($a.Width -eq 720) -and ($a.MaxHeight -eq 740) -and ($b.Width -eq 820) -and ($b.MaxHeight -eq 540) -and ($c.Width -eq 720) -and ($c.MaxHeight -eq 640)
+}
+
+Test-That 'Check tables become rows with a coloured badge: OK green, Warning amber, Not ready red; titles are short' {
+    $cap = [pscustomobject]@{ Title = 'New Forest Build (first DC) > Server check'; Columns = @('Check', 'Result', 'Detail')
+        Rows = @([pscustomobject]@{ Check = 'Running as administrator'; Result = 'OK'; Detail = 'yes' },
+                 [pscustomobject]@{ Check = 'No restart pending'; Result = 'Warning'; Detail = 'Windows is waiting for a restart' },
+                 [pscustomobject]@{ Check = 'Not joined to a domain'; Result = 'Not ready'; Detail = 'joined to clientx.local' }) }
+    $r = @(Get-NmGuiCheckRowModel -Capture $cap)
+    $none = @(Get-NmGuiCheckRowModel -Capture ([pscustomobject]@{ Columns = @('Name', 'Size'); Rows = @([pscustomobject]@{ Name = 'a'; Size = 1 }) }))
+    ($r.Count -eq 3) -and ((($r | ForEach-Object Level) -join ',') -eq 'OK,Medium,High') -and ($r[1].Name -eq 'No restart pending') -and ($r[1].Detail -eq 'Windows is waiting for a restart') -and
+    ($none.Count -eq 0) -and ((Get-NmGuiShortTitle -Title $cap.Title) -eq 'Server check')
+}
+
+Test-That 'Approval for a new forest: its own facts instead of "no domain"' {
+    $m = Get-NmGuiConfirmModel -Action 'New Forest Build: clientx.local' -Domain '' -DomainWide -Targets @('a', 'b') -Expected 'clientx' -Kind 'This changes the whole domain' -Facts @('New forest: clientx.local (CLIENTX)', 'This server: WIN-1 > DC01')
+    ((($m.Facts | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ';') -eq 'New forest=clientx.local (CLIENTX);This server=WIN-1 > DC01;Scope=domain-wide')
+}
+
+Test-That 'Windows Server choices get the same plain icon (no clock for "older")' {
+    $a = Get-NmGuiChoiceIcon 'Windows Server 2025 (every DC will run 2025)'
+    $b = Get-NmGuiChoiceIcon 'Windows Server 2016 (older DCs can join later)'
+    ($a -eq $b) -and ($a -eq [string][char]0xE91F)
+}
+
+Test-That 'Build results: one card per phase, a line per step named by the step, worst status on the card' {
+    $rows = @(
+        [pscustomobject]@{ Phase = 'Phase 0: Prepare the server'; Step = 'Time zone'; Result = 'Done'; Detail = 'Eastern Standard Time (was Pacific Standard Time)' }
+        [pscustomobject]@{ Phase = 'Phase 0: Prepare the server'; Step = 'Static IP'; Result = 'Done'; Detail = '192.0.2.50/24 via 192.0.2.1' }
+        [pscustomobject]@{ Phase = 'Phase 1: Promote to the first DC'; Step = 'Promote'; Result = 'Failed'; Detail = 'pre-checks failed' }
+    )
+    $m = Get-NmGuiCardModel -Rows $rows -Columns @('Phase', 'Step', 'Result', 'Detail') -GroupBy @('Phase', 'Step')
+    $p0 = $m.Items[0]
+    ($m.Cards -eq 2) -and ($p0.Title -eq 'Phase 0: Prepare the server') -and ((($p0.Fields | ForEach-Object Name) -join '|') -eq 'Time zone|Static IP') -and
+    ($p0.Fields[0].Value -eq 'Eastern Standard Time (was Pacific Standard Time) - Done') -and ($m.Items[1].Level -eq 'High')
+}
+
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
     ((Get-NmSetting -Key ResultsView) -eq 'Cards') -and (@($script:NmSettingSections) -contains 'Window')
 }
@@ -743,8 +813,8 @@ Test-That 'Grouped cards: one card per mailbox, entries listed in full under eac
     $b = Get-NmGuiCardModel -Rows $rows -Columns $cols -GroupBy @('Mailbox', 'List') -Facet 'Blocked'
     $jane = $m.Items[0]
     ($m.Cards -eq 2) -and ($m.Shown -eq 4) -and ($jane.Title -eq 'jane@clientx.com') -and ($m.FacetColumn -eq 'List') -and
-        ((($jane.Fields | ForEach-Object Name) -join '|') -eq 'Safe (2)|Blocked (1)') -and ($jane.Fields[0].Value -eq "vendor.com`npartner.com") -and
-        ($b.Cards -eq 2) -and ((@($b.Items[0].Fields) | ForEach-Object Name) -join '|') -eq 'Blocked (1)' -and
+        ((($jane.Fields | ForEach-Object Name) -join '|') -eq 'Safe (2)|Blocked') -and ($jane.Fields[0].Value -eq "vendor.com`npartner.com") -and
+        ($b.Cards -eq 2) -and ((@($b.Items[0].Fields) | ForEach-Object Name) -join '|') -eq 'Blocked' -and
         ((Get-NmGuiCardCountText -Model $m) -eq '4 rows in 2 cards, one per Mailbox.')
 }
 Test-That 'Grouped cards: a change run keeps each row''s result and the card shows the worst' {
