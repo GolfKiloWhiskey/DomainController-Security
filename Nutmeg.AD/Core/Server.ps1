@@ -233,7 +233,11 @@ function Install-NmAddsFeature {
     # AD DS, DNS, Group Policy Management and the AD module. Returns Success and RestartNeeded.
     [CmdletBinding()]
     param()
-    $r = Install-WindowsFeature -Name AD-Domain-Services, DNS, GPMC, RSAT-AD-PowerShell -IncludeManagementTools -ErrorAction Stop
+    # In the window it runs in the background (Invoke-NmGuiBackground), so the window keeps responding.
+    $r = @(Invoke-NmGuiBackground -Status 'Installing AD DS, DNS and Group Policy Management' -ScriptBlock {
+        $f = Install-WindowsFeature -Name AD-Domain-Services, DNS, GPMC, RSAT-AD-PowerShell -IncludeManagementTools -ErrorAction Stop
+        [pscustomobject]@{ Success = [bool]$f.Success; RestartNeeded = "$($f.RestartNeeded)" }
+    })[-1]
     return [pscustomobject]@{ Success = [bool]$r.Success; RestartNeeded = "$($r.RestartNeeded)" }
 }
 
@@ -260,9 +264,13 @@ function Test-NmForestInstallation {
     # Microsoft's own pre-checks for the new forest. Returns Status ('Success' or 'Error') and Message.
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$ForestArgs)
-    Import-Module ADDSDeployment -ErrorAction Stop
     $a = $ForestArgs.Clone(); $a.Remove('NoRebootOnCompletion')
-    $r = Test-ADDSForestInstallation @a -WarningAction SilentlyContinue -ErrorAction Stop
+    $r = @(Invoke-NmGuiBackground -Status "Running Microsoft's pre-checks" -Parameters @{ ForestArgs = $a } -ScriptBlock {
+        param($ForestArgs)
+        Import-Module ADDSDeployment -ErrorAction Stop
+        $t = Test-ADDSForestInstallation @ForestArgs -WarningAction SilentlyContinue -ErrorAction Stop
+        [pscustomobject]@{ Status = "$($t.Status)"; Message = "$($t.Message)" }
+    })[-1]
     return [pscustomobject]@{ Status = "$($r.Status)"; Message = "$($r.Message)" }
 }
 
@@ -270,7 +278,11 @@ function Install-NmForest {
     # Promotes this server to the first DC of the new forest. No restart: the build restarts it.
     [CmdletBinding()]
     param([Parameter(Mandatory)][hashtable]$ForestArgs)
-    Import-Module ADDSDeployment -ErrorAction Stop
-    $r = Install-ADDSForest @ForestArgs -WarningAction SilentlyContinue -ErrorAction Stop
+    $r = @(Invoke-NmGuiBackground -Status 'Creating the forest (several minutes)' -Parameters @{ ForestArgs = $ForestArgs } -ScriptBlock {
+        param($ForestArgs)
+        Import-Module ADDSDeployment -ErrorAction Stop
+        $f = Install-ADDSForest @ForestArgs -WarningAction SilentlyContinue -ErrorAction Stop
+        [pscustomobject]@{ Status = "$($f.Status)"; Message = "$($f.Message)" }
+    })[-1]
     return [pscustomobject]@{ Status = "$($r.Status)"; Message = "$($r.Message)" }
 }

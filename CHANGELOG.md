@@ -2,6 +2,29 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.5.0 - 11/21/2026
+
+**A modern look in the window** (Cliff: no console text in the pop-ups; same order of questions as
+the console).
+
+- **Questions are clean dialogs.** Each question still comes on its own, in the same order as in the
+  console, but the dialog shows only:
+  - the section it belongs to ("THE NEW FOREST") and the question itself;
+  - the suggested answer already in the box (press OK to take it);
+  - warnings and errors as coloured lines, for example a red line when an answer was refused
+    ("Use a DNS name with at least two parts");
+  - any table the tool showed, as a real table (the server check in the first question).
+  Log lines and console borders stay out: they go to the status bar and the Output panel.
+- **Changes are approved in one dialog**: what changes, the domain, DC and scope, every target in a
+  list, and the box for the word to type (Approve stays greyed out until it matches). The New
+  Forest Build's plan is approved this way.
+- **The window keeps responding during long steps.** The role install, Microsoft's pre-checks and
+  the forest creation run in the background, with the elapsed time at the bottom of the window.
+- **While building a forest the header shows this server** (name, workgroup, IP and whether it is
+  DHCP), not "Domain and DC: not read yet"; the module chips are hidden until there is a domain.
+- The password box only notes problems ("The two did not match"), no log lines.
+- The console is unchanged. Not run on Windows yet: tested against stand-ins (174 tests).
+
 ## 0.4.0 - 11/21/2026
 
 From a fresh server to the window in one run of `Get-NutmegAD.ps1` (Cliff):

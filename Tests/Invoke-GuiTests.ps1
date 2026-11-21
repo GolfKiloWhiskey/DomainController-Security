@@ -181,16 +181,6 @@ Test-That 'Window open: Write-Host collects text; each prompt sees only what was
     ($script:NmGui.Transcript.ToString() -match '> 1')
 }
 
-Test-That 'Change confirmations become dialogs: the change, the domain and the targets; the domain name typed for a domain-wide change' {
-    $script:Text = ''
-    $script:NmGui.InputProvider = { param($text, $prompt) $script:Text = $text; 'clientx' }
-    $script:NmGui.Active = $true
-    $ok = Confirm-NmChange -Action 'Link 3 GPOs at the domain root' -Targets @('a', 'b', 'c') -DomainWide
-    $script:NmGui.InputProvider = { param($text, $prompt) 'wrong' }
-    $no = Confirm-NmChange -Action 'Link 3 GPOs at the domain root' -Targets @('a', 'b', 'c') -DomainWide
-    $script:NmGui.Active = $false
-    $ok -and (-not $no) -and ($script:Text -match 'Link 3 GPOs at the domain root') -and ($script:Text -match 'clientx.local') -and ($script:Text -match "Type 'clientx'")
-}
 
 Test-That 'A menu asked again after an empty answer still shows the menu and its buttons (the Domain and DC loop)' {
     $script:Seen = New-Object System.Collections.Generic.List[string]
@@ -350,9 +340,10 @@ Test-That 'Password dialog: well-formed, a PasswordBox (never a TextBox), every 
     $x = [xml]($script:NmGuiSecretXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
     $names = @($x.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object { $_.GetAttribute('Name', $ns) })
     $box = @($x.SelectNodes('//*[local-name()="PasswordBox"]'))
-    $note = Get-NmGuiSecretContext -Text "=====`r`n[2026-11-21 10:00:00] [INFO] Running Microsoft's pre-checks...`r`nThe two did not match.`r`n"
+    $note = Get-NmGuiSecretContext -Text "=====`r`n[2026-11-21 10:00:00] [INFO] Running Microsoft's pre-checks...`r`nThe two did not match.`r`nSome plain line`r`n" -Marks @{ 'The two did not match.' = 'Red' }
+    $none = Get-NmGuiSecretContext -Text "[2026-11-21 10:00:00] [INFO] Creating the forest" -Marks @{}
     (@($script:NmGuiSecretControls | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($box.Count -eq 1) -and (@($x.SelectNodes('//*[local-name()="TextBox"]')).Count -eq 0) -and
-    ($note -eq "Running Microsoft's pre-checks...`nThe two did not match.")
+    ($note -eq 'The two did not match.') -and ($none -eq '')
 }
 
 Test-That 'Build mode controls: Run, options and WhatIf hidden; Guided is the way in' {
@@ -368,6 +359,115 @@ Test-That 'Sign-in task: reopens the window when the build ran in it, the consol
     $con = Get-NmResumeTaskArgument -LauncherPath $l
     $win = Get-NmResumeTaskArgument -LauncherPath $l -Gui
     ($con -eq "-NoExit -NoProfile -File `"$l`" -NewForest") -and ($win -eq "-NoExit -NoProfile -File `"$l`" -NewForest -Gui")
+}
+
+Test-That 'Dialogs carry no console text: a kept table goes to the Output panel only; plain values still show' {
+    Clear-NmGuiBuffer
+    $script:NmGui.Active = $true
+    try {
+        [pscustomobject]@{ Col = 'value-123' } | Format-Table | Out-Host
+        $buf = $script:NmGui.Buffer.ToString()
+        $caps = $script:NmGui.Captures.Count
+        'plain value' | Out-Host
+        $buf2 = $script:NmGui.Buffer.ToString()
+        $log = $script:NmGui.Transcript.ToString()
+    } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
+    ($buf -notmatch 'value-123') -and ($caps -eq 1) -and ($log -match 'value-123') -and ($buf2 -match 'plain value') -and (-not $script:NmGui.TableText)
+}
+
+Test-That 'Dialog model: the Cyan heading is the section, warnings and errors are notes, INFO lines and console text are left out, the default fills the box' {
+    Clear-NmGuiBuffer
+    $script:NmGui.Active = $true
+    try {
+        Write-Host '[2026-11-21 07:11:33] [INFO] Checking this server before anything changes...'
+        Write-Host '[2026-11-21 07:11:34] [WARN] Windows is waiting for a restart'
+        Write-Host ''
+        Write-Host 'The new forest' -ForegroundColor Cyan
+        Write-Host 'Use a DNS name with at least two parts, such as clientx.local.' -ForegroundColor Red
+        Write-Host 'Domain name (DNS, for example clientx.local) (Press Enter for default: clientx.local)' -ForegroundColor Yellow -NoNewline
+        $m = Get-NmGuiDialogModel -Text $script:NmGui.Buffer.ToString() -Prompt ' '
+    } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
+    ($m.Kind -eq 'Text') -and ($m.Title -eq 'Domain name (DNS, for example clientx.local)') -and ($m.DefaultValue -eq 'clientx.local') -and ($m.Section -eq 'The new forest') -and
+    (@($m.Notes).Count -eq 2) -and ($m.Notes[0].Level -eq 'Warning') -and ($m.Notes[0].Text -eq 'Windows is waiting for a restart') -and
+    ($m.Notes[1].Level -eq 'Error') -and ($m.Notes[1].Text -like 'Use a DNS name*') -and (-not "$($m.Context)".Trim()) -and (@($script:NmGui.Marks.Keys).Count -eq 0)
+}
+
+Test-That 'Dialog model: only what came after the last answer counts (an earlier warning is not repeated)' {
+    $text = "[2026-11-21 07:11:34] [WARN] Old warning`r`nComputer name`r`n> DC01`r`nTime zone (Windows ID)"
+    $m = Get-NmGuiDialogModel -Text $text -Prompt ' ' -Marks @{}
+    ($m.Title -eq 'Time zone (Windows ID)') -and (@($m.Notes).Count -eq 0)
+}
+
+Test-That 'Approval in the window: the change, domain, DC, scope and every target; the typed word must match; a plain change is Approve or Cancel' {
+    $script:Seen = $null
+    $script:NmGui.ConfirmProvider = { param($m) $script:Seen = $m; $true }
+    $script:NmGui.Active = $true
+    try {
+        $targets = @(1..12 | ForEach-Object { "Step $_" })
+        $ok = Confirm-NmChange -Action 'New Forest Build: clientx.local' -Targets $targets -DomainWide -ConfirmWord 'clientx'
+        $typed = $script:Seen
+        $script:NmGui.ConfirmProvider = { param($m) $script:Seen = $m; $false }
+        $no = Confirm-NmChange -Action 'Create 2 OUs' -Targets @('OU=A', 'OU=B')
+        $plain = $script:Seen
+        $buf = $script:NmGui.Buffer.ToString(); $log = $script:NmGui.Transcript.ToString()
+    } finally { $script:NmGui.ConfirmProvider = $null; $script:NmGui.Active = $false }
+    $ok -and (-not $no) -and ($typed.Typed) -and ($typed.Expected -eq 'clientx') -and (@($typed.Targets).Count -eq 12) -and
+    ((($typed.Facts | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ';') -eq 'Domain=clientx.local;DC=DC01.clientx.local;Scope=domain-wide') -and
+    ($typed.Hint -eq "This changes the whole domain. Type 'clientx' to approve.") -and (-not $plain.Typed) -and ($plain.Hint -eq 'Nothing changes until you approve.') -and
+    ($buf -notmatch 'CHANGE:') -and ($log -match 'CHANGE: New Forest Build: clientx.local') -and ($log -match '> not approved')
+}
+
+Test-That 'Approval dialog: well-formed, every control there, Approve is the primary button' {
+    $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $x = [xml]($script:NmGuiConfirmXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
+    $names = @($x.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object { $_.GetAttribute('Name', $ns) })
+    $ok = @($x.SelectNodes('//*[local-name()="Button"]') | Where-Object { $_.GetAttribute('Name', $ns) -eq 'OkButton' })[0]
+    (@($script:NmGuiConfirmControls | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($ok.Content -eq 'Approve') -and ($ok.Style -match 'PrimaryButton')
+}
+
+Test-That 'Question dialog layout: section, notes, plain text and tables have their places; no console box is used for questions' {
+    $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
+    $x = [xml]($script:NmGuiDialogXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
+    $names = @($x.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object { $_.GetAttribute('Name', $ns) })
+    $code = (Get-Command Show-NmGuiQuestion).ScriptBlock.ToString()
+    (@('SectionText', 'NotePanel', 'ContextText', 'TablePanel' | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($code -notmatch 'OutputBox') -and ($code -match 'Set-NmGuiDialogBody')
+}
+
+Test-That 'Background runs: outside the window directly; in the window in its own runspace, with parameters, output and errors' {
+    $direct = Invoke-NmGuiBackground -ScriptBlock { 'here' }
+    $script:NmGui.Active = $true
+    try {
+        $out = @(Invoke-NmGuiBackground -Status 'Testing' -Parameters @{ A = 2; B = 3 } -ScriptBlock { param($A, $B) Start-Sleep -Milliseconds 300; [pscustomobject]@{ Sum = $A + $B; Rs = [runspace]::DefaultRunspace.InstanceId } })
+        $err = $null
+        try { $null = Invoke-NmGuiBackground -ScriptBlock { Write-Error 'role install failed' } } catch { $err = $_.Exception.Message }
+        $left = @($script:NmGui.Progress.Keys)
+    } finally { $script:NmGui.Active = $false }
+    ($direct -eq 'here') -and ($out[-1].Sum -eq 5) -and ($out[-1].Rs -ne [runspace]::DefaultRunspace.InstanceId) -and ($err -eq 'role install failed') -and ($left -notcontains 'id7')
+}
+
+Test-That 'The long server steps run through the background runner' {
+    $code = Get-Content -Raw -Path (Join-Path $script:NmModuleRoot 'Core\Server.ps1')
+    foreach ($f in 'Install-NmAddsFeature', 'Test-NmForestInstallation', 'Install-NmForest') {
+        $body = (Get-Command $f).ScriptBlock.ToString()
+        if ($body -notmatch 'Invoke-NmGuiBackground') { return $false }
+    }
+    $true
+}
+
+Test-That 'Build mode header: the server, workgroup or domain, and its address' {
+    $pc = [pscustomobject]@{ Name = 'WIN-1'; PartOfDomain = $false; Domain = '' }
+    $a = Get-NmGuiServerText -Computer $pc -Adapters @([pscustomobject]@{ IPv4 = '192.0.2.140'; Dhcp = $true })
+    $b = Get-NmGuiServerText -Computer ([pscustomobject]@{ Name = 'DC01'; PartOfDomain = $true; Domain = 'clientx.local' }) -Adapters @([pscustomobject]@{ IPv4 = '192.0.2.50'; Dhcp = $false })
+    $c = Get-NmGuiServerText -Computer $pc -Adapters @()
+    ($a -eq 'WIN-1 (workgroup)  |  192.0.2.140 (DHCP)') -and ($b -eq 'DC01 (clientx.local)  |  192.0.2.50 (static)') -and ($c -eq 'WIN-1 (workgroup)')
+}
+
+Test-That 'Continue pop-ups keep the warnings, errors and successes (as notes and text), without log stamps' {
+    $m = [pscustomobject]@{ Section = 'Server check'; Context = 'Nothing was changed.'
+        Notes = @([pscustomobject]@{ Level = 'Error'; Text = 'This server is not ready' }, [pscustomobject]@{ Level = 'Success'; Text = 'Build finished.' }) }
+    $t = Get-NmGuiContinueText -Model $m
+    $n = @(Get-NmGuiNoteLine -Text $t)
+    ($t -match '^Server check') -and ($t -match 'Build finished\.') -and ($t -match 'Nothing was changed\.') -and ($n.Count -eq 1) -and ($n[0].Level -eq 'ERROR') -and ($n[0].Text -eq 'This server is not ready')
 }
 
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
@@ -419,15 +519,13 @@ Test-That '"Press Enter to continue" is recognised and starts a fresh page after
     $script:NmGui.Active = $false
     $isCont -and (-not $notCont) -and ($after -eq '')
 }
-Test-That 'Cancel in a dialog stops the action; tables piped to Out-Host land in the buffer' {
+Test-That 'Cancel in a dialog stops the action' {
     $script:NmGui.Active = $true
-    [pscustomobject]@{ Col = 'value-123' } | Format-Table | Out-Host
-    $buf = $script:NmGui.Buffer.ToString()
     $script:NmGui.InputProvider = { param($t, $p) $null }
     $cancelled = $false
     try { $null = Read-NmYesNo -Prompt 'Go?' } catch [System.OperationCanceledException] { $cancelled = $true }
     $script:NmGui.Active = $false
-    ($buf -match 'value-123') -and $cancelled -and ($script:NmGui.Buffer.Length -eq 0)
+    $cancelled -and ($script:NmGui.Buffer.Length -eq 0)
 }
 Test-That 'Clear-NmScreen starts a fresh dialog page in the window; with the window closed, Write-Host is normal' {
     $script:NmGui.Active = $true
@@ -477,7 +575,7 @@ Test-That 'Capture: Format-Table output is kept as a table (calculated columns t
         $text = $script:NmGui.Buffer.ToString()
     } finally { $script:NmGui.Active = $false }
     ($script:NmGui.Captures.Count -eq 1) -and (($cap.Columns -join ',') -eq 'DisplayName,Address,Type') -and ($cap.Rows[1].Address -eq 'sales@clientx.com') -and
-    ($cap.Title -eq 'Members of Sales (2)') -and ($text -like '*jane@clientx.com*') -and (-not ($cap.Rows[0].PSObject.Properties.Name -contains 'Secret'))
+    ($cap.Title -eq 'Members of Sales (2)') -and ($text -notlike '*jane@clientx.com*') -and (-not ($cap.Rows[0].PSObject.Properties.Name -contains 'Secret'))
 }
 Test-That 'Capture: Format-List and plain values are kept; nothing is kept with the window closed; clearing the screen clears them' {
     Clear-NmGuiBuffer

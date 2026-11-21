@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.6
+    Version: 0.7
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7 - The server check has a heading (the window shows it as a table in the first question).
     0.6 - Runs in the window too (Start-NutmegAD.ps1 -NewForest -Gui); the sign-in task then reopens the window.
     0.5 - Sign-in task starts in the toolkit folder; the finished message says what to run next.
     0.4 - Time zone defaults to Eastern Standard Time (Settings > New forest build), not the server's own.
@@ -46,7 +47,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.6'
+    Version  = '0.7'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -260,6 +261,8 @@ function Read-NmNewForestPlan {
 
     Write-NmLog 'Checking this server before anything changes...' -Level INFO
     $checks = @(Get-NmNewForestPreflight)
+    Write-Host ''
+    Write-Host 'Server check' -ForegroundColor Cyan
     $checks | Format-Table Check, Result, Detail -AutoSize -Wrap | Out-Host
     if (@($checks | Where-Object Result -eq 'Not ready').Count) {
         Write-NmLog 'This server is not ready for the build (see Not ready above). Nothing was changed.' -Level ERROR
