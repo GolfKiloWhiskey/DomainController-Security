@@ -77,4 +77,7 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
   (Yes skips the domain name; No asks everything again). Change the domain name when carrying on:
   NetBIOS is asked again.
 - Type an address that answers (the gateway) at the static IP question: refused in red, asked again.
+- Pending restart: the check shows a Warning; with the name kept, phase 0 still restarts. If Windows
+  wants another restart before AD DS (an update), the build stops with Restart now / Restart in
+  30 minutes; try the 30-minute choice and watch for the 5-minute reminders.
 - Keep the computer name: no restart after phase 0; phase 1 follows straight away.

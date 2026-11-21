@@ -583,6 +583,13 @@ function Test-NmGuiContinue {
     return ("$Text".TrimEnd() -match 'Press Enter to continue$')
 }
 
+function Test-NmGuiCheckPage {
+    # True when a "Press Enter to continue" screen is a check list (a table with Result or Status):
+    # it opens as the modern dialog with badges, not the results viewer.
+    param([object[]]$Captures = @())
+    return [bool](@($Captures | Where-Object { $_ -and @(Get-NmGuiCheckRowModel -Capture $_).Count }).Count)
+}
+
 function Get-NmGuiContinueText {
     # The text for a "Press Enter to continue" pop-up: its warnings and errors (which the pop-up shows
     # as notes above the tables), then the plain text, successes included. No console borders or log stamps.
@@ -628,8 +635,26 @@ function Read-NmGuiHost {
     } elseif ($continue) {
         $model = Get-NmGuiDialogModel -Text $text -Prompt $Prompt
         $caps = @($script:NmGui.Captures.ToArray())
-        $heading = if ($model.Title -ne 'Results' -or -not $caps.Count) { $model.Title } elseif ($caps[0].Title) { $caps[0].Title } else { 'Results' }
-        $null = Show-NmGuiDialog -Text (Get-NmGuiContinueText -Model $model) -Heading $heading -NoInput -OkLabel 'Continue' -Captures $caps
+        $heading = if ($model.Title -ne 'Results' -or -not $caps.Count) { $model.Title } elseif ($caps[0].Title) { Get-NmGuiShortTitle -Title $caps[0].Title } else { 'Results' }
+        if (Test-NmGuiCheckPage -Captures $caps) {
+            # A check list (the server check): the modern dialog, its badges, Continue or Cancel,
+            # titled by the check ("Server check").
+            $first = @($caps | Where-Object { $_ -and @(Get-NmGuiCheckRowModel -Capture $_).Count })[0]
+            $short = Get-NmGuiShortTitle -Title "$($first.Title)"
+            if ($short) { $heading = $short }
+            $model.Title = $heading
+            if ($model.Section -eq $heading) { $model.Section = '' }
+            $model.Kind = 'Continue'
+            Set-NmGuiStatus -Text "Review: $heading"
+            $answer = Show-NmGuiQuestion -Model $model -Captures $caps
+            if ($null -eq $answer) {
+                [void]$script:NmGui.Transcript.Append("> (cancelled)`r`n")
+                Clear-NmGuiBuffer
+                throw (New-Object System.OperationCanceledException 'Cancelled in the window.')
+            }
+        } else {
+            $null = Show-NmGuiDialog -Text (Get-NmGuiContinueText -Model $model) -Heading $heading -NoInput -OkLabel 'Continue' -Captures $caps
+        }
         $answer = ''   # closing the window counts as Continue too
     } else {
         $model = Get-NmGuiDialogModel -Text $text -Prompt $Prompt
@@ -2500,6 +2525,16 @@ function Show-NmGuiQuestion {
     Set-NmGuiDialogBody -Dialog $d -Model $Model -Captures $Captures
     $d.SizeToContent = 'Height'
     $cancel.Add_Click({ $state.Answer = $null; $d.Close() }.GetNewClosure())
+
+    if ($Model.Kind -eq 'Continue') {
+        # Something to read before going on (a check list): Continue, or Cancel to stop.
+        $ok.Content = 'Continue'; $ok.IsDefault = $true
+        $hint.Text = 'Read it, then Continue'
+        $ok.Add_Click({ $state.Answer = ''; $d.Close() }.GetNewClosure())
+        $d.Add_ContentRendered({ $ok.Focus() | Out-Null }.GetNewClosure())
+        [void]$d.ShowDialog()
+        return $state.Answer
+    }
 
     if ($Model.Kind -eq 'Text') {
         $d.FindName('InputArea').Visibility = 'Visible'

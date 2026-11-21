@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.1
+    Version: 0.7.2
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,8 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.2 - Server check first in its own pop-up (window); a pending restart ends phase 0; before AD DS a pending restart stops
+            the build with Restart now / in 30 minutes (reminders every 5 minutes).
     0.7.1 - Answers saved as they are given and checked again when the build carries on; domain and IP checked at their
           question; time zone from a list of names; clearer questions; the plan shows the new forest; a card per phase;
           a restart notice.
@@ -50,7 +52,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.1'
+    Version  = '0.7.2'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -101,7 +103,7 @@ function Get-NmNewForestPreflight {
 
     $pending = $false
     try { $pending = Test-NmPendingReboot } catch { $pending = $false }
-    & $row 'No restart pending' $(if ($pending) { 'Warning' } else { 'OK' }) $(if ($pending) { 'Windows is waiting for a restart: restart first, or the role install may fail' } else { 'none' })
+    & $row 'No restart pending' $(if ($pending) { 'Warning' } else { 'OK' }) $(if ($pending) { 'Windows is waiting for a restart: the build restarts the server before installing AD DS' } else { 'none' })
 
     try {
         $free = Get-NmFreeSpaceGB
@@ -361,7 +363,7 @@ function Get-NmNewForestPlanText {
         "Computer name: $($a.ComputerName)$(if ($rename) { " (now $((Get-NmLocalComputer).Name))" } else { ' (unchanged)' })"
         'Sign-in task: reopens the build after each restart (removed at the end)'
         "Static IP on $($a.AdapterName): $($a.IPAddress)/$($a.PrefixLength), gateway $($a.Gateway), DNS $(@($a.DnsServers) -join ', ') (now $($a.CurrentIp))"
-        $(if ($rename) { 'Restart (for the new name)' } else { 'No restart needed yet' })
+        $(if ($rename) { 'Restart (for the new name)' } elseif (Test-NmPendingRebootSafe) { 'Restart (Windows is waiting for one)' } else { 'No restart needed yet' })
         'Install AD DS, DNS, Group Policy Management and the AD module'
         "New forest $($a.Domain) ($($a.NetBIOS)), level $($a.FunctionalLevel), DNS on this DC; DSRM password asked then, never saved"
         "Database $($a.DatabasePath), logs $($a.LogPath), SYSVOL $($a.SysvolPath)"
@@ -398,6 +400,8 @@ function Read-NmNewForestPlan {
     Write-Host ''
     Write-Host 'Server check' -ForegroundColor Cyan
     $checks | Format-Table Check, Result, Detail -AutoSize -Wrap | Out-Host
+    # In the window the check is its own pop-up, first, before any question.
+    if ($script:NmGui -and $script:NmGui.Active -and -not @($checks | Where-Object Result -eq 'Not ready').Count) { Wait-NmKey }
     if (@($checks | Where-Object Result -eq 'Not ready').Count) {
         Write-NmLog 'This server is not ready for the build (see Not ready above). Nothing was changed.' -Level ERROR
         Wait-NmKey
@@ -442,6 +446,68 @@ function Read-NmNewForestPlan {
 # ---------------------------------------------------------------------------
 # The build
 # ---------------------------------------------------------------------------
+function Test-NmPendingRebootSafe {
+    # Test-NmPendingReboot, false when it cannot be read.
+    try { return [bool](Test-NmPendingReboot) } catch { return $false }
+}
+
+function Invoke-NmPendingRestart {
+    <#
+    .SYNOPSIS
+        Windows is still waiting for a restart before AD DS is installed: nothing is installed. The
+        technician restarts now, or within 30 minutes with a reminder every 5 minutes, or not at all
+        (restarts it later themselves). The sign-in task carries the build on after the restart.
+        Returns what was chosen, for the results.
+    #>
+    [CmdletBinding()]
+    param([string]$SignInAs = 'Administrator', [int]$Minutes = 30, [int]$RemindEvery = 5)
+    Write-Host ''
+    Write-Host 'Windows is waiting for a restart' -ForegroundColor Cyan
+    Write-Host 'AD DS cannot be installed until the server restarts. Nothing has been installed.' -ForegroundColor Red
+    $pick = Show-NmMenu -Title 'Restart the server' -Back -NoClear -Default '1' -Options @(
+        [pscustomobject]@{ Key = '1'; Label = 'Restart now'; Detail = 'in 60 seconds' }
+        [pscustomobject]@{ Key = '2'; Label = "Restart in $Minutes minutes"; Detail = "a reminder every $RemindEvery minutes" }
+    )
+    if ($pick -eq '1') {
+        Write-NmLog 'Restart before AD DS: now.' -Level INFO
+        Restart-NmServer -Seconds 60
+        Show-NmRestartNotice -SignInAs $SignInAs
+        return 'restarting in 60 seconds; the build carries on after you sign in'
+    }
+    if ($pick -ne '2') {
+        Write-NmLog 'Restart before AD DS: not now. Restart the server, sign in, and the build carries on.' -Level WARN
+        return 'not restarted: restart the server yourself; the build carries on after you sign in'
+    }
+
+    Write-NmLog "Restart before AD DS: in $Minutes minutes." -Level INFO
+    $deadline = (Get-NmNow).AddMinutes($Minutes)
+    Restart-NmServer -Seconds ($Minutes * 60)
+    while ($true) {
+        $left = [int][Math]::Ceiling(($deadline - (Get-NmNow)).TotalMinutes)
+        $wait = [Math]::Min($RemindEvery, $left - 1)
+        if ($wait -lt 1) { break }
+        Wait-NmRestartReminder -Seconds ($wait * 60) -Status "The server restarts in $left minutes"
+        $left = [int][Math]::Ceiling(($deadline - (Get-NmNow)).TotalMinutes)
+        if ($left -le 1) { break }
+        Write-Host ''
+        Write-Host "Reminder: the server restarts in $left minutes" -ForegroundColor Cyan
+        Write-Host "Sign in as $SignInAs afterwards and the build carries on." -ForegroundColor Yellow
+        $r = Show-NmMenu -Title "The server restarts in $left minutes" -Back -NoClear -Default '1' -Options @(
+            [pscustomobject]@{ Key = '1'; Label = 'Remind me again'; Detail = "in $([Math]::Min($RemindEvery, $left - 1)) minutes" }
+            [pscustomobject]@{ Key = '2'; Label = 'Restart now'; Detail = 'in 60 seconds' }
+        )
+        if ($r -eq '2') {
+            Write-NmLog 'Restart before AD DS: brought forward to now.' -Level INFO
+            Stop-NmScheduledRestart
+            Restart-NmServer -Seconds 60
+            Show-NmRestartNotice -SignInAs $SignInAs
+            return 'restarting in 60 seconds (brought forward); the build carries on after you sign in'
+        }
+        if ($r -eq 'B') { break }   # no more reminders; the restart stays scheduled
+    }
+    return "restart scheduled at $($deadline.ToString('HH:mm')); the build carries on after you sign in"
+}
+
 function Show-NmRestartNotice {
     # Says the server restarts and who to sign in as. In the window a pop-up (the restart comes in 60
     # seconds whatever is clicked); in the console the lines alone, nothing to press.
@@ -543,9 +609,14 @@ function Invoke-NmNewForestBuild {
                 Set-NmStaticIp -InterfaceIndex ([int]$a.AdapterIndex) -IPAddress $a.IPAddress -PrefixLength ([int]$a.PrefixLength) -Gateway $a.Gateway -DnsServers @($a.DnsServers)
                 return "$($a.IPAddress)/$($a.PrefixLength) via $($a.Gateway)"
             }))
+            # A restart ends phase 0 when the name changed, or when Windows is waiting for one anyway
+            # (the role install can fail with a restart pending).
             $renamed = ("$((Get-NmLocalComputer).Name)" -ne "$($a.ComputerName)")
+            $waiting = (-not $renamed) -and (Test-NmPendingRebootSafe)
+            $renamed = $renamed -or $waiting
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'PrepareRestart' -Phase $script:NmPhase0 -Label 'Restart' -Action {
-                if (-not $renamed) { return 'not needed (the name did not change)' }
+                if (-not $renamed) { return 'not needed (the name did not change, and Windows is not waiting for one)' }
+                if ($waiting) { Write-NmLog 'Windows is waiting for a restart: restarting before AD DS is installed.' -Level INFO }
                 Restart-NmServer -Seconds 60
                 Show-NmRestartNotice -SignInAs 'Administrator (the local one)'
                 return 'restarting in 60 seconds; the build reopens when you sign in'
@@ -555,6 +626,12 @@ function Invoke-NmNewForestBuild {
 
         # ---- Phase 1: promote ----
         if (-not (Test-NmBuildStepDone -State $state -Name 'PromoteRestart')) {
+            # Windows still waiting for a restart (an update queued one since): stop before the roles,
+            # and let the technician restart now or within 30 minutes.
+            if (-not (Test-NmBuildStepDone -State $state -Name 'Features') -and (Test-NmPendingRebootSafe)) {
+                $rows.Add([pscustomobject]@{ Phase = $script:NmPhase1; Step = 'Restart before AD DS'; Result = 'Waiting'; Detail = (Invoke-NmPendingRestart -SignInAs "$(if ((Get-NmLocalComputer).PartOfDomain) { "$($a.NetBIOS)\" })Administrator") })
+                return $rows.ToArray()
+            }
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'Features' -Phase $script:NmPhase1 -Label 'AD DS, DNS and GPMC' -Action {
                 $null = Confirm-NmChange -Action 'Install AD DS, DNS, Group Policy Management and the AD module'
                 $r = Install-NmAddsFeature

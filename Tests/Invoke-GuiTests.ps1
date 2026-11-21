@@ -569,6 +569,15 @@ Test-That 'Build results: one card per phase, a line per step named by the step,
     ($p0.Fields[0].Value -eq 'Eastern Standard Time (was Pacific Standard Time) - Done') -and ($m.Items[1].Level -eq 'High')
 }
 
+Test-That 'A check list before "Press Enter to continue" opens as the modern check dialog, not the results viewer' {
+    $check = [pscustomobject]@{ Title = 'New Forest Build (first DC) > Server check'; Columns = @('Check', 'Result', 'Detail'); Rows = @([pscustomobject]@{ Check = 'Running as administrator'; Result = 'OK'; Detail = 'yes' }) }
+    $plain = [pscustomobject]@{ Title = 'Members'; Columns = @('Name', 'Mail'); Rows = @([pscustomobject]@{ Name = 'Jane'; Mail = 'jane@clientx.com' }) }
+    $code = (Get-Command Read-NmGuiHost).ScriptBlock.ToString()
+    $q = (Get-Command Show-NmGuiQuestion).ScriptBlock.ToString()
+    (Test-NmGuiCheckPage -Captures @($check)) -and (-not (Test-NmGuiCheckPage -Captures @($plain))) -and (-not (Test-NmGuiCheckPage -Captures @())) -and
+    ($code -match "\`$model.Kind = 'Continue'") -and ($q -match "if \(\`$Model.Kind -eq 'Continue'\)") -and ($q -match "\`$ok.Content = 'Continue'")
+}
+
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
     ((Get-NmSetting -Key ResultsView) -eq 'Cards') -and (@($script:NmSettingSections) -contains 'Window')
 }
