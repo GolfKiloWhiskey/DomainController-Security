@@ -2,6 +2,46 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.8.0 - 11/21/2026
+
+From Cliff's review of the first full window run on the VM:
+
+**The build's questions**
+- **Answers are saved as you give them.** If the questions stop (Cancel, Back, a closed window),
+  the next run says "Answers saved on ...: cotc.local, COTCDC0, ..." and offers to carry on. Each
+  saved answer is checked again before it is used: a domain that now answers on the network, or an
+  address now in use, is asked again. A new domain name asks the NetBIOS name again; another
+  adapter asks the network again. Answering No starts the questions afresh. Once the plan is
+  approved, the saved answers give way to the build's own record, which already carried on after
+  every restart.
+- **The domain and the IP are checked at their question**: "Domain controllers for cotc.local
+  already answer on this network" or "Something already answers on 172.20.16.50" appears in red
+  and the question is asked again, instead of the build stopping after the last question.
+- **Time zone is a list of names** ("(UTC-05:00) Eastern Time (US & Canada)" and the other US zones,
+  UTC), the default (Eastern) first, Enter or OK takes it. "Another time zone" still lets you type one.
+- Clearer questions: "Prefix length (24 = 255.255.255.0)"; "DNS servers until promotion" with a
+  note about commas and the DC's own DNS; the folders question is short, with the paths under it.
+- **The plan shows the new forest and this server** ("New forest: cotc.local (COTC)",
+  "This server: WIN-... > COTCDC0"), not "Domain: no domain", with numbered steps.
+- **A restart is announced**: "Restarting in 60 seconds. Sign in as ... and the build carries on."
+  (a pop-up in the window).
+- Results read by phase: "Phase 0: Prepare the server", "Phase 1: Promote to the first DC".
+
+**The window**
+- Dialogs keep the same width and fit inside the window (the first one ran off the VM's screen).
+- Check tables show a coloured badge per row (OK green, Warning amber, Not ready red) and the
+  detail in full; their title is short ("Server check").
+- The section label ("THE NEW FOREST") stays on every question under it, not just the first.
+- The status bar says which question is open ("Question: This server > Computer name") instead
+  of "Checking this server..." throughout.
+- The text behind the dialogs is hidden while questions are asked.
+- No clock icon on "Windows Server 2016 (older DCs can join later)".
+- **The build's results are one card per phase**, a line per step ("Time zone: Eastern Standard
+  Time (was Pacific Standard Time) - Done"), instead of a card per step titled "0 Prepare".
+- **Output panel:** wraps instead of scrolling sideways; no repeated header blocks; a cancelled
+  question ends its line with "> (cancelled)"; the time zone change notes that log times jump.
+- Not run on Windows yet: tested against stand-ins (191 tests).
+
 ## 0.7.0 - 11/21/2026
 
 - **`.\Start-NutmegAD.ps1` checks the server when it starts** (Cliff: on the workgroup VM it opened

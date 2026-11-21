@@ -40,6 +40,7 @@ function Confirm-NmChange {
         [switch]$DomainWide,
         [switch]$RequireTyped,
         [string]$ConfirmWord,
+        [string[]]$Facts = @(),   # extra lines ("New forest: clientx.local"); with them, a missing domain is not shown
         [switch]$WhatIf
     )
 
@@ -51,7 +52,8 @@ function Confirm-NmChange {
     if (-not $inWindow) {
         Write-Host $script:NmBorder -ForegroundColor Yellow
         Write-Host "   CHANGE: $Action" -ForegroundColor Yellow
-        Write-Host "   Domain: $domain" -ForegroundColor Yellow
+        foreach ($f in $Facts) { Write-Host "   $f" -ForegroundColor Yellow }
+        if ($session.Domain -or -not $Facts.Count) { Write-Host "   Domain: $domain" -ForegroundColor Yellow }
         if ($session.Server) { Write-Host "   DC:     $($session.Server)" -ForegroundColor Yellow }
         if ($DomainWide) {
             Write-Host '   Scope:  domain-wide' -ForegroundColor Yellow
@@ -84,7 +86,7 @@ function Confirm-NmChange {
     }
     if ($inWindow) {
         # The window: one approval dialog with the change, every target and the word to type.
-        $ok = Read-NmGuiConfirm -Action $Action -Domain $domain -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind
+        $ok = Read-NmGuiConfirm -Action $Action -Domain $(if ($session.Domain -or -not $Facts.Count) { $domain } else { '' }) -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind -Facts $Facts
     } elseif ($needsTyped) {
         Write-Host "$kind. Type '$expected' to continue, or anything else to cancel" -ForegroundColor Yellow -NoNewline
         $typed = "$(Read-NmHost -Prompt ' ')".Trim()

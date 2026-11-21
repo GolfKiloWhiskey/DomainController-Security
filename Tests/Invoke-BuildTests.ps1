@@ -68,9 +68,10 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmTimeZoneId { param($Id) @('UTC', 'Eastern Standard Time', 'Central Standard Time') -contains $Id }
     function script:Set-NmTimeZone { param($Id) $script:Calls.Add("TimeZone $Id"); $script:FakeTz = $Id }
     function script:Set-NmComputerName { param($NewName) $script:Calls.Add("Rename $NewName") }
-    function script:Test-NmIpInUse { param($IPAddress) $script:FakeIpInUse }
+    # $true / $false, or the one address (or domain) that answers.
+    function script:Test-NmIpInUse { param($IPAddress) if ($script:FakeIpInUse -is [string]) { $IPAddress -eq $script:FakeIpInUse } else { [bool]$script:FakeIpInUse } }
     function script:Set-NmStaticIp { param($InterfaceIndex, $IPAddress, $PrefixLength, $Gateway, $DnsServers) $script:Calls.Add("StaticIp $InterfaceIndex $IPAddress/$PrefixLength gw $Gateway dns $($DnsServers -join ',')") }
-    function script:Test-NmDomainAnswers { param($Domain) $script:FakeDomainAnswers }
+    function script:Test-NmDomainAnswers { param($Domain) if ($script:FakeDomainAnswers -is [string]) { $Domain -eq $script:FakeDomainAnswers } else { [bool]$script:FakeDomainAnswers } }
     function script:Register-NmResumeTask { param($LauncherPath, [switch]$Gui) $script:Calls.Add("ResumeTask $LauncherPath$(if ($Gui) { ' -Gui' })") }
     function script:Unregister-NmResumeTask { $script:Calls.Add('ResumeTask removed') }
     function script:Restart-NmServer { param($Seconds) $script:Calls.Add("Restart $Seconds") }
@@ -96,6 +97,7 @@ function global:Reset-Server {
         $script:FakeTz = 'UTC'; $script:FakeIpInUse = $false; $script:FakeDomainAnswers = $false; $script:FakePreCheck = 'Success'
         $p = Get-NmBuildStatePath
         if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+        Remove-NmBuildDraft
     }
 }
 function global:Restart-Fake {
@@ -114,7 +116,8 @@ function global:Restart-Fake {
     } $Promoted.IsPresent
 }
 # The standard answers: clientx.local, defaults everywhere, DC01, Eastern time, one DC, then the typed approval.
-$global:StdAnswers = @('clientx.local', '', '1', 'n', 'dc01', 'Eastern Standard Time', '', '', '', '', '', 'clientx')
+# The time zone is a list now: Enter takes the first (the default, Eastern).
+$global:StdAnswers = @('clientx.local', '', '1', 'n', 'dc01', '', '', '', '', '', '', 'clientx')
 
 $script:Passed = 0
 $script:Failed = New-Object System.Collections.Generic.List[string]
@@ -258,20 +261,21 @@ Test-That 'The plan needs the domain short name typed; anything else saves nothi
     ($null -eq $r) -and -not (Get-NmBuildState)
 }
 
-Test-That 'A domain that already answers on the network is refused' {
+Test-That 'A domain that already answers on the network is refused at its question and asked again' {
     Reset-Server
-    $script:FakeDomainAnswers = $true
-    Answer (@($global:StdAnswers[0..10]) + '')
-    $r = Read-NmNewForestPlan 6>$null
-    ($null -eq $r) -and -not (Get-NmBuildState) -and $script:Calls.Count -eq 0
+    $script:FakeDomainAnswers = 'clientx.local'
+    Answer (@('clientx.local', 'clienty.local') + @($global:StdAnswers[1..10]) + 'clienty')
+    $out = & { $r = Read-NmNewForestPlan } 6>&1 | Out-String
+    $r = (Get-NmBuildState)
+    ($null -ne $r) -and ($r.Answers.Domain -eq 'clienty.local') -and ($out -match 'clientx.local already answer on this network') -and $script:TestAnswers.Count -eq 0
 }
 
-Test-That 'An address something already answers on is refused' {
+Test-That 'An address something already answers on is refused at its question and asked again' {
     Reset-Server
-    $script:FakeIpInUse = $true
-    Answer (@($global:StdAnswers[0..10]) + '')
-    $r = Read-NmNewForestPlan 6>$null
-    ($null -eq $r) -and -not (Get-NmBuildState)
+    $script:FakeIpInUse = '192.0.2.50'
+    Answer (@($global:StdAnswers[0..5]) + '' + '192.0.2.60' + @($global:StdAnswers[7..11]))
+    $out = & { $null = Read-NmNewForestPlan } 6>&1 | Out-String
+    ((Get-NmBuildState).Answers.IPAddress -eq '192.0.2.60') -and ($out -match 'Something already answers on 192.0.2.50') -and $script:TestAnswers.Count -eq 0
 }
 
 Test-That 'With two adapters, the DC''s adapter is picked from a list' {
@@ -281,6 +285,71 @@ Test-That 'With two adapters, the DC''s adapter is picked from a list' {
     $null = Read-NmNewForestPlan 6>$null
     $a = (Get-NmBuildState).Answers
     [int]$a.AdapterIndex -eq 7 -and $a.IPAddress -eq '198.51.100.50' -and (@($a.DnsServers) -join ',') -eq '198.51.100.1'
+}
+
+Test-That 'Answers are saved as they are given: Back after two questions, then carry on without asking them again' {
+    Reset-Server
+    Answer @('clientx.local', '', 'B')
+    $r1 = Read-NmNewForestPlan 6>$null
+    $draft = Get-NmBuildDraft
+    Answer (@('y') + @($global:StdAnswers[2..11]))
+    $out = & { $null = Read-NmNewForestPlan } 6>&1 | Out-String
+    $a = (Get-NmBuildState).Answers
+    ($null -eq $r1) -and ($draft.Domain -eq 'clientx.local') -and ($draft.NetBIOS -eq 'CLIENTX') -and (-not $draft.Contains('FunctionalLevel')) -and
+        ($out -match 'Domain name: clientx.local \(saved answer\)') -and ($a.Domain -eq 'clientx.local') -and ($a.NetBIOS -eq 'CLIENTX') -and
+        $script:TestAnswers.Count -eq 0 -and (-not (Get-NmBuildDraft))
+}
+
+Test-That 'A saved answer that no longer passes is asked again (the domain started answering)' {
+    Reset-Server
+    Answer @('clientx.local', '', 'B')
+    $null = Read-NmNewForestPlan 6>$null
+    $script:FakeDomainAnswers = 'clientx.local'
+    Answer (@('y', 'clienty.local', '') + @($global:StdAnswers[2..10]) + 'clienty')
+    $null = Read-NmNewForestPlan 6>$null
+    $a = (Get-NmBuildState).Answers
+    ($a.Domain -eq 'clienty.local') -and ($a.NetBIOS -eq 'CLIENTY') -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'Declining the saved answers starts the questions again; a plan not approved keeps them' {
+    Reset-Server
+    Answer @('clientx.local', '', 'B')
+    $null = Read-NmNewForestPlan 6>$null
+    Answer (@('n') + @($global:StdAnswers[0..10]) + 'wrong')
+    $r = Read-NmNewForestPlan 6>$null
+    $kept = Get-NmBuildDraft
+    ($null -eq $r) -and $script:TestAnswers.Count -eq 0 -and ($kept.Contains('Gateway')) -and (-not (Get-NmBuildState))
+}
+
+Test-That 'Time zone: a list by name, the default first; another one can be typed' {
+    Reset-Server
+    $z = @(Get-NmTimeZoneChoice -Default 'Eastern Standard Time')
+    Answer (@($global:StdAnswers[0..4]) + '2' + @($global:StdAnswers[6..11]))
+    $null = Read-NmNewForestPlan 6>$null
+    $central = (Get-NmBuildState).Answers.TimeZone
+    Reset-Server
+    Answer (@($global:StdAnswers[0..4]) + 'A' + 'Nowhere Time' + 'UTC' + @($global:StdAnswers[6..11]))
+    $null = Read-NmNewForestPlan 6>$null
+    (($z | ForEach-Object Id) -join ',') -eq 'Eastern Standard Time,Central Standard Time,UTC' -and ($central -eq 'Central Standard Time') -and
+        ((Get-NmBuildState).Answers.TimeZone -eq 'UTC') -and $script:TestAnswers.Count -eq 0
+}
+
+Test-That 'The plan names the new forest and this server, not "no domain"; results are grouped by phase' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $out = & { $null = Read-NmNewForestPlan } 6>&1 | Out-String
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $t = Get-NmTool -Id 'new-forest'
+    ($out -match 'New forest: clientx.local \(CLIENTX\)') -and ($out -match 'This server: WIN-7Q2B4K9 > DC01') -and ($out -notmatch 'Domain: no domain') -and
+        (@($rows | Where-Object Phase -eq 'Phase 0: Prepare the server').Count -eq 5) -and ((@($t.CardGroup) -join ',') -eq 'Phase,Step')
+}
+
+Test-That 'The restart is announced; in the console nothing waits for a key' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $out = & { $null = Invoke-NmNewForestBuild -Resume } 6>&1 | Out-String
+    ($out -match 'Restarting in 60 seconds') -and ($out -match 'Sign in as Administrator') -and $script:TestAnswers.Count -eq 0
 }
 
 # ---------------------------------------------------------------------------
@@ -301,10 +370,11 @@ Test-That 'Phase 0 in the window: the sign-in task reopens the window (-Gui)' {
     Reset-Server
     Answer $global:StdAnswers
     $null = Read-NmNewForestPlan 6>$null
+    Answer @('')   # the restart notice is a pop-up in the window: Continue
     $script:NmGui.Active = $true
     try { $rows = @(Invoke-NmNewForestBuild -Resume) } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
     $c = @($script:Calls)
-    ($c[2] -like 'ResumeTask *Start-NutmegAD.ps1 -Gui') -and (@($rows | Where-Object Result -eq 'Failed').Count -eq 0) -and
+    ($c[2] -like 'ResumeTask *Start-NutmegAD.ps1 -Gui') -and (@($rows | Where-Object Result -eq 'Failed').Count -eq 0) -and $script:TestAnswers.Count -eq 0 -and
         ((@($rows | Where-Object Step -eq 'Sign-in task')[0].Detail) -like '*in the window*')
 }
 
@@ -371,7 +441,7 @@ Test-That 'Phase 1 after the restart: roles, DSRM asked twice, Microsoft''s pre-
     $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
     $c = @($script:Calls)
     $fa = $script:ForestArgsSeen
-    (@($rows | Where-Object Phase -eq '0 Prepare').Count -eq 0) -and (($c -join '|') -eq 'Features|PreCheck|Promote|Restart 60') -and
+    (@($rows | Where-Object Phase -eq 'Phase 0: Prepare the server').Count -eq 0) -and (($c -join '|') -eq 'Features|PreCheck|Promote|Restart 60') -and
         $fa.DomainName -eq 'clientx.local' -and $fa.DomainNetbiosName -eq 'CLIENTX' -and $fa.ForestMode -eq 'Win2025' -and $fa.DomainMode -eq 'Win2025' -and
         $fa.InstallDns -and $fa.NoRebootOnCompletion -and $fa.Force -and ($fa.SafeModeAdministratorPassword -is [securestring]) -and $script:SecretAnswers.Count -eq 0
 }

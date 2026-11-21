@@ -110,3 +110,48 @@ function Set-NmPlanApproved {
     param([AllowNull()][string]$Plan)
     $script:NmPlanApproved = $Plan
 }
+
+# ---------------------------------------------------------------------------
+# Answers given before the plan is approved (a draft), so a stopped run carries on
+# ---------------------------------------------------------------------------
+function Get-NmBuildDraftPath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    return (Join-Path (Split-Path -Parent (Get-NmBuildStatePath)) 'Draft.json')
+}
+
+function Get-NmBuildDraft {
+    <#
+    .SYNOPSIS
+        The answers saved so far (never passwords), as an ordered hashtable with Saved (when), or $null.
+    #>
+    [CmdletBinding()]
+    param()
+    $p = Get-NmBuildDraftPath
+    if (-not (Test-Path -LiteralPath $p)) { return $null }
+    try { $o = ConvertFrom-Json -InputObject (Get-Content -LiteralPath $p -Raw -ErrorAction Stop) } catch { return $null }
+    $h = [ordered]@{}
+    foreach ($prop in $o.PSObject.Properties) { $h[$prop.Name] = $prop.Value }
+    return $h
+}
+
+function Save-NmBuildDraft {
+    # Saves the answers given so far, after each answer.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Answers)
+    $p = Get-NmBuildDraftPath
+    $dir = Split-Path -Parent $p
+    if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+    $h = [ordered]@{}
+    foreach ($k in $Answers.Keys) { $h[$k] = $Answers[$k] }
+    $h.Saved = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    [pscustomobject]$h | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $p -Encoding UTF8 -ErrorAction Stop
+}
+
+function Remove-NmBuildDraft {
+    [CmdletBinding()]
+    param()
+    $p = Get-NmBuildDraftPath
+    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue }
+}

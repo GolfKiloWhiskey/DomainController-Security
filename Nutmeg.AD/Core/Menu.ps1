@@ -221,7 +221,8 @@ function Show-NmMenu {
         [switch]$Back,
         [string[]]$ExtraKeys = @(),
         [switch]$NoClear,
-        [switch]$Clear   # kept for older callers; every menu clears now unless -NoClear
+        [switch]$Clear,   # kept for older callers; every menu clears now unless -NoClear
+        [string]$Default  # the key Enter picks (shown in the prompt)
     )
 
     # On the way back to the main menu: leave without drawing.
@@ -253,8 +254,9 @@ function Show-NmMenu {
 
     # Wrong keys re-ask on the same screen, so the message stays visible.
     while ($true) {
-        Write-Host 'Select an option' -ForegroundColor Yellow -NoNewline
+        Write-Host $(if ($Default) { "Select an option (Enter for $Default)" } else { 'Select an option' }) -ForegroundColor Yellow -NoNewline
         $choice = "$(Read-NmHost -Prompt ' ')".Trim().ToUpper()
+        if (-not $choice -and $Default) { $choice = "$Default".ToUpper() }
         if ($mainKey -and $choice -eq 'M') { $script:NmGoMain = $true; return 'B' }
         if ($valid -contains $choice) { return $choice }
         Write-Host "'$choice' is not an option." -ForegroundColor Red
