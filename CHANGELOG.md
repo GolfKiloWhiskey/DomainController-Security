@@ -2,6 +2,13 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.8 - 11/21/2026
+
+- **The New Forest Build offers Eastern Standard Time** as the time zone (Cliff), not whatever the
+  fresh server came with. Press Enter to take it, or type another. The default lives in
+  Settings > New forest build, for a client somewhere else.
+- Two sessions started in the same second no longer share a log file (the second gets `_2`).
+
 ## 0.2.7 - 11/21/2026
 
 - **One log from download to finished DC** (Cliff). `Get-NutmegAD.ps1` starts the log in

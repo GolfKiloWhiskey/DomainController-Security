@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.3
+    Version: 0.4
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.4 - Time zone defaults to Eastern Standard Time (Settings > New forest build), not the server's own.
     0.3 - The log says what each step did, and when the time zone change moves the log's clock.
     0.2 - Opens on a clean screen with the toolkit header (issue #6).
     0.1 - Pre-flight, questions, phase 0 (prepare the server) and phase 1 (promote), then a check of the new DC.
@@ -43,7 +44,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.3'
+    Version  = '0.4'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -174,7 +175,8 @@ function Read-NmNewForestAnswer {
     Write-Host ''
     Write-Host 'This server' -ForegroundColor Cyan
     $a.ComputerName = (Read-NmCheckedInput -Prompt 'Computer name' -Default "$($pc.Name)" -Test { param($x) Test-NmComputerNameText $x } -Why '1 to 15 letters, digits or hyphens, not only digits.').ToUpper()
-    $tzDefault = Get-NmTimeZoneId
+    $tzDefault = "$(Get-NmSetting -Key BuildTimeZone)"   # Eastern Standard Time unless Settings say otherwise
+    if (-not (Test-NmTimeZoneId $tzDefault)) { $tzDefault = Get-NmTimeZoneId }
     $a.TimeZone = Read-NmCheckedInput -Prompt 'Time zone (Windows ID)' -Default $tzDefault -Test { param($x) Test-NmTimeZoneId $x } -Why 'Not a Windows time zone ID. Get-TimeZone -ListAvailable lists them (for example Eastern Standard Time).'
 
     $nics = @(Get-NmNetAdapterInfo)
