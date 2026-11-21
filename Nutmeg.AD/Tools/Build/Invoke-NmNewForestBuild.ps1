@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.2
+    Version: 0.7.3
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.3 - Results start with what is being built (Build: <domain>) and end with the steps still to do.
     0.7.2 - Server check first in its own pop-up (window); a pending restart ends phase 0; before AD DS a pending restart stops
             the build with Restart now / in 30 minutes (reminders every 5 minutes).
     0.7.1 - Answers saved as they are given and checked again when the build carries on; domain and IP checked at their
@@ -52,7 +53,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.2'
+    Version  = '0.7.3'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -508,6 +509,54 @@ function Invoke-NmPendingRestart {
     return "restart scheduled at $($deadline.ToString('HH:mm')); the build carries on after you sign in"
 }
 
+function Get-NmNewForestInfoRow {
+    <#
+    .SYNOPSIS
+        What is being built, as result rows (the window's first card, "Build: <domain>"): the
+        forest, this server, the network, the folders, and when it started with which log.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Answers, $State)
+    $a = $Answers
+    $phase = "Build: $($a.Domain)"
+    $level = if ($script:NmForestLevels.Contains("$($a.FunctionalLevel)")) { $script:NmForestLevels["$($a.FunctionalLevel)"] } else { "$($a.FunctionalLevel)" }
+    $row = { param($step, $detail) [pscustomobject]@{ Phase = $phase; Step = $step; Result = ''; Detail = $detail } }
+    & $row 'Forest' "$($a.Domain) ($($a.NetBIOS)), $level; more DCs planned: $(if ($a.MoreDCs) { 'yes' } else { 'no' })"
+    & $row 'This server' "$($a.ComputerName), time zone $($a.TimeZone)"
+    & $row 'Network' "$($a.IPAddress)/$($a.PrefixLength) on $($a.AdapterName), gateway $($a.Gateway), DNS until promotion $(@($a.DnsServers) -join ', ')"
+    & $row 'Folders' "database $($a.DatabasePath), logs $($a.LogPath), SYSVOL $($a.SysvolPath)"
+    if ($State) {
+        & $row 'Started' "$($State.Started)$(if ($State.LogPath) { "; log $($State.LogPath)" })"
+    }
+}
+
+# Every step of phases 0 and 1, in order, for the "still to do" card.
+$script:NmBuildStepList = @(
+    @{ Name = 'TimeZone'; Phase = 0; Label = 'Time zone' }
+    @{ Name = 'ComputerName'; Phase = 0; Label = 'Computer name' }
+    @{ Name = 'ResumeTask'; Phase = 0; Label = 'Sign-in task' }
+    @{ Name = 'StaticIp'; Phase = 0; Label = 'Static IP' }
+    @{ Name = 'PrepareRestart'; Phase = 0; Label = 'Restart' }
+    @{ Name = 'Features'; Phase = 1; Label = 'AD DS, DNS and GPMC'; Detail = 'install the roles' }
+    @{ Name = 'Promote'; Phase = 1; Label = 'New forest'; Detail = 'DSRM password (asked then, never saved), Microsoft''s pre-checks, then the forest' }
+    @{ Name = 'PromoteRestart'; Phase = 1; Label = 'Restart'; Detail = 'sign in as <NETBIOS>\Administrator afterwards' }
+    @{ Name = 'Verify'; Phase = 1; Label = 'Check the new DC' }
+    @{ Name = 'Finish'; Phase = 1; Label = 'Finish'; Detail = 'remove the sign-in task, save a record of the build' }
+)
+
+function Add-NmBuildToDoRow {
+    # Adds the steps not done yet as rows of a "Still to do" card, so the results show what comes next.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)]$Answers, [Parameter(Mandatory)][System.Collections.Generic.List[object]]$Rows)
+    foreach ($s in $script:NmBuildStepList) {
+        if (Test-NmBuildStepDone -State $State -Name $s.Name) { continue }
+        $label = if ($s.Name -eq 'Promote') { "New forest $($Answers.Domain)" } else { $s.Label }
+        $phaseName = if ($s.Phase -eq 0) { $script:NmPhase0 } else { $script:NmPhase1 }
+        $detail = "$($s.Detail)".Replace('<NETBIOS>', "$($Answers.NetBIOS)")
+        $Rows.Add([pscustomobject]@{ Phase = 'Still to do'; Step = $label; Result = 'Next'; Detail = "$(($phaseName -split ':')[0])$(if ($detail) { ": $detail" })" })
+    }
+}
+
 function Show-NmRestartNotice {
     # Says the server restarts and who to sign in as. In the window a pop-up (the restart comes in 60
     # seconds whatever is clicked); in the console the lines alone, nothing to press.
@@ -570,6 +619,8 @@ function Invoke-NmNewForestBuild {
     }
 
     Set-NmPlanApproved -Plan "New Forest Build: $($a.Domain)"
+    # The window draws these as the first card: what is being built.
+    foreach ($r in @(Get-NmNewForestInfoRow -Answers $a -State $state)) { $rows.Add($r) }
     try {
         # ---- Phase 0: prepare the server ----
         if (-not (Test-NmBuildStepDone -State $state -Name 'PrepareRestart')) {
@@ -621,7 +672,7 @@ function Invoke-NmNewForestBuild {
                 Show-NmRestartNotice -SignInAs 'Administrator (the local one)'
                 return 'restarting in 60 seconds; the build reopens when you sign in'
             }))
-            if ($renamed) { return $rows.ToArray() }
+            if ($renamed) { Add-NmBuildToDoRow -State $state -Answers $a -Rows $rows; return $rows.ToArray() }
         }
 
         # ---- Phase 1: promote ----
@@ -630,6 +681,7 @@ function Invoke-NmNewForestBuild {
             # and let the technician restart now or within 30 minutes.
             if (-not (Test-NmBuildStepDone -State $state -Name 'Features') -and (Test-NmPendingRebootSafe)) {
                 $rows.Add([pscustomobject]@{ Phase = $script:NmPhase1; Step = 'Restart before AD DS'; Result = 'Waiting'; Detail = (Invoke-NmPendingRestart -SignInAs "$(if ((Get-NmLocalComputer).PartOfDomain) { "$($a.NetBIOS)\" })Administrator") })
+                Add-NmBuildToDoRow -State $state -Answers $a -Rows $rows
                 return $rows.ToArray()
             }
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'Features' -Phase $script:NmPhase1 -Label 'AD DS, DNS and GPMC' -Action {
@@ -658,6 +710,7 @@ function Invoke-NmNewForestBuild {
                 Show-NmRestartNotice -SignInAs "$($a.NetBIOS)\Administrator (same password as the local one)"
                 return "restarting in 60 seconds; sign in as $($a.NetBIOS)\Administrator and the build reopens"
             }))
+            Add-NmBuildToDoRow -State $state -Answers $a -Rows $rows
             return $rows.ToArray()
         }
 
@@ -686,6 +739,7 @@ function Invoke-NmNewForestBuild {
         return $rows.ToArray()
     } catch {
         $rows.Add([pscustomobject]@{ Phase = 'Stopped'; Step = 'The build stopped'; Result = 'Failed'; Detail = "$($_.Exception.Message) Fix it and run the build again: finished steps are skipped." })
+        Add-NmBuildToDoRow -State $state -Answers $a -Rows $rows
         return $rows.ToArray()
     } finally {
         Set-NmPlanApproved -Plan $null

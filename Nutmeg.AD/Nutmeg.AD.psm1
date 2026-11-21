@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.2
+    Version: 0.7.3
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.3 - New Forest Build results: a Build card (the answers) first and a Still to do card last; cards whose rows share one
+            status no longer repeat it on every line.
     0.7.2 - New Forest Build: server check its own pop-up first; a pending restart ends phase 0 even without a rename; before AD DS a
             pending restart stops the build: restart now or within 30 minutes (reminders every 5). Stop-NmScheduledRestart, Get-NmNow.
     0.7.1 - From Cliff's VM review: build answers saved as given (Core\Build.ps1 drafts) and checked again on carry-on; domain and
@@ -60,7 +62,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.2'
+$script:ModuleVersion = '0.7.3'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

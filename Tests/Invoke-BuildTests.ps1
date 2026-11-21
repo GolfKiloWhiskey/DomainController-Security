@@ -348,6 +348,19 @@ Test-That 'The plan names the new forest and this server, not "no domain"; resul
         (@($rows | Where-Object Phase -eq 'Phase 0: Prepare the server').Count -eq 5) -and ((@($t.CardGroup) -join ',') -eq 'Phase,Step')
 }
 
+Test-That 'Results start with what is being built and end with the steps still to do' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $info = @($rows | Where-Object Phase -eq 'Build: clientx.local')
+    $todo = @($rows | Where-Object Phase -eq 'Still to do')
+    ($rows[0].Phase -eq 'Build: clientx.local') -and ((($info | ForEach-Object Step) -join ',') -eq 'Forest,This server,Network,Folders,Started') -and
+        ($info[0].Detail -like 'clientx.local (CLIENTX), Windows Server 2025*more DCs planned: no') -and ($info[2].Detail -like '192.0.2.50/24 on Ethernet, gateway 192.0.2.1*') -and
+        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,Finish') -and
+        (@($todo | Where-Object Result -ne 'Next').Count -eq 0) -and ($todo[2].Detail -like '*CLIENTX\Administrator*') -and ($rows[-1].Phase -eq 'Still to do')
+}
+
 Test-That 'The restart is announced; in the console nothing waits for a key' {
     Reset-Server
     Answer $global:StdAnswers

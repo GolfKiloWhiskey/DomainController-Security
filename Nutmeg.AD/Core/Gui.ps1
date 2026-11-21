@@ -1341,6 +1341,10 @@ function Get-NmGuiGroupedCardModel {
     $keep = [Math]::Max(1, $Limit)
     $items = foreach ($k in @($order | Select-Object -First $keep)) {
         $idx = @($byKey[$k])
+        # Each line carries its own status only when the card's rows differ (a Done card lists its
+        # steps without "- Done" on every line).
+        $mixed = $false
+        if ($FacetColumn) { $mixed = @($idx | ForEach-Object { Get-NmGuiFacetValue -Column $FacetColumn -Value $All[$_].$FacetColumn } | Sort-Object -Unique).Count -gt 1 }
         $parts = New-Object System.Collections.Generic.List[string]
         $lines = @{}
         foreach ($i in $idx) {
@@ -1349,7 +1353,7 @@ function Get-NmGuiGroupedCardModel {
             if (-not $part) { $part = if ($splitCol) { '(blank)' } else { '' } }
             if (-not $lines.ContainsKey($part)) { $lines[$part] = New-Object System.Collections.Generic.List[string]; $parts.Add($part) }
             $vals = @(foreach ($c in $itemCols) { $v = ConvertTo-NmGuiFieldText $r.$c; if ("$v".Trim()) { $v } })
-            if ($FacetColumn -and $FacetColumn -ne $splitCol -and $itemCols -notcontains $FacetColumn) {
+            if ($mixed -and $FacetColumn -and $FacetColumn -ne $splitCol -and $itemCols -notcontains $FacetColumn) {
                 $fv = ConvertTo-NmGuiFieldText $r.$FacetColumn
                 if ("$fv".Trim()) { $vals += $fv }
             }
