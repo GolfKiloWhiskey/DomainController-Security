@@ -1,6 +1,6 @@
 @{
     RootModule           = 'Nutmeg.AD.psm1'
-    ModuleVersion        = '0.2.10'
+    ModuleVersion        = '0.2.11'
     CompatiblePSEditions = 'Desktop', 'Core'
     GUID                 = '062a02b8-3a18-437d-9a18-bed29fc8a82a'
     Author               = 'Cliff Waite'

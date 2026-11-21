@@ -2,6 +2,15 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.11 - 11/21/2026
+
+- **`Get-NutmegAD.ps1` updates itself.** Run from outside the toolkit folder (Cliff keeps it in
+  `C:\Temp`), it now replaces itself with the copy it just downloaded, so the next run is the latest.
+  Seen on the VM: the old 1.4 copy in `C:\Temp` kept the hand-off bug after the toolkit itself was
+  fixed, so the toolkit's lines went to a log of their own.
+- **Updating from inside the toolkit folder works:** it steps out of the folder before moving it to
+  `.previous` (Windows will not rename the folder the console is in).
+
 ## 0.2.10 - 11/21/2026
 
 - **Fixed: `Get-NutmegAD.ps1` could not hand over to PowerShell 7** ("Missing an argument for parameter

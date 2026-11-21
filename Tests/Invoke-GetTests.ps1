@@ -184,6 +184,30 @@ Test-That 'The launcher ignores a -LogPath that is really a parameter name' {
     $text -match "if \(\`$LogPath -and \`$LogPath\.StartsWith\('-'\)\) \{ \`$LogPath = '' \}"
 }
 
+Test-That 'Run from elsewhere, the script updates itself from the download; the same copy is left alone' {
+    $target = Join-Path $work 'self\DomainController-Security'
+    $null = Install-NutmegPackage -ZipPath (New-FakeZip -Name '9999999') -Path $target
+    Set-Content -Path (Join-Path $target 'Get-NutmegAD.ps1') -Value "`$ScriptVersion = '9.9'"
+    $old = Join-Path $work 'self-old.ps1'
+    Set-Content -Path $old -Value "`$ScriptVersion = '1.4'"
+    $v1 = Update-NutmegSelf -Self $old -Path $target
+    $v2 = Update-NutmegSelf -Self $old -Path $target                        # already the same
+    $v3 = Update-NutmegSelf -Self (Join-Path $target 'Get-NutmegAD.ps1') -Path $target   # run from the toolkit folder
+    $v1 -eq '9.9' -and (Get-Content $old -Raw) -match "'9.9'" -and $v2 -eq '' -and $v3 -eq ''
+}
+
+Test-That 'Updating while standing in the toolkit folder steps out of it first' {
+    $target = Join-Path $work 'cwd\DomainController-Security'
+    $null = Install-NutmegPackage -ZipPath (New-FakeZip -Name 'aaaaaaa') -Path $target
+    $was = Get-Location
+    try {
+        Set-Location -LiteralPath $target
+        $r = Install-NutmegPackage -ZipPath (New-FakeZip -Name 'bbbbbbb') -Path $target
+        $now = (Get-Location).ProviderPath
+    } finally { Set-Location $was }
+    $r.Commit -eq 'bbbbbbb' -and $now -eq (Split-Path -Parent $target)
+}
+
 Test-That 'The script is ASCII only and never uses -ExecutionPolicy Bypass or saves the token' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Raw
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot 'Get-NutmegAD.ps1'))
