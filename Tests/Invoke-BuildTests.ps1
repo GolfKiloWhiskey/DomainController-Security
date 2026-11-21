@@ -225,6 +225,25 @@ Test-That 'The default time zone follows Settings' {
     (Get-NmBuildState).Answers.TimeZone -eq 'Central Standard Time'
 }
 
+Test-That 'The sign-in task starts in the toolkit folder, and the launcher moves there itself' {
+    $global:TaskAction = $null
+    $file = Join-Path (Join-Path $script:NmModuleRoot 'Core') 'Server.ps1'
+    $def = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null).FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Register-NmResumeTask' }, $true)[0]
+    $folder = Join-Path ([System.IO.Path]::GetTempPath()) 'DomainController-Security'
+    & {
+        # The real function from the file, with the ScheduledTasks cmdlets standing in.
+        function New-ScheduledTaskAction { param($Execute, $Argument, $WorkingDirectory) $global:TaskAction = [pscustomobject]@{ Argument = $Argument; WorkingDirectory = $WorkingDirectory }; 'action' }
+        function New-ScheduledTaskTrigger { param([switch]$AtLogOn) 'trigger' }
+        function New-ScheduledTaskPrincipal { param($GroupId, $RunLevel) 'principal' }
+        function Register-ScheduledTask { param($TaskName, $Action, $Trigger, $Principal, [switch]$Force, $ErrorAction) }
+        . ([scriptblock]::Create($def.Extent.Text))
+        Register-NmResumeTask -LauncherPath (Join-Path $folder 'Start-NutmegAD.ps1')
+    }
+    $launcher = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
+    $global:TaskAction.WorkingDirectory -eq $folder -and $global:TaskAction.Argument -match '-NewForest' -and
+        $launcher -match 'Set-Location -LiteralPath \$PSScriptRoot'
+}
+
 Test-That 'A bad answer is asked again' {
     Reset-Server
     Answer (@('clientx', 'clientx.local', 'CLIENT.X', '') + $global:StdAnswers[2..11])

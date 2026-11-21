@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.4
+    Version: 0.5
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.5 - Sign-in task starts in the toolkit folder; the finished message says what to run next.
     0.4 - Time zone defaults to Eastern Standard Time (Settings > New forest build), not the server's own.
     0.3 - The log says what each step did, and when the time zone change moves the log's clock.
     0.2 - Opens on a clean screen with the toolkit header (issue #6).
@@ -44,7 +45,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.4'
+    Version  = '0.5'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -247,7 +248,8 @@ function Read-NmNewForestPlan {
         $done = @($state.Steps.PSObject.Properties | Where-Object { "$($_.Value.Status)" -eq 'Done' }).Count
         Write-Host "A build of $($state.Answers.Domain) is saved on this server (started $($state.Started), $done step(s) done$(if ($state.Finished) { ", finished $($state.Finished)" }))." -ForegroundColor Cyan
         if ($state.Finished) {
-            Write-Host 'This server''s build is finished. Use the toolkit''s other tools from here.' -ForegroundColor Green
+            Write-Host 'This server''s build is finished.' -ForegroundColor Green
+            Write-Host 'For the toolkit''s other tools, run: .\Start-NutmegAD.ps1' -ForegroundColor DarkGray
             Wait-NmKey
             return $null
         }

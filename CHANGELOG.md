@@ -2,6 +2,13 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.9 - 11/21/2026
+
+- **The window is left in the toolkit folder** (Cliff), ready to run it again, instead of
+  `C:\WINDOWS\system32` where the build's sign-in task opened it. `Start-NutmegAD.ps1` moves to its own
+  folder when it starts, and the sign-in task now starts there too.
+- The finished build's message says what to run next: `.\Start-NutmegAD.ps1`.
+
 ## 0.2.8 - 11/21/2026
 
 - **The New Forest Build offers Eastern Standard Time** as the time zone (Cliff), not whatever the
