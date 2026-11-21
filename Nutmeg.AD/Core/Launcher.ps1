@@ -2,6 +2,31 @@
 # Launcher.ps1 - Start-NmToolkit: the main menu, built from the tool registry
 # ---------------------------------------------------------------------------
 
+function Get-NmStartMode {
+    <#
+    .SYNOPSIS
+        What Start-NutmegAD.ps1 opens when it is not told: the New Forest Build or the toolkit,
+        with the reason. No questions, nothing changed.
+    .DESCRIPTION
+        - A build saved on this server and not finished: the build, to carry on.
+        - Not joined to a domain (a fresh workgroup server): the build.
+        - Otherwise (a DC or a domain member, or a finished build): the toolkit.
+    .OUTPUTS
+        Mode ('NewForest' or 'Toolkit') and Reason.
+    #>
+    [CmdletBinding()]
+    param($Computer, $BuildState, [switch]$NoState)
+    try { if (-not $Computer) { $Computer = Get-NmLocalComputer } } catch { $Computer = $null }
+    if (-not $NoState -and $null -eq $BuildState) { try { $BuildState = Get-NmBuildState } catch { $BuildState = $null } }
+    if ($BuildState -and $BuildState.Answers -and -not $BuildState.Finished) {
+        return [pscustomobject]@{ Mode = 'NewForest'; Reason = "A New Forest Build of $($BuildState.Answers.Domain) is in progress on this server: carrying on with it." }
+    }
+    if ($Computer -and -not $Computer.PartOfDomain) {
+        return [pscustomobject]@{ Mode = 'NewForest'; Reason = "$($Computer.Name) is in a workgroup: opening the New Forest Build (the toolkit's other tools need a domain)." }
+    }
+    return [pscustomobject]@{ Mode = 'Toolkit'; Reason = '' }
+}
+
 function Show-NmToolList {
     # A menu of tools (one category, or search hits). Runs the one picked; loops until Back.
     [CmdletBinding()]

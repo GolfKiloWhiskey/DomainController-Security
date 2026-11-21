@@ -32,6 +32,8 @@ On a domain controller, as a domain admin:
 .\Start-NutmegAD.ps1
 ```
 
+- Checks the server first: a fresh workgroup server, or one with a New Forest Build in progress,
+  opens the build; a DC or domain member opens the toolkit. `-NewForest` or `-Toolkit` says which.
 - Opens the window. `-Console` opens the console menu instead.
 - Runs in PowerShell 7 whenever it is installed: started in Windows PowerShell 5.1, it moves to 7
   without asking. Not installed: it offers to install the current LTS release (Microsoft's signed

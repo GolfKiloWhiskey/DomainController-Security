@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.6.0
+    Version: 0.7.0
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.0 - Launcher 0.7.0 checks the server at start (Get-NmStartMode): the build on a workgroup server or with a build
+            in progress, the toolkit otherwise; -Toolkit to skip the check.
     0.6.0 - Launcher 0.6.0: the window by default (-Console for the console), PowerShell 7 without asking when installed;
             the sign-in task passes -Console for a console build; Get-NutmegAD.ps1 1.9.
     0.5.0 - Modern dialogs: no console text (sections, notes, tables, suggested answers), one approval dialog for changes
@@ -53,7 +55,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.6.0'
+$script:ModuleVersion = '0.7.0'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -123,7 +125,7 @@ if (Test-Path $toolRoot) {
 # Exports
 # ---------------------------------------------------------------------------
 $publicCore = @(
-    'Start-NmToolkit', 'Start-NmToolkitGui'
+    'Start-NmToolkit', 'Start-NmToolkitGui', 'Get-NmStartMode'
     'Get-NmTool', 'Get-NmAdminCenter', 'Invoke-NmTool', 'Get-NmToolLoadError'
     'Get-NmSession', 'Assert-NmConnection', 'Get-NmServiceState', 'Set-NmServer', 'Get-NmADParams', 'Get-NmGPParams'
     'Get-NmLocalComputer', 'Test-NmElevated', 'Get-NmAdminMembership'
