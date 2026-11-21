@@ -299,7 +299,7 @@ function Show-NmResult {
     $shown = $Results | Select-Object -First $Top
     $Property = @($Property | Where-Object { $_ })
     if ($Property.Count -gt 0) { $shown = $shown | Select-Object -Property (@('#') + $Property) }
-    $shown | Format-Table -AutoSize | Out-Host
+    $shown | Format-Table -AutoSize -Wrap | Out-Host
 
     if ($Results.Count -gt $Top) {
         Write-Host "Showing top $Top of $($Results.Count). Export or open the grid view for all rows." -ForegroundColor DarkGray

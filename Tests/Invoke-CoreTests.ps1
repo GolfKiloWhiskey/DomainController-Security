@@ -289,6 +289,25 @@ Test-That 'The banner shows the domain, the DC and what is loaded' {
     $before -match 'not read yet' -and $after -match 'clientx\.local \(CLIENTX\)' -and $after -match 'DC: DC01\.clientx\.local' -and $after -match 'AD loaded, GPO -'
 }
 
+Test-That 'In PowerShell 7, modules are looked for with -SkipEditionCheck (GroupPolicy is hidden without it)' {
+    # The real Find-NmModule, with Get-Module standing in: GroupPolicy is only found with the switch.
+    $global:ListArgs = $null
+    function script:Get-Module { param([switch]$ListAvailable, $Name, $ErrorAction, [switch]$SkipEditionCheck) $global:ListArgs = $PSBoundParameters; if ($SkipEditionCheck) { [pscustomobject]@{ Name = $Name; Version = [version]'1.0.0.0' } } }
+    $file = Join-Path (Join-Path $script:NmModuleRoot 'Core') 'Modules.ps1'
+    $def = [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$null, [ref]$null).FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Find-NmModule' }, $true)[0]
+    try {
+        # The real function from the file (the tests' stand-in replaces it in the module), in a child scope.
+        $found = & { . ([scriptblock]::Create($def.Extent.Text)); Find-NmModule -Name GroupPolicy }
+    } finally { Remove-Item Function:\Get-Module -ErrorAction SilentlyContinue }
+    $found.Name -eq 'GroupPolicy' -and $global:ListArgs.ContainsKey('SkipEditionCheck')
+}
+
+Test-That 'Result tables wrap long values instead of cutting them off' {
+    # Show-NmResult draws with Out-Host, which a test cannot capture: check it asks for -Wrap.
+    $body = (Get-Command Show-NmResult -CommandType Function).ScriptBlock.ToString()
+    $body -match 'Format-Table -AutoSize -Wrap \| Out-Host'
+}
+
 # ---------------------------------------------------------------------------
 # Change confirmations
 # ---------------------------------------------------------------------------

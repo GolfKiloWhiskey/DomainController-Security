@@ -18,9 +18,13 @@ $script:NmServiceModules = [ordered]@{
 
 function Find-NmModule {
     # The newest installed copy of a module, or $null. One place, so tests can stand in for it.
+    # PowerShell 7 hides Windows PowerShell modules not marked for it (GroupPolicy is one) unless
+    # -SkipEditionCheck is given; they still load, through Windows PowerShell (Import-NmModule).
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Name)
-    return (Get-Module -ListAvailable -Name $Name -ErrorAction SilentlyContinue | Sort-Object Version -Descending | Select-Object -First 1)
+    $listArgs = @{ ListAvailable = $true; Name = $Name; ErrorAction = 'SilentlyContinue' }
+    if ($PSVersionTable.PSVersion.Major -ge 6) { $listArgs.SkipEditionCheck = $true }
+    return (Get-Module @listArgs | Sort-Object Version -Descending | Select-Object -First 1)
 }
 
 function Test-NmModuleLoaded {
