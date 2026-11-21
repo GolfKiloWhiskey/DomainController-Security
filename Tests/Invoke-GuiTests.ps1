@@ -566,7 +566,7 @@ Test-That 'Build results: one card per phase, a line per step named by the step,
     $m = Get-NmGuiCardModel -Rows $rows -Columns @('Phase', 'Step', 'Result', 'Detail') -GroupBy @('Phase', 'Step')
     $p0 = $m.Items[0]
     ($m.Cards -eq 2) -and ($p0.Title -eq 'Phase 0: Prepare the server') -and ((($p0.Fields | ForEach-Object Name) -join '|') -eq 'Time zone|Static IP') -and
-    ($p0.Fields[0].Value -eq 'Eastern Standard Time (was Pacific Standard Time) - Done') -and ($m.Items[1].Level -eq 'High')
+    ($p0.Fields[0].Value -eq 'Eastern Standard Time (was Pacific Standard Time)') -and ($p0.Status -eq 'Done') -and ($m.Items[1].Level -eq 'High')
 }
 
 Test-That 'A check list before "Press Enter to continue" opens as the modern check dialog, not the results viewer' {
@@ -576,6 +576,11 @@ Test-That 'A check list before "Press Enter to continue" opens as the modern che
     $q = (Get-Command Show-NmGuiQuestion).ScriptBlock.ToString()
     (Test-NmGuiCheckPage -Captures @($check)) -and (-not (Test-NmGuiCheckPage -Captures @($plain))) -and (-not (Test-NmGuiCheckPage -Captures @())) -and
     ($code -match "\`$model.Kind = 'Continue'") -and ($q -match "if \(\`$Model.Kind -eq 'Continue'\)") -and ($q -match "\`$ok.Content = 'Continue'")
+}
+
+Test-That 'A notice with only words opens as the modern dialog with Continue, titled by its heading' {
+    $code = (Get-Command Read-NmGuiHost).ScriptBlock.ToString()
+    ($code -match 'if \(-not \$caps\.Count\) \{') -and ($code -match '\$model\.Title = \$\(if \(\$model\.Section\)')
 }
 
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {

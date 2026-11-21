@@ -62,6 +62,7 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmPendingReboot { [bool]$script:FakePending }
     function script:Stop-NmScheduledRestart { $script:Calls.Add('Restart cancelled') }
     function script:Get-NmNow { $script:FakeNow }
+    function script:Get-NmLastBootTime { $script:FakeBoot }
     function script:Wait-NmRestartReminder { param($Seconds, $Status) $script:Calls.Add("Wait $Seconds"); $script:FakeNow = $script:FakeNow.AddSeconds($Seconds) }
     function script:Get-NmFreeSpaceGB { 80 }
     function script:Get-NmBlockedFile { $script:FakeBlocked }
@@ -97,7 +98,7 @@ function global:Reset-Server {
         $script:FakeWinPs = $true; $script:FakeElevated = $true; $script:FakeProductType = 3; $script:FakeBlocked = @()
         $script:FakePc = [pscustomobject]@{ Name = 'WIN-7Q2B4K9'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'WIN-7Q2B4K9' }
         $script:FakeNics = @([pscustomobject]@{ Name = 'Ethernet'; Index = 4; Mac = '00-15-5D-00-00-01'; Description = 'Microsoft Hyper-V Network Adapter'; IPv4 = '192.0.2.37'; PrefixLength = 24; Gateway = '192.0.2.1'; Dns = @('192.0.2.1'); Dhcp = $true })
-        $script:FakePending = $false; $script:FakeNow = [datetime]'2026-11-21 13:00:00'
+        $script:FakePending = $false; $script:FakeNow = [datetime]'2026-11-21 13:00:00'; $script:FakeBoot = [datetime]'2026-01-01 08:00:00'
         $script:FakeTz = 'UTC'; $script:FakeIpInUse = $false; $script:FakeDomainAnswers = $false; $script:FakePreCheck = 'Success'
         $p = Get-NmBuildStatePath
         if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
@@ -348,12 +349,25 @@ Test-That 'The plan names the new forest and this server, not "no domain"; resul
         (@($rows | Where-Object Phase -eq 'Phase 0: Prepare the server').Count -eq 5) -and ((@($t.CardGroup) -join ',') -eq 'Phase,Step')
 }
 
+Test-That 'Results start with what is being built and end with the steps still to do' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $info = @($rows | Where-Object Phase -eq 'Build: clientx.local')
+    $todo = @($rows | Where-Object Phase -eq 'Still to do')
+    ($rows[0].Phase -eq 'Build: clientx.local') -and ((($info | ForEach-Object Step) -join ',') -eq 'Forest,This server,Network,Folders,Started') -and
+        ($info[0].Detail -like 'clientx.local (CLIENTX), Windows Server 2025*more DCs planned: no') -and ($info[2].Detail -like '192.0.2.50/24 on Ethernet, gateway 192.0.2.1*') -and
+        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,Finish') -and
+        (@($todo | Where-Object Result -ne 'Next').Count -eq 0) -and ($todo[2].Detail -like '*CLIENTX\Administrator*') -and ($rows[-1].Phase -eq 'Still to do')
+}
+
 Test-That 'The restart is announced; in the console nothing waits for a key' {
     Reset-Server
     Answer $global:StdAnswers
     $null = Read-NmNewForestPlan 6>$null
     $out = & { $null = Invoke-NmNewForestBuild -Resume } 6>&1 | Out-String
-    ($out -match 'Restarting in 60 seconds') -and ($out -match 'Sign in as Administrator') -and $script:TestAnswers.Count -eq 0
+    ($out -match 'The server restarts in 60 seconds') -and ($out -match 'Sign in as Administrator') -and $script:TestAnswers.Count -eq 0
 }
 
 # ---------------------------------------------------------------------------
@@ -587,6 +601,37 @@ Test-That 'The DSRM password is never written to the state file or the log' {
 # ---------------------------------------------------------------------------
 # After promotion
 # ---------------------------------------------------------------------------
+Test-That 'A restart step is saved as done before its notice: if Windows restarts before Continue, it is not repeated' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    # The window, and nobody clicks Continue on the notice (the queue is empty, so the pop-up fails).
+    $script:NmGui.Active = $true
+    try { $null = Invoke-NmNewForestBuild -Resume } catch { $null = $_ } finally { $script:NmGui.Active = $false; Clear-NmGuiBuffer }
+    $st = Get-NmBuildState
+    ("$($st.Steps.PrepareRestart.Status)" -eq 'Done') -and ($script:Calls -contains 'Restart 60')
+}
+
+Test-That 'A restart step left unrecorded is not done twice: the server already started again, so the build carries on' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    Secret @('Dsrm-Pass-1!', 'Dsrm-Pass-1!')
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    # As on Cliff's VM with 0.7.2: the forest made, but its restart step never saved.
+    $st = Get-NmBuildState
+    $st.Steps.PSObject.Properties.Remove('PromoteRestart')
+    Save-NmBuildState -State $st
+    Restart-Fake -Promoted
+    $script:FakeBoot = (Get-Date).AddMinutes(2)
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $r = @($rows | Where-Object { $_.Phase -like 'Phase 1*' -and $_.Step -eq 'Restart' })[0]
+    ($script:Calls -notcontains 'Restart 60') -and ($r.Detail -like 'already restarted (started again at*') -and
+        (($rows | Where-Object Step -eq 'Check the new DC').Result -eq 'Done') -and (Get-NmBuildState).Finished
+}
+
 Test-That 'After the second restart: the new DC is checked, the sign-in task removed, a record saved' {
     Reset-Server
     Answer $global:StdAnswers

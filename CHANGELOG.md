@@ -6,6 +6,30 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.3 - 11/21/2026
+
+- **Fixed: the build restarted at every sign-in after the forest was made** (seen on the VM). In the
+  window, the restart step showed its "restarting in 60 seconds" pop-up and waited for Continue
+  inside the step; Windows restarted first, so the step was never saved as done, and every sign-in
+  ran it again. Now:
+  - a restart step is saved as done the moment the restart is scheduled, and the notice comes
+    after it;
+  - a restart step that finds the server has already started again since the step before it
+    (the forest, or the static IP) counts as done without restarting. A server stuck in the loop
+    with 0.7.2 carries on to the check of the new DC after updating;
+  - the notice is a proper pop-up ("The server restarts in 60 seconds", who to sign in as,
+    Continue) instead of the "Results, 3 lines" text viewer. Any other notice with only words
+    opens the same way.
+- **The New Forest Build's results say what is being built** (Cliff). The first card,
+  "Build: cotc.local", lists the forest (name, NetBIOS, level, more DCs planned), this server
+  (new name, time zone), the network (IP, prefix, adapter, gateway, DNS), the folders, and when the
+  build started with its log file. The console's table starts with the same rows.
+- **A "Still to do" card at the end** lists the steps left after the restart (AD DS, the forest
+  with the DSRM password, the restart and who to sign in as, the check, the finish).
+- A card whose lines all share one status ("Done") no longer repeats "- Done" on every line; the
+  badge on the card says it. Mixed cards still show each line's status.
+- Not run on Windows yet: tested against stand-ins (199 tests).
+
 ## 0.7.2 - 11/21/2026
 
 New Forest Build, from Cliff's review:

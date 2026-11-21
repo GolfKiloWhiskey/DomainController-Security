@@ -176,6 +176,14 @@ function Stop-NmScheduledRestart {
     & shutdown.exe /a 2>$null | Out-Null
 }
 
+function Get-NmLastBootTime {
+    # When Windows last started (local time).
+    [CmdletBinding()]
+    [OutputType([datetime])]
+    param()
+    return [datetime](Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime
+}
+
 function Get-NmNow {
     # The time now (a seam for tests of anything that waits).
     [CmdletBinding()]

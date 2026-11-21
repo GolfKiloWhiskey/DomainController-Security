@@ -636,7 +636,16 @@ function Read-NmGuiHost {
         $model = Get-NmGuiDialogModel -Text $text -Prompt $Prompt
         $caps = @($script:NmGui.Captures.ToArray())
         $heading = if ($model.Title -ne 'Results' -or -not $caps.Count) { $model.Title } elseif ($caps[0].Title) { Get-NmGuiShortTitle -Title $caps[0].Title } else { 'Results' }
-        if (Test-NmGuiCheckPage -Captures $caps) {
+        if (-not $caps.Count) {
+            # Only words to read (a notice such as "The server restarts in 60 seconds"): the modern
+            # dialog, titled by its heading, with Continue.
+            $model.Title = $(if ($model.Section) { $model.Section } elseif ($model.Title -and $model.Title -ne 'Results') { $model.Title } else { 'Note' })
+            $model.Section = ''
+            $model.Kind = 'Continue'
+            Set-NmGuiStatus -Text $model.Title
+            $answer = Show-NmGuiQuestion -Model $model
+            if ($null -eq $answer) { $answer = '' }   # closing a notice counts as Continue
+        } elseif (Test-NmGuiCheckPage -Captures $caps) {
             # A check list (the server check): the modern dialog, its badges, Continue or Cancel,
             # titled by the check ("Server check").
             $first = @($caps | Where-Object { $_ -and @(Get-NmGuiCheckRowModel -Capture $_).Count })[0]
@@ -1341,6 +1350,10 @@ function Get-NmGuiGroupedCardModel {
     $keep = [Math]::Max(1, $Limit)
     $items = foreach ($k in @($order | Select-Object -First $keep)) {
         $idx = @($byKey[$k])
+        # Each line carries its own status only when the card's rows differ (a Done card lists its
+        # steps without "- Done" on every line).
+        $mixed = $false
+        if ($FacetColumn) { $mixed = @($idx | ForEach-Object { Get-NmGuiFacetValue -Column $FacetColumn -Value $All[$_].$FacetColumn } | Sort-Object -Unique).Count -gt 1 }
         $parts = New-Object System.Collections.Generic.List[string]
         $lines = @{}
         foreach ($i in $idx) {
@@ -1349,7 +1362,7 @@ function Get-NmGuiGroupedCardModel {
             if (-not $part) { $part = if ($splitCol) { '(blank)' } else { '' } }
             if (-not $lines.ContainsKey($part)) { $lines[$part] = New-Object System.Collections.Generic.List[string]; $parts.Add($part) }
             $vals = @(foreach ($c in $itemCols) { $v = ConvertTo-NmGuiFieldText $r.$c; if ("$v".Trim()) { $v } })
-            if ($FacetColumn -and $FacetColumn -ne $splitCol -and $itemCols -notcontains $FacetColumn) {
+            if ($mixed -and $FacetColumn -and $FacetColumn -ne $splitCol -and $itemCols -notcontains $FacetColumn) {
                 $fv = ConvertTo-NmGuiFieldText $r.$FacetColumn
                 if ("$fv".Trim()) { $vals += $fv }
             }
