@@ -583,6 +583,71 @@ Test-That 'A notice with only words opens as the modern dialog with Continue, ti
     ($code -match 'if \(-not \$caps\.Count\) \{') -and ($code -match '\$model\.Title = \$\(if \(\$model\.Section\)')
 }
 
+Test-That 'Step list: groups, marks, times while running and when done, a summary; earlier steps say so' {
+    $real = ${function:script:Get-NmNow}
+    try {
+        $script:T = [datetime]'2026-11-21 17:00:00'
+        ${function:script:Get-NmNow} = { $script:T }
+        Start-NmStepList -Title 'New Forest Build: clientx.local' -Steps @(
+            @{ Name = 'StaticIp'; Label = 'Static IP'; Group = 'Phase 0: Prepare the server'; Status = 'Done'; Detail = '192.0.2.50/24' }
+            @{ Name = 'Features'; Label = 'AD DS, DNS and GPMC'; Group = 'Phase 1: Promote to the first DC' }
+            @{ Name = 'Promote'; Label = 'New forest clientx.local'; Group = 'Phase 1: Promote to the first DC' }
+        )
+        Set-NmStepStatus -Name 'Features' -Status Running
+        $script:T = $script:T.AddSeconds(48)
+        $m1 = Get-NmStepListModel
+        $script:T = $script:T.AddMinutes(5).AddSeconds(27)
+        $null = & { Set-NmStepStatus -Name 'Features' -Status Done -Detail 'installed' } 6>&1
+        $m2 = Get-NmStepListModel
+    } finally { Set-Item -Path function:script:Get-NmNow -Value $real; Stop-NmStepList }
+    $f1 = @($m1.Rows | Where-Object Label -eq 'AD DS, DNS and GPMC')[0]
+    $f2 = @($m2.Rows | Where-Object Label -eq 'AD DS, DNS and GPMC')[0]
+    ((($m1.Rows | ForEach-Object Kind) -join ',') -eq 'Group,Step,Group,Step,Step') -and ($m1.Rows[1].Time -eq 'earlier') -and ($m1.Rows[1].Mark -eq 'Done') -and
+    ($f1.Mark -eq 'Running') -and ($f1.Time -eq '0:48') -and ($m1.State -eq 'running') -and ($m1.Summary -eq '1 of 3 done') -and
+    ($f2.Mark -eq 'Done') -and ($f2.Time -eq '6 min 15 s') -and ($f2.Detail -eq 'installed') -and ($m2.State -eq 'waiting') -and ($m2.Summary -eq '2 of 3 done')
+}
+
+Test-That 'Step progress: shown under the running step, logged once per change (percent in tens)' {
+    Start-NmStepList -Title 'x' -Steps @(@{ Name = 'Features'; Label = 'AD DS, DNS and GPMC' })
+    Set-NmStepStatus -Name 'Features' -Status Running
+    $before = @(Get-Content -LiteralPath (Get-NmLogPath)).Count
+    Write-NmStepProgress -Text 'Installing' -Percent 41
+    Write-NmStepProgress -Text 'Installing' -Percent 45
+    Write-NmStepProgress -Text 'Installing' -Percent 52
+    $row = @((Get-NmStepListModel).Rows | Where-Object Kind -eq 'Step')[0]
+    $new = @(Get-Content -LiteralPath (Get-NmLogPath) | Select-Object -Skip $before)
+    Stop-NmStepList
+    ($row.Progress -eq 'Installing  52 %') -and ($new.Count -eq 2) -and ($new[0] -match 'AD DS, DNS and GPMC: Installing \(41 %\)') -and ($new[1] -match '\(52 %\)')
+}
+
+Test-That 'Step list in the console: a line when a step is done or fails; nothing without a list' {
+    Start-NmStepList -Title 'x' -Steps @(@{ Name = 'A'; Label = 'Time zone' }, @{ Name = 'B'; Label = 'Static IP' })
+    $o = & { Set-NmStepStatus -Name 'A' -Status Running; Set-NmStepStatus -Name 'A' -Status Done -Detail 'Eastern Standard Time'; Set-NmStepStatus -Name 'B' -Status Failed -Detail 'in use' } 6>&1 | Out-String
+    Stop-NmStepList
+    $none = & { Set-NmStepStatus -Name 'A' -Status Done } 6>&1 | Out-String
+    ($o -match '\[done\] Time zone: Eastern Standard Time') -and ($o -match '\[FAILED\] Static IP: in use') -and (-not $none.Trim())
+}
+
+Test-That 'Progress records read as one line and a percent' {
+    $a = Get-NmGuiProgressText -Record ([pscustomobject]@{ Activity = 'Install-WindowsFeature'; StatusDescription = 'Installing'; CurrentOperation = ''; PercentComplete = 40 })
+    $b = Get-NmGuiProgressText -Record ([pscustomobject]@{ Activity = 'Configuring the DNS Server service'; StatusDescription = 'Processing'; CurrentOperation = ''; PercentComplete = -1 })
+    ($a.Text -eq 'Installing') -and ($a.Percent -eq 40) -and ($b.Text -eq 'Configuring the DNS Server service') -and ($b.Percent -eq -1)
+}
+
+Test-That 'A background call''s progress reaches the running step and the log while it runs' {
+    Start-NmStepList -Title 'x' -Steps @(@{ Name = 'Features'; Label = 'AD DS, DNS and GPMC' })
+    Set-NmStepStatus -Name 'Features' -Status Running
+    $before = @(Get-Content -LiteralPath (Get-NmLogPath)).Count
+    $script:NmGui.Active = $true
+    try {
+        $null = Invoke-NmGuiBackground -Status 'Installing' -ScriptBlock { Write-Progress -Activity 'Install-WindowsFeature' -Status 'Installing' -PercentComplete 40; Start-Sleep -Milliseconds 600; 'ok' }
+    } finally { $script:NmGui.Active = $false }
+    $new = @(Get-Content -LiteralPath (Get-NmLogPath) | Select-Object -Skip $before) -join "`n"
+    $it = Get-NmStepItem -Name 'Features'
+    Stop-NmStepList
+    ($it.Progress -eq 'Installing') -and ($it.Percent -eq 40) -and ($new -match 'AD DS, DNS and GPMC: Installing \(40 %\)')
+}
+
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
     ((Get-NmSetting -Key ResultsView) -eq 'Cards') -and (@($script:NmSettingSections) -contains 'Window')
 }

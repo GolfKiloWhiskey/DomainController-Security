@@ -362,6 +362,17 @@ Test-That 'Results start with what is being built and end with the steps still t
         (@($todo | Where-Object Result -ne 'Next').Count -eq 0) -and ($todo[2].Detail -like '*CLIENTX\Administrator*') -and ($rows[-1].Phase -eq 'Still to do')
 }
 
+Test-That 'The live step list: every step of both phases, phase 0 ticked as it runs, phase 1 waiting; a done line per step in the console' {
+    Reset-Server
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $out = & { $null = Invoke-NmNewForestBuild -Resume } 6>&1 | Out-String
+    $items = $script:NmSteps.Items.ToArray()
+    ($items.Count -eq 10) -and (@($items | Where-Object { $_.Group -like 'Phase 0*' -and $_.Status -eq 'Done' }).Count -eq 5) -and
+        (@($items | Where-Object { $_.Group -like 'Phase 1*' -and $_.Status -eq 'Waiting' }).Count -eq 5) -and
+        ($out -match '\[done\] Time zone: Eastern Standard Time') -and ($out -match '\[done\] Static IP: 192.0.2.50/24')
+}
+
 Test-That 'The restart is announced; in the console nothing waits for a key' {
     Reset-Server
     Answer $global:StdAnswers

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.3
+    Version: 0.7.4
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.4 - A live step list while the build runs (Start-NmStepList), with what the installs report as they go.
     0.7.3 - Restart steps saved as done before their notice (a restart loop on the VM); one that finds the server already
             restarted counts as done. Results start with what is being built (Build: <domain>) and end with the steps still to do.
     0.7.2 - Server check first in its own pop-up (window); a pending restart ends phase 0; before AD DS a pending restart stops
@@ -54,7 +55,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.3'
+    Version  = '0.7.4'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -545,6 +546,22 @@ $script:NmBuildStepList = @(
     @{ Name = 'Finish'; Phase = 1; Label = 'Finish'; Detail = 'remove the sign-in task, save a record of the build' }
 )
 
+function Get-NmNewForestStepItem {
+    # The build's steps for the live step list (Start-NmStepList): phase as the group, done ones ticked.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Answers, [Parameter(Mandatory)]$State)
+    foreach ($s in $script:NmBuildStepList) {
+        $done = Test-NmBuildStepDone -State $State -Name $s.Name
+        [pscustomobject]@{
+            Name   = $s.Name
+            Label  = $(if ($s.Name -eq 'Promote') { "New forest $($Answers.Domain)" } else { $s.Label })
+            Group  = $(if ($s.Phase -eq 0) { $script:NmPhase0 } else { $script:NmPhase1 })
+            Status = $(if ($done) { 'Done' } else { 'Waiting' })
+            Detail = $(if ($done) { "$($State.Steps.($s.Name).Detail)" } else { "$($s.Detail)".Replace('<NETBIOS>', "$($Answers.NetBIOS)") })
+        }
+    }
+}
+
 function Add-NmBuildToDoRow {
     # Adds the steps not done yet as rows of a "Still to do" card, so the results show what comes next.
     [CmdletBinding()]
@@ -640,6 +657,8 @@ function Invoke-NmNewForestBuild {
     Set-NmPlanApproved -Plan "New Forest Build: $($a.Domain)"
     # The window draws these as the first card: what is being built.
     foreach ($r in @(Get-NmNewForestInfoRow -Answers $a -State $state)) { $rows.Add($r) }
+    # The live step list: every step of both phases, those done earlier already ticked.
+    Start-NmStepList -Title "New Forest Build: $($a.Domain)" -Steps @(Get-NmNewForestStepItem -Answers $a -State $state)
     try {
         # ---- Phase 0: prepare the server ----
         if (-not (Test-NmBuildStepDone -State $state -Name 'PrepareRestart')) {

@@ -6,6 +6,26 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.4 - 11/21/2026
+
+**See the build happen** (Cliff: the window and the log went quiet during the role install and the
+forest creation).
+
+- **A live step list in the window** above the results while the build runs: every step of both
+  phases under its phase heading, each with a mark (waiting, running, done in green, failed in red),
+  what it did, and how long it took ("6 min 15 s"; a running step counts up). Steps done in an
+  earlier session show ticked, so after a restart you see where it picked up. The list stays when
+  the run ends, above the result cards.
+- **What the installs report shows as it happens**: Install-WindowsFeature's percent and the forest
+  creation's stages appear under the running step and in the status bar, and go into the log once
+  each time they change ("AD DS, DNS and GPMC: Installing (40 %)"), so the log has no gap.
+- **The Output panel follows along** instead of filling in at the end of the run.
+- **Console:** a line for each finished step ("[done] Time zone: Eastern Standard Time (2 s)"), and
+  "[FAILED] ..." for one that fails.
+- The step list is part of the toolkit's core, ready for the later tools that run several steps
+  (the GPO baselines, the OU layout).
+- Not run on Windows yet: tested against stand-ins (208 tests).
+
 ## 0.7.3 - 11/21/2026
 
 - **Fixed: the build restarted at every sign-in after the forest was made** (seen on the VM). In the
