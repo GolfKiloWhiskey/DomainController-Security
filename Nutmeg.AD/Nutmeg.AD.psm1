@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.2.11
+    Version: 0.3.0
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.3.0 - The window (Core\Gui.ps1, Start-NmToolkitGui; Start-NutmegAD.ps1 -Gui), ported from the Nutmeg M365 Toolkit
+            without its tenant, cloud and sign-in pieces. The New Forest Build stays console only.
     0.2.11 - Get-NutmegAD.ps1 1.6 updates itself from the download and steps out of the toolkit folder before replacing it.
     0.2.10 - Get-NutmegAD.ps1 1.5 hands -NewForest/-LogPath over as named parameters; launcher 0.3.2 ignores a bad -LogPath.
     0.2.9 - The window is left in the toolkit folder: the launcher moves there, the sign-in task starts there.
@@ -44,7 +46,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.2.11'
+$script:ModuleVersion = '0.3.0'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -64,7 +66,7 @@ $script:NmConfig = [pscustomobject]@{
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Build', 'ToolRegistry', 'Launcher')
+$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
 foreach ($name in $coreFiles) {
     . (Join-Path (Join-Path $PSScriptRoot 'Core') "$name.ps1")
 }
@@ -114,7 +116,7 @@ if (Test-Path $toolRoot) {
 # Exports
 # ---------------------------------------------------------------------------
 $publicCore = @(
-    'Start-NmToolkit'
+    'Start-NmToolkit', 'Start-NmToolkitGui'
     'Get-NmTool', 'Get-NmAdminCenter', 'Invoke-NmTool', 'Get-NmToolLoadError'
     'Get-NmSession', 'Assert-NmConnection', 'Get-NmServiceState', 'Set-NmServer', 'Get-NmADParams', 'Get-NmGPParams'
     'Get-NmLocalComputer', 'Test-NmElevated', 'Get-NmAdminMembership'

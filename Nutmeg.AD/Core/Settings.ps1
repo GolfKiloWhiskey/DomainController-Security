@@ -23,8 +23,10 @@ $script:NmSettingDefs = @(
         Help = 'A change to more objects than this needs the domain''s short name typed, not just Y.' }
     [pscustomobject]@{ Key = 'BuildTimeZone'; Section = 'New forest build'; Label = 'Default time zone'; Type = 'Text'; Default = 'Eastern Standard Time'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @()
         Help = 'The time zone the New Forest Build offers (a Windows ID, as Get-TimeZone -ListAvailable shows them). It can still be changed at the question.' }
+    [pscustomobject]@{ Key = 'ResultsView'; Section = 'Window'; Label = 'Show results as'; Type = 'Choice'; Default = 'Cards'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @('Cards', 'Table')
+        Help = 'How the window first shows a tool''s results: cards (each row readable in full, with tags to filter) or the table. The button above the results switches either way.' }
 )
-$script:NmSettingSections = @('Folders', 'Safety', 'New forest build')
+$script:NmSettingSections = @('Folders', 'Safety', 'New forest build', 'Window')
 
 # ---------------------------------------------------------------------------
 # The file
