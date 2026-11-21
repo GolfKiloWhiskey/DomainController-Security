@@ -208,6 +208,23 @@ Test-That 'The questions offer the server''s own defaults and save the approved 
         $script:Calls.Count -eq 0
 }
 
+Test-That 'Enter at the time zone takes Eastern Standard Time, not the server''s own (UTC here)' {
+    Reset-Server
+    Answer (@($global:StdAnswers[0..4]) + '' + @($global:StdAnswers[6..11]))
+    $null = Read-NmNewForestPlan 6>$null
+    (Get-NmBuildState).Answers.TimeZone -eq 'Eastern Standard Time'
+}
+
+Test-That 'The default time zone follows Settings' {
+    Reset-Server
+    Set-NmSetting -Key BuildTimeZone -Value 'Central Standard Time' 6>$null
+    try {
+        Answer (@($global:StdAnswers[0..4]) + '' + @($global:StdAnswers[6..11]))
+        $null = Read-NmNewForestPlan 6>$null
+    } finally { Clear-NmSetting -Key BuildTimeZone 6>$null }
+    (Get-NmBuildState).Answers.TimeZone -eq 'Central Standard Time'
+}
+
 Test-That 'A bad answer is asked again' {
     Reset-Server
     Answer (@('clientx', 'clientx.local', 'CLIENT.X', '') + $global:StdAnswers[2..11])
@@ -396,7 +413,8 @@ Test-That 'After the second restart: the new DC is checked, the sign-in task rem
     Restart-Fake -Promoted
     $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
     $verify = $rows | Where-Object Step -eq 'Check the new DC'
-    $record = @(Get-ChildItem -Path $script:NmConfig.ExportRoot -Filter 'new-forest_clientx_*.json')
+    $recordPath = if (($rows | Where-Object Step -eq 'Finish').Detail -match 'record of the build: (.+)$') { $Matches[1] } else { '' }
+    $record = @(if ($recordPath -and (Test-Path -LiteralPath $recordPath)) { Get-Item -LiteralPath $recordPath })
     $verify.Result -eq 'Done' -and $verify.Detail -match 'DC01\.clientx\.local is a DC of clientx\.local' -and ($script:Calls -contains 'ResumeTask removed') -and
         (Get-NmBuildState).Finished -and $record.Count -eq 1 -and ($rows | Where-Object Step -eq 'More DCs').Result -eq 'Not planned'
 }

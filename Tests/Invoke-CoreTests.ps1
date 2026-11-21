@@ -163,6 +163,15 @@ Test-That 'A log handed over (NUTMEG_AD_LOG) is carried on, with a marker, and n
     $p -eq $handed -and $lines.Count -eq 3 -and $lines[0] -match 'from Get-NutmegAD' -and $lines[1] -match '---- Session continued: .* toolkit ' -and $lines[2] -match 'from the toolkit'
 }
 
+Test-That 'Two sessions started in the same second get a log each' {
+    $was = $script:NmLogPath
+    try {
+        $script:NmLogPath = $null; $a = Get-NmLogPath; Set-Content -Path $a -Value 'first'
+        $script:NmLogPath = $null; $b = Get-NmLogPath
+    } finally { $script:NmLogPath = $was }
+    $a -ne $b -and ((Split-Path -Leaf $b) -like 'NutmegAD_*_2.txt' -or (Split-Path -Leaf $b) -notlike (Split-Path -Leaf $a))
+}
+
 Test-That 'With nothing to carry on, a session starts its own NutmegAD_<time>.txt' {
     $was = $script:NmLogPath; $script:NmLogPath = $null
     try { $p = Get-NmLogPath } finally { $script:NmLogPath = $was }
@@ -385,7 +394,7 @@ Test-That 'Settings save, apply to the config, and refuse values out of range' {
 }
 
 Test-That 'Only the AD toolkit settings exist' {
-    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount'
+    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount,BuildTimeZone'
 }
 
 # ---------------------------------------------------------------------------

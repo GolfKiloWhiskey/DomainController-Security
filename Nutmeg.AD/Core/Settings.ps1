@@ -21,8 +21,10 @@ $script:NmSettingDefs = @(
         Help = 'Session logs older than this are deleted when the toolkit starts. Run history is never deleted.' }
     [pscustomobject]@{ Key = 'BulkConfirmCount'; Section = 'Safety'; Label = 'Targets before the domain name must be typed'; Type = 'Int'; Default = 25; EnvVar = ''; Config = 'BulkConfirmCount'; Min = 1; Max = 10000; Choices = @()
         Help = 'A change to more objects than this needs the domain''s short name typed, not just Y.' }
+    [pscustomobject]@{ Key = 'BuildTimeZone'; Section = 'New forest build'; Label = 'Default time zone'; Type = 'Text'; Default = 'Eastern Standard Time'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @()
+        Help = 'The time zone the New Forest Build offers (a Windows ID, as Get-TimeZone -ListAvailable shows them). It can still be changed at the question.' }
 )
-$script:NmSettingSections = @('Folders', 'Safety')
+$script:NmSettingSections = @('Folders', 'Safety', 'New forest build')
 
 # ---------------------------------------------------------------------------
 # The file

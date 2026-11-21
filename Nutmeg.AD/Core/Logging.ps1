@@ -61,7 +61,11 @@ function Get-NmLogPath {
                 New-Item -Path $logDir -ItemType Directory -Force | Out-Null
             }
             $stamp = Get-Date -Format 'yyyyMMdd-HHmm-ss'
-            $script:NmLogPath = Join-Path $logDir "NutmegAD_$stamp.txt"
+            # A second session in the same second gets its own file (_2, _3...), not the first one's.
+            $path = Join-Path $logDir "NutmegAD_$stamp.txt"
+            $n = 1
+            while (Test-Path -LiteralPath $path) { $n++; $path = Join-Path $logDir "NutmegAD_${stamp}_$n.txt" }
+            $script:NmLogPath = $path
         }
     }
     return $script:NmLogPath
