@@ -18,8 +18,9 @@ Copy `Get-NutmegAD.ps1` to the server (or paste it into Windows PowerShell as ad
 
 It asks for a GitHub token (fine-grained, this repository only, Contents: Read-only; typed hidden and
 never saved), downloads `main` into `C:\Tools\DomainController-Security`, keeps any copy already there
-as `.previous`, and unblocks the files. `-Branch <name>` gets a branch still in review, `-Path` puts it
-elsewhere, and `-StartBuild` opens the New Forest Build straight after. Run it again to update.
+as `.previous`, and unblocks the files. Then it changes to that folder and starts the toolkit: the New
+Forest Build on a workgroup server, the main menu on a domain-joined server or DC. `-Branch <name>`
+gets a branch still in review, `-Path` puts it elsewhere, `-NoStart` only downloads. Run it again to update.
 
 ## Run it
 

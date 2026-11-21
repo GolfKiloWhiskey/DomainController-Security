@@ -143,6 +143,12 @@ Test-That 'GitHub refusals come back in plain words' {
     $msgs[0] -match 'refused the token' -and $msgs[1] -match 'Contents: Read-only' -and $msgs[2] -match 'does not exist'
 }
 
+Test-That 'After the download: the build on a workgroup server, the menu on a domain member, nothing with -NoStart' {
+    (Get-NutmegStartChoice -PartOfDomain $false) -eq 'NewForest' -and (Get-NutmegStartChoice -PartOfDomain $true) -eq 'Menu' -and
+        (Get-NutmegStartChoice -PartOfDomain $false -NoStart) -eq 'None' -and (Get-NutmegStartChoice -PartOfDomain $true -StartBuild) -eq 'NewForest' -and
+        (Get-NutmegStartChoice -PartOfDomain $false -Start) -eq 'Menu'
+}
+
 Test-That 'The script is ASCII only and never uses -ExecutionPolicy Bypass or saves the token' {
     $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Raw
     $bytes = [System.IO.File]::ReadAllBytes((Join-Path $repoRoot 'Get-NutmegAD.ps1'))
