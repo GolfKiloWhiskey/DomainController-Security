@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.1
+    Version: 0.2
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.2 - Opens on a clean screen with the toolkit header (issue #6).
     0.1 - Pre-flight, questions, phase 0 (prepare the server) and phase 1 (promote), then a check of the new DC.
 #>
 
@@ -41,7 +42,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.1'
+    Version  = '0.2'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -237,6 +238,7 @@ function Read-NmNewForestPlan {
     #>
     [CmdletBinding()]
     param()
+    Show-NmHeader -Title 'New Forest Build (first DC)' -Clear
     $state = Get-NmBuildState
     if ($state -and $state.Answers) {
         $done = @($state.Steps.PSObject.Properties | Where-Object { "$($_.Value.Status)" -eq 'Done' }).Count

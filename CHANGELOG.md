@@ -2,6 +2,11 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.5 - 11/21/2026
+
+- **Clean screen at start** (issue #6). `Get-NutmegAD.ps1` clears the window before its header, and
+  the New Forest Build opens on a cleared screen with the toolkit header (the main menu already did).
+
 ## 0.2.4 - 11/21/2026
 
 - **`Get-NutmegAD.ps1` starts the toolkit when the download is done** (Cliff). It changes to the

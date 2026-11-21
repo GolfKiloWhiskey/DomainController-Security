@@ -168,6 +168,15 @@ foreach ($case in @(
     }
 }
 
+Test-That 'The build opens on a cleared screen with the toolkit header (issue #6)' {
+    Reset-Server
+    $global:Cleared = 0
+    $original = (Get-Command Clear-NmScreen -CommandType Function).ScriptBlock
+    function script:Clear-NmScreen { $global:Cleared++ }
+    try { Answer @(''); $script:FakeElevated = $false; $null = Read-NmNewForestPlan 6>$null } finally { Set-Item -Path Function:\script:Clear-NmScreen -Value $original }
+    $global:Cleared -eq 1
+}
+
 Test-That 'Two connected adapters are a warning, not a stop' {
     Reset-Server
     $script:FakeNics = @($script:FakeNics[0], [pscustomobject]@{ Name = 'Ethernet 2'; Index = 7; IPv4 = '198.51.100.9'; PrefixLength = 24; Gateway = ''; Dns = @(); Dhcp = $true; Mac = 'x'; Description = 'y' })
