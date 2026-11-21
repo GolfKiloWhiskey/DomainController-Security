@@ -202,8 +202,8 @@ Test-That 'session-info loads from the Tools folder into Toolkit > Diagnostics' 
     $t -and $t.AdminCenter -eq 'kit' -and $t.Section -eq 'Diagnostics' -and @($script:NmToolLoadErrors | Where-Object { $_.File -like '*Get-NmSessionInfo*' }).Count -eq 0
 }
 
-Test-That 'The areas are Group Policy, Active Directory, Hardening readiness, Reports and Toolkit, in that order' {
-    (@($script:NmAdminCenters.Name) -join '|') -eq 'Group Policy|Active Directory|Hardening readiness|Reports|Toolkit|Other'
+Test-That 'The areas are Group Policy, Active Directory, Hardening readiness, Reports, New forest build and Toolkit, in that order' {
+    (@($script:NmAdminCenters.Name) -join '|') -eq 'Group Policy|Active Directory|Hardening readiness|Reports|New forest build|Toolkit|Other'
 }
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,8 @@ PowerShell, the window or tests.
 ## Status
 
 Building, in the order in `docs/TOOL-LIST.md` (agreed with Cliff, Nov 2026). Done: step 1, the core and
-launcher (0.1.0) and `session-info`. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
+launcher (0.1.0) and `session-info`; the New Forest Build's phases 0 and 1 (0.2.0, moved ahead by Cliff
+to test on a checkpointed Server 2025 VM). The build runs in Windows PowerShell 5.1 only. Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
 Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 
 ## How work is delivered

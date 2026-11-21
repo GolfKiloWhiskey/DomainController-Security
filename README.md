@@ -22,6 +22,12 @@ On a domain controller, as a domain admin:
   first (Microsoft's signed MSI, with Microsoft Update on).
 - `-Stay` skips both offers.
 
+**A brand-new forest:** on a freshly installed Windows Server in a workgroup, run
+`.\Start-NutmegAD.ps1 -NewForest`. It checks the server, asks its questions once, shows the plan, and
+then sets the IP and name, installs AD DS and creates the forest, carrying on by itself after each
+restart (sign in as an administrator and it reopens). It refuses to run on a domain-joined server or
+for a domain that already answers. See `docs/NEW-FOREST-TESTING.md`.
+
 Nothing is loaded at start. The first tool that needs the ActiveDirectory or GroupPolicy module loads
 it and reads the domain from this DC. **Domain and DC** in the main menu shows the domain, its levels
 and the PDC, and can point the toolkit at another DC.
@@ -33,6 +39,7 @@ Logs and run history: `C:\Temp\NutmegAD`. Exports: `C:\Temp`. Settings (per Wind
 
 | Area | Section | Tool | Id | Kind |
 | --- | --- | --- | --- | --- |
+| New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion; phases 2 to 5 to come | `new-forest` | Change |
 | Toolkit | Diagnostics | Session and Prerequisite Check (PowerShell, elevation, DC, modules, domain, admin groups, folders) | `session-info` | Report |
 
 The rest are listed in `docs/TOOL-LIST.md` and arrive in the order given there.
@@ -52,10 +59,12 @@ Invoke-NmTool -Id session-info -NoMenu
 Start-NutmegAD.ps1          launcher
 Nutmeg.AD/
   Nutmeg.AD.psd1 / .psm1    module manifest and loader
-  Core/                     domain session, modules, logging, menus, exports, safety, settings, registry, launcher, PowerShell 7
+  Core/                     domain session, modules, logging, menus, exports, safety, settings, registry, launcher,
+                            PowerShell 7, the server and the build state (New Forest Build)
   Tools/<Category>/         one file per tool; _ToolTemplate.ps1 shows the format
   Data/                     OuStandard.csv, GpoDefaultLinks.csv
 Tests/Invoke-CoreTests.ps1  core tests (no domain or AD module needed)
+Tests/Invoke-BuildTests.ps1 New Forest Build tests (a fake fresh server)
 Tests/Invoke-AllTests.ps1   runs every test file and prints a total
 Legacy/                     source material: scripts, GPO reports, screenshots; INDEX.md tracks each item
 docs/                       ARCHITECTURE.md, TOOL-LIST.md, baselines/

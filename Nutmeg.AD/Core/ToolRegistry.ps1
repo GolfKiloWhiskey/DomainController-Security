@@ -16,6 +16,7 @@ $script:NmAdminCenters = @(
     [pscustomobject]@{ Id = 'ad';     Name = 'Active Directory';    Sections = @('Structure', 'Groups', 'Computers', 'Users', 'Service accounts', 'Domain and forest') }
     [pscustomobject]@{ Id = 'ready';  Name = 'Hardening readiness'; Sections = @('Readiness') }
     [pscustomobject]@{ Id = 'report'; Name = 'Reports';             Sections = @('Reports') }
+    [pscustomobject]@{ Id = 'build';  Name = 'New forest build';    Sections = @('First DC') }
     [pscustomobject]@{ Id = 'kit';    Name = 'Toolkit';             Sections = @('Diagnostics') }
     [pscustomobject]@{ Id = 'other';  Name = 'Other';               Sections = @('Other tools') }
 )
@@ -26,6 +27,7 @@ $script:NmCategoryArea = @{
     'Directory'   = 'ad'
     'Readiness'   = 'ready'
     'Reports'     = 'report'
+    'Build'       = 'build'
     'Diagnostics' = 'kit'
 }
 

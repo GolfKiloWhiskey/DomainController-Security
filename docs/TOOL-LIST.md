@@ -69,9 +69,11 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 6. The AD admin tools.
 7. `gpo-capture`.
 8. Compliance profiles (next project, to revisit with Cliff): see below.
-9. New Forest Build (planned with Cliff, Nov 2026): see below. Built last, because it runs the tools above.
+9. New Forest Build: see below. Moved ahead by Cliff (Nov 2026) to test on a checkpointed Server 2025 VM.
+   **Phases 0 and 1 done in 0.2.0** (`new-forest`); phases 2 to 5 follow, each using the tools above
+   as they are built.
 
-## New Forest Build (planned)
+## New Forest Build (phases 0 and 1 built)
 
 One guarded, mostly unattended run for the **first DC of a brand-new forest** (Cliff: one DC per run),
 from a freshly installed Windows Server to a promoted, structured and baselined domain. It runs only on
