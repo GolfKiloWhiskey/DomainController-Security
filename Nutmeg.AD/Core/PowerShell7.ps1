@@ -93,9 +93,12 @@ function Install-NmPowerShell7 {
         One row: Item, Version, Result ("Installed", "WhatIf: not changed", "Cancelled", "Failed: reason").
     .EXAMPLE
         Install-NmPowerShell7
+    .EXAMPLE
+        Install-NmPowerShell7 -ApprovedBy 'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server'
+        Installs without asking (Cliff's rule for Get-NutmegAD.ps1); the approval is logged.
     #>
     [CmdletBinding()]
-    param([string]$Version, [switch]$WhatIf)
+    param([string]$Version, [switch]$WhatIf, [string]$ApprovedBy)
 
     $row = { param($v, $r) [pscustomobject]@{ Item = 'PowerShell 7'; Version = $v; Result = $r } }
     if (-not $script:NmOnWindows) { return (& $row $Version 'Failed: PowerShell 7 can only be installed this way on Windows') }
@@ -107,7 +110,13 @@ function Install-NmPowerShell7 {
     }
     $uri = Get-NmPwshMsiUri -Version $Version
 
-    if (-not (Confirm-NmChange -Action "Install PowerShell $Version on $([Environment]::MachineName) (Microsoft Update on)" -Targets @($uri) -WhatIf:$WhatIf)) {
+    # -ApprovedBy: approved beforehand, so Confirm-NmChange shows and logs the change without asking.
+    $wasPlan = $script:NmPlanApproved
+    if ($ApprovedBy) { Set-NmPlanApproved -Plan $ApprovedBy }
+    try {
+        $ok = Confirm-NmChange -Action "Install PowerShell $Version on $([Environment]::MachineName) (Microsoft Update on)" -Targets @($uri) -WhatIf:$WhatIf
+    } finally { Set-NmPlanApproved -Plan $wasPlan }
+    if (-not $ok) {
         $r = if ($WhatIf) { 'WhatIf: not changed' } else { 'Cancelled' }
         return (& $row $Version $r)
     }

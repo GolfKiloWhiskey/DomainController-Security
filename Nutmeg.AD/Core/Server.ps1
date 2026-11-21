@@ -181,6 +181,16 @@ function Restart-NmServer {
 # ---------------------------------------------------------------------------
 $script:NmResumeTaskName = 'Nutmeg AD Toolkit - New Forest Build'
 
+function Get-NmResumeTaskArgument {
+    # The sign-in task's command line for powershell.exe: the launcher with -NewForest (and -Gui).
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$LauncherPath, [switch]$Gui)
+    $a = "-NoExit -NoProfile -File `"$LauncherPath`" -NewForest"
+    if ($Gui) { $a += ' -Gui' }
+    return $a
+}
+
 function Register-NmResumeTask {
     <#
     .SYNOPSIS
@@ -190,9 +200,10 @@ function Register-NmResumeTask {
         when the local Administrator has become the domain's. It is removed when the build finishes.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$LauncherPath)
+    param([Parameter(Mandatory)][string]$LauncherPath, [switch]$Gui)
     # Starts in the toolkit's folder (not System32), so the window is left there when the build is done.
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoExit -NoProfile -File `"$LauncherPath`" -NewForest" -WorkingDirectory (Split-Path -Parent $LauncherPath)
+    # -Gui: the build was started in the toolkit's window, so the window is reopened.
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument (Get-NmResumeTaskArgument -LauncherPath $LauncherPath -Gui:$Gui) -WorkingDirectory (Split-Path -Parent $LauncherPath)
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $principal = New-ScheduledTaskPrincipal -GroupId 'S-1-5-32-544' -RunLevel Highest
     $null = Register-ScheduledTask -TaskName $script:NmResumeTaskName -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop

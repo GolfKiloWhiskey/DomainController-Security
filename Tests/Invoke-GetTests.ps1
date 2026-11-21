@@ -143,11 +143,25 @@ Test-That 'GitHub refusals come back in plain words' {
     $msgs[0] -match 'refused the token' -and $msgs[1] -match 'Contents: Read-only' -and $msgs[2] -match 'does not exist'
 }
 
-Test-That 'After the download: the build on a workgroup server, the window on a domain member, the menu with -Console, nothing with -NoStart' {
-    (Get-NutmegStartChoice -PartOfDomain $false) -eq 'NewForest' -and (Get-NutmegStartChoice -PartOfDomain $true) -eq 'Window' -and
-        (Get-NutmegStartChoice -PartOfDomain $true -Console) -eq 'Menu' -and
-        (Get-NutmegStartChoice -PartOfDomain $false -NoStart) -eq 'None' -and (Get-NutmegStartChoice -PartOfDomain $true -StartBuild) -eq 'NewForest' -and
-        (Get-NutmegStartChoice -PartOfDomain $false -Start) -eq 'Window'
+Test-That 'After the download: the build (workgroup) or the toolkit (domain member), both in the window unless -Console; nothing with -NoStart' {
+    (Get-NutmegStartChoice -PartOfDomain $false) -eq 'NewForestWindow' -and (Get-NutmegStartChoice -PartOfDomain $false -Console) -eq 'NewForest' -and
+        (Get-NutmegStartChoice -PartOfDomain $true) -eq 'Window' -and (Get-NutmegStartChoice -PartOfDomain $true -Console) -eq 'Menu' -and
+        (Get-NutmegStartChoice -PartOfDomain $false -NoStart) -eq 'None' -and (Get-NutmegStartChoice -PartOfDomain $true -StartBuild) -eq 'NewForestWindow' -and
+        (Get-NutmegStartChoice -PartOfDomain $true -StartBuild -Console) -eq 'NewForest' -and (Get-NutmegStartChoice -PartOfDomain $false -Start) -eq 'Window'
+}
+
+Test-That 'PowerShell 7: checked after the download and before the start; skipped off Windows or with -SkipPowerShell7, installed without asking' {
+    $text = Get-Content -LiteralPath (Join-Path $repoRoot 'Get-NutmegAD.ps1') -Raw
+    $check = $text.IndexOf("`$ps7 = Install-NutmegPowerShell7"); $start = $text.IndexOf("`$choice = Get-NutmegStartChoice")
+    $wasOs = $env:OS
+    try {
+        $env:OS = 'Windows_NT'
+        $skip = Install-NutmegPowerShell7 -Path $work -Skip
+        $env:OS = 'Linux'
+        $notWin = Install-NutmegPowerShell7 -Path $work
+    } finally { $env:OS = $wasOs }
+    ($check -gt 0) -and ($check -lt $start) -and ($skip -eq 'Skipped (-SkipPowerShell7)') -and ($notWin -eq 'Skipped (not Windows)') -and
+        $text.Contains("Install-NmPowerShell7 -ApprovedBy 'Get-NutmegAD.ps1: PowerShell 7 is part of every toolkit server'")
 }
 
 Test-That 'The script clears the screen before its header (issue #6)' {
@@ -179,8 +193,10 @@ Test-That 'The launcher really receives -NewForest and -LogPath as given (a prob
     $menu = & $probe @menuArgs
     $winArgs = Get-NutmegLauncherArgs -Choice Window -LogPath $log
     $win = & $probe @winArgs
+    $nfwArgs = Get-NutmegLauncherArgs -Choice NewForestWindow -LogPath $log
+    $nfw = & $probe @nfwArgs
     $paramLine -match 'LogPath' -and $nf.NewForest -and (-not $nf.Gui) -and $nf.LogPath -eq $log -and (-not $menu.NewForest) -and (-not $menu.Gui) -and $menu.LogPath -eq $log -and
-        $win.Gui -and (-not $win.NewForest) -and $win.LogPath -eq $log
+        $win.Gui -and (-not $win.NewForest) -and $win.LogPath -eq $log -and $nfw.Gui -and $nfw.NewForest -and $nfw.LogPath -eq $log
 }
 
 Test-That 'The launcher ignores a -LogPath that is really a parameter name' {
