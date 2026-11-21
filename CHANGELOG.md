@@ -2,6 +2,12 @@
 
 Newest first. Version numbers are the module's (`Nutmeg.AD.psd1`).
 
+## 0.2.4 - 11/21/2026
+
+- **`Get-NutmegAD.ps1` starts the toolkit when the download is done** (Cliff). It changes to the
+  toolkit folder and starts the New Forest Build on a workgroup server, or the main menu on a
+  domain-joined server or DC. `-StartBuild` or `-Start` picks one; `-NoStart` only downloads.
+
 ## 0.2.3 - 11/21/2026
 
 From the first run on a real DC (Cliff's Server 2025 VM, PowerShell 7.6.10):

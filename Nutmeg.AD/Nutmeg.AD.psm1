@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.2.3
+    Version: 0.2.4
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,7 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.2.4 - Get-NutmegAD.ps1 1.2 starts the toolkit after the download (the build on a workgroup server).
     0.2.3 - GroupPolicy found in PowerShell 7 (Find-NmModule -SkipEditionCheck); result tables wrap instead of cutting text.
     0.2.2 - Downloads run with the progress bar off (Save-NmDownload): Windows PowerShell 5.1 crawled with it on.
     0.2.1 - Get-NutmegAD.ps1 (standalone, next to the launcher): download or update the toolkit on a server.
@@ -36,7 +37,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.2.3'
+$script:ModuleVersion = '0.2.4'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

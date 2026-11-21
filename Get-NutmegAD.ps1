@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 1.1
+    Version: 1.2
 
 .SYNOPSIS
     Downloads (or updates) the Nutmeg AD Toolkit onto this server from GitHub.
@@ -18,24 +18,31 @@
       C:\Tools\DomainController-Security (or -Path). An existing copy is kept next to it as
       <folder>.previous, replacing the one before.
     - Unblocks the files, so Windows runs them and the New Forest Build's pre-flight passes.
-    - Shows the toolkit version and the commit it came from. -StartBuild then opens the New Forest
-      Build; -Start opens the main menu.
+    - Shows the toolkit version and the commit it came from, then changes to the toolkit folder and
+      starts it: the New Forest Build on a workgroup server, the main menu on a domain-joined server
+      or DC. -StartBuild or -Start picks one; -NoStart only downloads.
     - Runs in Windows PowerShell 5.1 and PowerShell 7. Run it as administrator when the folder is
       under C:\Tools or another protected place.
 
 .EXAMPLE
     .\Get-NutmegAD.ps1
-    Asks for the token and puts the main branch in C:\Tools\DomainController-Security.
+    Asks for the token, puts the main branch in C:\Tools\DomainController-Security and starts it
+    (the New Forest Build on a fresh workgroup server).
 
 .EXAMPLE
     .\Get-NutmegAD.ps1 -Branch claude/zen-franklin-4swcvy -StartBuild
     Gets a branch that is still in review and starts the New Forest Build.
 
 .EXAMPLE
+    .\Get-NutmegAD.ps1 -NoStart
+    Only downloads or updates; starts nothing.
+
+.EXAMPLE
     .\Get-NutmegAD.ps1 -Path D:\Tools\NutmegAD
     Puts the toolkit somewhere else.
 
 .VERSIONING
+    1.2 - Changes to the toolkit folder and starts it: the build on a workgroup server, the menu otherwise; -NoStart.
     1.1 - Downloads with the progress bar off (Windows PowerShell 5.1 was slowed to a few hundred KB/s by it).
     1.0 - First version: token prompt, branch, download, check, backup of the old copy, unblock, start.
 #>
@@ -46,10 +53,11 @@ param(
     [string]$Repository = 'GolfKiloWhiskey/DomainController-Security',
     [switch]$Public,
     [switch]$StartBuild,
-    [switch]$Start
+    [switch]$Start,
+    [switch]$NoStart
 )
 
-$ScriptVersion = '1.1'
+$ScriptVersion = '1.2'
 $ErrorActionPreference = 'Stop'
 
 function Write-Step {
@@ -130,6 +138,21 @@ function Install-NutmegPackage {
     }
 }
 
+function Get-NutmegStartChoice {
+    # What to start after the download: 'NewForest', 'Menu' or 'None'. A workgroup server gets the build.
+    param([bool]$PartOfDomain, [switch]$StartBuild, [switch]$Start, [switch]$NoStart)
+    if ($NoStart) { return 'None' }
+    if ($StartBuild) { return 'NewForest' }
+    if ($Start) { return 'Menu' }
+    if ($PartOfDomain) { return 'Menu' }
+    return 'NewForest'
+}
+
+function Test-NutmegPartOfDomain {
+    # True when this computer is joined to a domain (a DC included).
+    try { return [bool](Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).PartOfDomain } catch { return $true }
+}
+
 # Tests dot-source this file with NUTMEG_GET_TEST set, to reach the functions without running it.
 if ($env:NUTMEG_GET_TEST) { return }
 
@@ -169,11 +192,16 @@ try {
     if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force -ErrorAction SilentlyContinue }
 }
 
-$launcher = Join-Path $Path 'Start-NutmegAD.ps1'
-if ($StartBuild) {
-    & $launcher -NewForest
-} elseif ($Start) {
-    & $launcher
-} else {
+$choice = Get-NutmegStartChoice -PartOfDomain (Test-NutmegPartOfDomain) -StartBuild:$StartBuild -Start:$Start -NoStart:$NoStart
+if ($choice -eq 'None') {
     Write-Step "Next: cd '$Path'; .\Start-NutmegAD.ps1 -NewForest   (a new forest)   or   .\Start-NutmegAD.ps1   (the menu)" DarkGray
+    return
+}
+Set-Location -LiteralPath $Path
+if ($choice -eq 'NewForest') {
+    Write-Step 'This server is in a workgroup: starting the New Forest Build.' DarkGray
+    & (Join-Path $Path 'Start-NutmegAD.ps1') -NewForest
+} else {
+    Write-Step 'Starting the toolkit.' DarkGray
+    & (Join-Path $Path 'Start-NutmegAD.ps1')
 }
