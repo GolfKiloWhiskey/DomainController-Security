@@ -3453,6 +3453,28 @@ function Show-NmGuiRowDetail {
     }
 }
 
+function Get-NmGuiWindowPlacement {
+    <#
+    .SYNOPSIS
+        Where the main window opens (no WPF): 1440 x 900 when the usable screen has room for it with
+        a margin, smaller otherwise, centred in the usable screen; Maximize on a screen too small for
+        the window's minimum (1000 x 640) with that margin.
+    #>
+    param([double]$WorkLeft = 0, [double]$WorkTop = 0, [Parameter(Mandatory)][double]$WorkWidth, [Parameter(Mandatory)][double]$WorkHeight,
+          [double]$Want = 1440, [double]$WantHeight = 900, [double]$Margin = 40)
+    $w = [Math]::Min($Want, $WorkWidth - 2 * $Margin)
+    $h = [Math]::Min($WantHeight, $WorkHeight - 2 * $Margin)
+    $max = ($w -lt 1000 -or $h -lt 640)
+    if ($max) { $w = [Math]::Max(1000, $w); $h = [Math]::Max(640, $h) }
+    [pscustomobject]@{
+        Width    = $w
+        Height   = $h
+        Left     = $WorkLeft + [Math]::Max(0, [Math]::Floor(($WorkWidth - $w) / 2))
+        Top      = $WorkTop + [Math]::Max(0, [Math]::Floor(($WorkHeight - $h) / 2))
+        Maximize = $max
+    }
+}
+
 function Start-NmToolkitGui {
     <#
     .SYNOPSIS
@@ -3490,6 +3512,15 @@ function Start-NmToolkitGui {
     try {
         $w = New-NmGuiXaml -Xaml ($script:NmGuiMainXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
         $script:NmGui.Window = $w
+        # Fit the usable screen (the screen less the taskbar), with a margin, so the title bar never
+        # sits against the top edge and nothing runs off the side; a small screen opens maximised.
+        try {
+            $wa = [System.Windows.SystemParameters]::WorkArea
+            $fit = Get-NmGuiWindowPlacement -WorkLeft $wa.Left -WorkTop $wa.Top -WorkWidth $wa.Width -WorkHeight $wa.Height
+            $w.WindowStartupLocation = 'Manual'
+            $w.Width = $fit.Width; $w.Height = $fit.Height; $w.Left = $fit.Left; $w.Top = $fit.Top
+            if ($fit.Maximize) { $w.WindowState = 'Maximized' }
+        } catch { $null = $_ }
         $c = @{}
         foreach ($n in $script:NmGuiMainControls) { $c[$n] = $w.FindName($n) }
         $script:NmGui.Controls = $c

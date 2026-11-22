@@ -6,6 +6,15 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.6 - 11/22/2026
+
+- **The window opens inside the screen** (Cliff: its title bar sat against the top edge, and in the
+  recording the right side ran off the screen). It was a fixed 1440 x 900 centred on the whole
+  screen; with display scaling (125 % on a 1920 x 1080 VM leaves room for about 1536 x 826) and the
+  taskbar, it did not fit. It now sizes itself to the usable screen with a margin all round,
+  centred, and opens maximised on a screen too small for it.
+- Not run on Windows yet: tested against stand-ins (210 tests).
+
 ## 0.7.5 - 11/22/2026
 
 From the VM recording of the live step list (which worked: the install's progress came through):
