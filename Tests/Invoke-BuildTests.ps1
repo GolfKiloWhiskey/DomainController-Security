@@ -84,12 +84,12 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmForestInstallation { param($ForestArgs) $script:Calls.Add('PreCheck'); $script:ForestArgsSeen = $ForestArgs; [pscustomobject]@{ Status = $script:FakePreCheck; Message = 'The local Administrator password does not meet requirements.' } }
     function script:Install-NmForest { param($ForestArgs) $script:Calls.Add('Promote'); [pscustomobject]@{ Status = 'Success'; Message = '' } }
     # The new DC's health, dcdiag and the report.
-    function script:Get-NmServiceStatus { param($Name) if ($script:FakeStopped -contains $Name) { 'Stopped' } else { 'Running' } }
-    function script:Test-NmSmbShare { param($Name) $true }
-    function script:Test-NmDnsZone { param($Name) $true }
-    function script:Get-NmTimeSource { 'Local CMOS Clock' }
-    function script:Get-NmDnsClientServer { param($IPAddress) @('127.0.0.1') }
-    function script:Get-NmHardwareInfo { [pscustomobject]@{ Cpu = 'Virtual CPU'; Processors = 4; MemoryGB = 8 } }
+    function script:Get-NmServiceStatus { param($Name, $ComputerName) if ($script:FakeStopped -contains $Name) { 'Stopped' } else { 'Running' } }
+    function script:Test-NmSmbShare { param($Name, $ComputerName) $true }
+    function script:Test-NmDnsZone { param($Name, $ComputerName) $true }
+    function script:Get-NmTimeSource { param($ComputerName) 'Local CMOS Clock' }
+    function script:Get-NmDnsClientServer { param($IPAddress, $ComputerName) @('127.0.0.1') }
+    function script:Get-NmHardwareInfo { param($ComputerName) [pscustomobject]@{ Cpu = 'Virtual CPU'; Processors = 4; MemoryGB = 8 } }
     function script:Invoke-NmDcDiagRaw { param($Server) $script:Calls.Add('dcdiag'); @(
         '         ......................... DC01 passed test Connectivity'
         '         ......................... DC01 passed test Advertising'

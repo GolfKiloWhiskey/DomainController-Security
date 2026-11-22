@@ -139,6 +139,12 @@ function Get-NmReportFolder {
     return (Join-Path $script:NmConfig.DataRoot 'Reports')
 }
 
+function Open-NmReport {
+    # Opens a report in the browser (Windows only; a seam for tests).
+    param([Parameter(Mandatory)][string]$Path)
+    if ($script:NmOnWindows) { try { Invoke-Item -LiteralPath $Path } catch { Write-NmLog "The report could not be opened: $($_.Exception.Message)" -Level WARN } }
+}
+
 function Find-NmEdge {
     # The path of Microsoft Edge (msedge.exe), or '' when it is not installed.
     [CmdletBinding()]

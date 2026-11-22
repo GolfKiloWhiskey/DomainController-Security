@@ -610,12 +610,6 @@ function Get-NmHealthSummary {
     return $t
 }
 
-function Open-NmReport {
-    # Opens a report in the browser (Windows only; a seam for tests).
-    param([Parameter(Mandatory)][string]$Path)
-    if ($script:NmOnWindows) { try { Invoke-Item -LiteralPath $Path } catch { Write-NmLog "The report could not be opened: $($_.Exception.Message)" -Level WARN } }
-}
-
 function Get-NmStepTook {
     # How long a recorded step took ("6 min 15 s"), from its Began and At.
     param($Step)
