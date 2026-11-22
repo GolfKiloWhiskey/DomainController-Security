@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.9
+    Version: 0.7.10
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,7 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.10 - CLAUDE.md Status brought up to date (step list, build report, dc-report, 1.1.1.1 standard). No code changes.
     0.7.9 - 1.1.1.1 last on a DC's DNS (setting BuildLastDns; Get-NmLastDns, Add-NmLastDns, Set-NmDnsServer): the build sets it, the
             DC report and health check expect it. CLAUDE.md: check GitHub (open PRs, newest main) before new work.
     0.7.8 - DC Report (dc-report, Reports): a report per DC. DcHealth checks reach another DC (CIM, w32tm /computer:, dcdiag /s:);
@@ -74,7 +75,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.9'
+$script:ModuleVersion = '0.7.10'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
