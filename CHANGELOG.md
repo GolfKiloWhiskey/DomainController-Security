@@ -6,6 +6,23 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.14 - 11/22/2026
+
+**The tick lists get room** (Cliff, from QA: the baseline list was squeezed into a small box with
+two scroll bars, and the descriptions were cut off).
+
+- **The options area grows with the window**, up to half its height (it was fixed at 230 pixels),
+  and scrolls only past that. Make the window bigger and the list gets bigger.
+- **A tick list uses the whole width** of the options area, and follows it when the window is resized.
+- **Descriptions wrap** instead of being cut off at the edge. Clicking a baseline's name or
+  description ticks it, not just the box.
+- **The list opens fully**: all nine baselines show at once. Past 12 items (as the baselines grow)
+  it opens about seven rows tall with **Show all (n)** under it, and Show fewer folds it back.
+- **The Output panel shows every run**: a line when it starts ("---- Compare GPOs with Baselines
+  v0.7.2, 17:56 ----") and one when it ends ("---- 43 result(s) in 0.8 s ----"). Compare prints
+  nothing else of its own (its results are the cards), which is why the panel looked empty.
+- Not run on Windows yet: tested against stand-ins (264 tests). The sizes are WPF and only show on the VM.
+
 ## 0.7.13 - 11/22/2026
 
 **Build and Compare in the window: lists to tick, and one card per GPO** (Cliff, from QA: the form

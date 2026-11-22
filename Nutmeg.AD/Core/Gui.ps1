@@ -56,7 +56,7 @@ $script:NmGuiConsoleOnlyTools = @('new-forest')
 
 # Every named control Start-NmToolkitGui looks up in the main window (the tests check each is in the XAML).
 $script:NmGuiMainControls = @('VersionText', 'DomainButton', 'DomainLabel', 'DomainText', 'ServicePanel', 'SettingsButton', 'SettingsGlyph', 'SearchBox', 'HistoryButton',
-    'CenterPanel', 'ToolListCenter', 'ToolListTitle', 'ToolList', 'ToolTitle', 'ChangeTag', 'ToolMeta', 'OptionsBorder', 'OptionsPanel', 'ActionRow',
+    'CenterPanel', 'ToolListCenter', 'ToolListTitle', 'ToolList', 'ToolTitle', 'ChangeTag', 'ToolMeta', 'OptionsBorder', 'OptionsScroll', 'OptionsPanel', 'ActionRow',
     'RunButton', 'GuidedButton', 'PreviewBox', 'ResultTitle', 'DetailsButton', 'SummaryButton', 'ExportTxtButton', 'ExportCsvButton',
     'AllColumnsBox', 'FilterBox', 'ResultsGrid', 'CardScroll', 'CardHost', 'ViewToggle', 'ClearButton', 'LogBox', 'StatusText', 'ProgressPanel', 'ProgressText', 'ProgressBar',
     'SearchHint', 'FilterHint', 'ResultBar', 'EmptyText', 'OutputExpander', 'SelectionBar', 'SelectionText', 'SelectAllButton', 'SelectNoneButton', 'SelectionActions',
@@ -2864,7 +2864,7 @@ $script:NmGuiMainXaml = @'
           <TextBlock x:Name="ToolMeta" Foreground="#5B6370" TextWrapping="Wrap" Margin="0,4,0,0" Text="Choose an area on the left, then a tool."/>
         </StackPanel>
         <Border Grid.Row="1" x:Name="OptionsBorder" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,12,0,0" Visibility="Collapsed">
-          <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto">
+          <ScrollViewer x:Name="OptionsScroll" MaxHeight="230" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <WrapPanel x:Name="OptionsPanel"/>
           </ScrollViewer>
         </Border>
@@ -3207,13 +3207,16 @@ function Build-NmGuiOptionForm {
     $c = $script:NmGui.Controls
     $c.OptionsPanel.Children.Clear()
     $script:NmGui.Inputs = @{}
+    $script:NmGui.WideBoxes = New-Object System.Collections.Generic.List[object]
     $script:NmGui.Spec = @(Get-NmGuiParamSpec -Tool $script:NmGui.Tool)
     $c.OptionsBorder.Visibility = $(if ($script:NmGui.Spec.Count) { 'Visible' } else { 'Collapsed' })
     foreach ($f in $script:NmGui.Spec) {
         $box = New-Object System.Windows.Controls.StackPanel
         $box.Width = 230; $box.Margin = '0,0,16,10'
         if ($f.Kind -eq 'PickMany' -or $f.Kind -eq 'PickOne') {
-            $box.Width = $(if ($f.Kind -eq 'PickMany') { 620 } else { 320 })
+            $box.Width = 320
+            # A tick list takes the whole width of the options area (Update-NmGuiOptionsSize keeps it so).
+            if ($f.Kind -eq 'PickMany') { $script:NmGui.WideBoxes.Add($box) }
             New-NmGuiPicker -Field $f -Box $box
             [void]$c.OptionsPanel.Children.Add($box)
             continue
@@ -3246,6 +3249,31 @@ function Build-NmGuiOptionForm {
         }
         [void]$c.OptionsPanel.Children.Add($box)
     }
+    Update-NmGuiOptionsSize
+}
+
+function Get-NmGuiOptionsMaxHeight {
+    # How tall the options area may grow (no WPF): half the window, never less than 230.
+    param([double]$WindowHeight)
+    return [Math]::Max(230, [Math]::Floor($WindowHeight * 0.5))
+}
+
+function Get-NmGuiPickListHeight {
+    # A tick list's height before "Show all" (no WPF): every item when there are 12 or fewer, else about 7 rows.
+    param([int]$Count)
+    if ($Count -le 12) { return [double]::PositiveInfinity }
+    return 300
+}
+
+function Update-NmGuiOptionsSize {
+    # The options area: up to half the window tall; tick lists as wide as the area.
+    $c = $script:NmGui.Controls
+    if (-not $c -or -not $c.OptionsScroll -or -not $script:NmGui.Window) { return }
+    try {
+        $c.OptionsScroll.MaxHeight = Get-NmGuiOptionsMaxHeight -WindowHeight $script:NmGui.Window.ActualHeight
+        $wide = [Math]::Max(420, $c.OptionsBorder.ActualWidth - 50)
+        foreach ($b in @($script:NmGui.WideBoxes)) { $b.Width = $wide }
+    } catch { $null = $_ }
 }
 
 function New-NmGuiPicker {
@@ -3337,31 +3365,65 @@ function New-NmGuiPicker {
 
     $list = New-Object System.Windows.Controls.StackPanel
     foreach ($it in $items) {
+        # A row: the tick on the left, the name and its grey line beside it in a column that wraps
+        # (text inside a CheckBox does not wrap reliably). Clicking the text ticks too.
+        $row = New-Object System.Windows.Controls.Grid
+        $row.Margin = '0,4,0,4'
+        $k1 = New-Object System.Windows.Controls.ColumnDefinition; $k1.Width = New-Object System.Windows.GridLength 28
+        $k2 = New-Object System.Windows.Controls.ColumnDefinition; $k2.Width = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
+        $row.ColumnDefinitions.Add($k1); $row.ColumnDefinitions.Add($k2)
         $cb = New-Object System.Windows.Controls.CheckBox
         $cb.Tag = $it.Key; $cb.Uid = "$($it.Label) $($it.Detail) $($it.Badge)"; $cb.IsEnabled = -not $it.Disabled
-        $cb.Margin = '0,3,0,3'; $cb.VerticalContentAlignment = 'Top'; $cb.DataContext = $state
-        $sp = New-Object System.Windows.Controls.StackPanel
-        $line = New-Object System.Windows.Controls.WrapPanel
-        $lt = New-NmGuiTextBlock -Text $it.Label -Size 13 -Weight 'SemiBold'; $lt.Margin = '0,0,8,0'
-        [void]$line.Children.Add($lt)
-        if ($it.Badge) { [void]$line.Children.Add((New-NmGuiPill -Text $it.Badge -Severity 'Medium' -Margin '0,0,0,0')) }
-        [void]$sp.Children.Add($line)
-        if ($it.Detail) { $d = New-NmGuiTextBlock -Text $it.Detail -Size 12 -Color '#5B6370' -Wrap; [void]$sp.Children.Add($d) }
-        $cb.Content = $sp
+        $cb.VerticalAlignment = 'Top'; $cb.Margin = '0,2,0,0'; $cb.DataContext = $state
         $cb.Add_Click({
             param($s, $e)
             $st = $s.DataContext
             $st.CountText.Text = "$(@($st.PickBoxes | Where-Object { $_.IsChecked }).Count) of $($st.PickBoxes.Count) ticked"
         })
+        [void]$row.Children.Add($cb)
+        $sp = New-Object System.Windows.Controls.StackPanel
+        $sp.Cursor = [System.Windows.Input.Cursors]::Hand; $sp.Background = Get-NmGuiBrush '#00FFFFFF'; $sp.Tag = $cb
+        $line = New-Object System.Windows.Controls.WrapPanel
+        $lt = New-NmGuiTextBlock -Text $it.Label -Size 13 -Weight 'SemiBold' -Wrap; $lt.Margin = '0,0,8,0'
+        [void]$line.Children.Add($lt)
+        if ($it.Badge) { [void]$line.Children.Add((New-NmGuiPill -Text $it.Badge -Severity 'Medium' -Margin '0,0,0,0')) }
+        [void]$sp.Children.Add($line)
+        if ($it.Detail) { $d = New-NmGuiTextBlock -Text $it.Detail -Size 12 -Color '#5B6370' -Wrap; [void]$sp.Children.Add($d) }
+        $sp.Add_MouseLeftButtonUp({
+            param($s, $e)
+            $box = $s.Tag
+            if (-not $box.IsEnabled) { return }
+            $box.IsChecked = -not [bool]$box.IsChecked
+            $st = $box.DataContext
+            $st.CountText.Text = "$(@($st.PickBoxes | Where-Object { $_.IsChecked }).Count) of $($st.PickBoxes.Count) ticked"
+        })
+        [System.Windows.Controls.Grid]::SetColumn($sp, 1); [void]$row.Children.Add($sp)
+        # The row is hidden by the search, through its tick box's Visibility (bound below).
+        $vis = New-Object System.Windows.Data.Binding 'Visibility'
+        $vis.Source = $cb
+        [void]$row.SetBinding([System.Windows.UIElement]::VisibilityProperty, $vis)
         $state.PickBoxes.Add($cb)
-        [void]$list.Children.Add($cb)
+        [void]$list.Children.Add($row)
     }
     if (-not $items.Count) { [void]$list.Children.Add((New-NmGuiTextBlock -Text 'Nothing to pick from.' -Size 12 -Color '#5B6370')) }
     $sv = New-Object System.Windows.Controls.ScrollViewer
-    $sv.MaxHeight = 300; $sv.VerticalScrollBarVisibility = 'Auto'; $sv.HorizontalScrollBarVisibility = 'Disabled'; $sv.Content = $list
+    $sv.MaxHeight = Get-NmGuiPickListHeight -Count $items.Count; $sv.VerticalScrollBarVisibility = 'Auto'; $sv.HorizontalScrollBarVisibility = 'Disabled'; $sv.Content = $list
+    # A long list opens about 7 rows tall; "Show all" lets it grow (the options area scrolls past half the window).
+    if ($items.Count -gt 12) {
+        $more = New-Object System.Windows.Controls.Button
+        $more.Content = "Show all ($($items.Count))"; $more.MinHeight = 26; $more.Padding = '10,0'; $more.Margin = '0,6,0,0'; $more.FontSize = 12
+        $more.HorizontalAlignment = 'Left'; $more.Tag = $sv; $more.DataContext = $items.Count
+        $more.Add_Click({
+            param($s, $e)
+            $view = $s.Tag
+            if ([double]::IsPositiveInfinity($view.MaxHeight)) { $view.MaxHeight = 300; $s.Content = "Show all ($($s.DataContext))" }
+            else { $view.MaxHeight = [double]::PositiveInfinity; $s.Content = 'Show fewer' }
+        })
+    } else { $more = $null }
     $frame = New-Object System.Windows.Controls.Border
     $frame.BorderBrush = Get-NmGuiBrush '#E2E5EA'; $frame.BorderThickness = 1; $frame.CornerRadius = 8; $frame.Padding = '10,6'; $frame.Child = $sv
     [void]$Box.Children.Add($frame)
+    if ($more) { [void]$Box.Children.Add($more) }
     $script:NmGui.Inputs[$f.Name] = $state
 }
 
@@ -3605,6 +3667,8 @@ function Invoke-NmGuiRun {
         }
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         Write-NmLog "Running $($t.Name) v$($t.Version) (window)." -Level INFO -NoConsole
+        # The Output panel always shows each run, even for a tool that prints nothing of its own.
+        [void]$script:NmGui.Transcript.Append((Get-NmGuiRunLine -Tool $t -Start (Get-Date) -WhatIf:([bool]$EntryArgs.WhatIf)) + "`r`n")
         try {
             $rows = @(& $t.Entry @EntryArgs)
         } catch {
@@ -3613,6 +3677,8 @@ function Invoke-NmGuiRun {
         }
         $sw.Stop()
         Write-NmRunHistory -ToolId $t.Id -ToolVersion $t.Version -Kind $t.Kind -Mode $mode -ItemCount $rows.Count
+        [void]$script:NmGui.Transcript.Append((Get-NmGuiRunLine -Tool $t -Count $rows.Count -Seconds $sw.Elapsed.TotalSeconds) + "`r`n")
+        Update-NmGuiLog
         Set-NmGuiResult -Rows $rows -Title ("{0} result(s)  |  ran {1:HH:mm}  |  {2:N1} s" -f $rows.Count, (Get-Date), $sw.Elapsed.TotalSeconds)
         $c.StatusText.Text = "$($t.Name): $($rows.Count) result(s)."
     }
@@ -3620,6 +3686,14 @@ function Invoke-NmGuiRun {
     if ($script:NmGui.LastLeftover -and $script:NmGui.Rows.Count -eq 0) {
         [void](Show-NmGuiDialog -Title $t.Name -Text $script:NmGui.LastLeftover -NoInput -Captures $script:NmGui.LastCaptures)
     }
+}
+
+function Get-NmGuiRunLine {
+    # The Output panel's line for a run (no WPF): "---- Compare GPOs with Baselines v0.7.2, 17:56 ----"
+    # when it starts, "---- 43 result(s) in 0.8 s ----" when it ends.
+    param($Tool, [datetime]$Start, [int]$Count = -1, [double]$Seconds = 0, [switch]$WhatIf)
+    if ($Count -ge 0) { return ('---- {0} result(s) in {1:N1} s ----' -f $Count, $Seconds) }
+    return ('---- {0} v{1}{2}, {3:HH:mm} ----' -f $Tool.Name, $Tool.Version, $(if ($WhatIf) { ' (WhatIf)' } else { '' }), $Start)
 }
 
 function Get-NmGuiSelectedRow {
@@ -3801,6 +3875,8 @@ function Start-NmToolkitGui {
         $c.SettingsGlyph.Text = [string][char]0xE713
         $c.SettingsButton.Add_Click({ Invoke-NmGuiAction -Busy 'Settings...' -Action { Show-NmSettingsMenu } })
 
+        # The options area grows with the window (a pick list needs room); wide fields follow its width.
+        $w.Add_SizeChanged({ Update-NmGuiOptionsSize })
         $w.Add_ContentRendered({
             if ($script:NmGui.Started) { return }
             $script:NmGui.Started = $true

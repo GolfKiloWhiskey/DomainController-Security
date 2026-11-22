@@ -689,6 +689,19 @@ Test-That 'Window cards for gpo-compare: one card per GPO, its status the worst,
     $true
 }
 
+Test-That 'Window sizes: the options area grows to half the window; a long tick list opens 7 rows tall; Output names each run' {
+    Assert-Equal 230 (Get-NmGuiOptionsMaxHeight -WindowHeight 300) 'small window'
+    Assert-Equal 450 (Get-NmGuiOptionsMaxHeight -WindowHeight 900) 'half of 900'
+    if (-not [double]::IsPositiveInfinity((Get-NmGuiPickListHeight -Count 12))) { throw '12 items should all show' }
+    Assert-Equal 300 (Get-NmGuiPickListHeight -Count 20) 'long list'
+    $t = Get-NmTool -Id gpo-compare
+    Assert-Equal "---- Compare GPOs with Baselines v$($t.Version), 17:56 ----" (Get-NmGuiRunLine -Tool $t -Start ([datetime]'2026-11-22 17:56')) 'start line'
+    Assert-Equal '---- 43 result(s) in 0.8 s ----' (Get-NmGuiRunLine -Tool $t -Count 43 -Seconds 0.81) 'end line'
+    if ((Get-NmGuiRunLine -Tool $t -Start (Get-Date) -WhatIf) -notlike '*(WhatIf)*') { throw 'WhatIf not shown' }
+    if ($script:NmGuiMainControls -notcontains 'OptionsScroll') { throw 'OptionsScroll not looked up' }
+    $true
+}
+
 Test-That 'Compare with nothing picked says what to do' {
     try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
     $true
