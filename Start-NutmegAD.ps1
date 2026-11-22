@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/20/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.0
+    Version: 0.7.1
 
 .SYNOPSIS
     Launches the Nutmeg AD Toolkit.
@@ -51,6 +51,7 @@
     The toolkit, even on a workgroup server (its other tools need a domain).
 
 .VERSIONING
+    0.7.1 - A finished build that asks for the toolkit (Get-NmToolkitHandOff) is followed by the toolkit.
     0.7.0 - Checks the server at start: a workgroup server or a build in progress opens the build; -Toolkit for the toolkit.
     0.6.0 - The window by default (-Console for the console); PowerShell 7 used without asking when installed.
     0.5.0 - -NewForest -Gui: the build in the window (Windows PowerShell 5.1); no longer sent to the console.
@@ -63,7 +64,7 @@
 #>
 param([switch]$Stay, [switch]$NewForest, [switch]$Toolkit, [switch]$Console, [switch]$Gui, [string]$LogPath)
 
-$ScriptVersion = '0.7.0'
+$ScriptVersion = '0.7.1'
 
 if ($PSVersionTable.PSVersion -lt [version]'5.1') {
     Write-Host 'The Nutmeg AD Toolkit needs Windows PowerShell 5.1 or PowerShell 7.' -ForegroundColor Red
@@ -157,9 +158,16 @@ if ($NewForest) {
             return
         }
         Start-NmToolkitGui -NewForest
-        return
+    } else {
+        Invoke-NmTool -Id new-forest
     }
-    Invoke-NmTool -Id new-forest
+    # A finished build asked for the toolkit: open it the normal way (PowerShell 7 when installed),
+    # in a log of its own (the build's log ends with the build).
+    if (Get-NmToolkitHandOff) {
+        Write-Host 'The build is finished: opening the toolkit.' -ForegroundColor Cyan
+        $env:NUTMEG_AD_LOG = $null
+        & $PSCommandPath -Toolkit @modeArgs
+    }
     return
 }
 if ($useWindow) {

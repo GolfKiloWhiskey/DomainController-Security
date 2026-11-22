@@ -6,6 +6,22 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.12 - 11/22/2026
+
+**The New Forest Build now hands over to the toolkit when it is finished** (Cliff, from the VM:
+the finished build stayed in its own window and said to run `.\Start-NutmegAD.ps1`).
+
+- After the last step, the build asks **"Open the toolkit now?"** (Yes by default). Yes closes the
+  build and opens the toolkit, the same way `.\Start-NutmegAD.ps1` does: in the window (or the
+  console menu if the build ran in the console), in PowerShell 7 when it is installed, with a log
+  of its own. No leaves the build open and says how to start the toolkit later.
+- The same question comes up if the build is opened again on a server whose build is finished.
+- Before this, only the *next* start of `Start-NutmegAD.ps1` chose the toolkit on a finished
+  server; the window that ran the build never switched.
+- Versions: New Forest Build 0.7.7, `Start-NutmegAD.ps1` 0.7.1.
+- Not run on Windows yet: tested against stand-ins (256 tests). The window closing and the toolkit
+  opening after it are the part to check on the VM.
+
 ## 0.7.11 - 11/22/2026
 
 **Baselines, step 2: the file format, Build GPOs from Baselines and Compare GPOs with Baselines**

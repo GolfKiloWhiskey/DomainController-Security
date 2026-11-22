@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.6
+    Version: 0.7.7
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,7 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.7 - A finished build offers to open the toolkit (Yes by default): the build closes and the launcher opens it.
     0.7.6 - The last-DNS server (1.1.1.1 by default) ends the DNS list at the static IP step, and a new step after promotion
             sets the DC's order: its own IP, 127.0.0.1, 1.1.1.1.
     0.7.5 - The build ends with a report (HTML and PDF): the build, network, server, server check, every step with its times,
@@ -59,7 +60,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.6'
+    Version  = '0.7.7'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -395,8 +396,13 @@ function Read-NmNewForestPlan {
         Write-Host "A build of $($state.Answers.Domain) is saved on this server (started $($state.Started), $done step(s) done$(if ($state.Finished) { ", finished $($state.Finished)" }))." -ForegroundColor Cyan
         if ($state.Finished) {
             Write-Host 'This server''s build is finished.' -ForegroundColor Green
-            Write-Host 'For the toolkit''s other tools, run: .\Start-NutmegAD.ps1' -ForegroundColor DarkGray
-            Wait-NmKey
+            # Straight on to the toolkit (Cliff): the build closes and the launcher opens the toolkit,
+            # in PowerShell 7 when it is installed. No: stay here.
+            if (Read-NmYesNo -Prompt 'Open the toolkit now?' -Default 'Y') {
+                Request-NmToolkitHandOff
+            } else {
+                Write-Host 'For the toolkit later, run: .\Start-NutmegAD.ps1' -ForegroundColor DarkGray
+            }
             return $null
         }
         if (Read-NmYesNo -Prompt 'Continue it?' -Default 'Y') { return @{ Resume = $true } }
