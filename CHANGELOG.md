@@ -6,6 +6,15 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.10 - 11/22/2026
+
+**CLAUDE.md's Status is up to date.** It stopped at 0.6.0; it now also covers the live step list,
+the build's HTML and PDF report with the DC health checks, the DC Report (waiting for your console
+QA) and the 1.1.1.1 DNS standard, and says what comes next (the baseline file format).
+
+- `docs/TOOL-LIST.md` no longer says nothing is built.
+- No code changes. 225 tests still pass (against stand-ins; nothing new to run on Windows).
+
 ## 0.7.9 - 11/22/2026
 
 **1.1.1.1 is always the last DNS server on a DC's adapter** (Cliff's standard). If a DC cannot

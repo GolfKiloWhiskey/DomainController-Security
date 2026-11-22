@@ -1,6 +1,6 @@
 # Draft tool list (for review)
 
-Status: draft for Cliff to review. Nothing here is built yet. Ids, names and sections can all change.
+Status: agreed with Cliff (Nov 2026). Steps 1 and the New Forest Build phases 0 and 1 are built, and `dc-report`; the order of work below says what is next. Ids, names and sections can still change.
 
 ## How baselines work
 
