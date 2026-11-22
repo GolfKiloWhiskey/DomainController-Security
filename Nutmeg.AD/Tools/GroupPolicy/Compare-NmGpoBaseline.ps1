@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.1
+    Version: 0.7.2
 
 .SYNOPSIS
     Compares GPOs with their baselines: missing, different and extra settings, and parameters not filled in.
@@ -28,6 +28,8 @@
     Compare-NmGpoBaseline -Gpo 'Security - Enforce UAC (old)' -Baseline security-enforce-uac
 
 .VERSIONING
+    0.7.2 - The window: one card per GPO (what needs attention first, a line per setting); GPOs and the
+            baseline picked from lists. Rows come per GPO with the problems first. Nothing picked: says so.
     0.7.1 - First version.
 #>
 
@@ -37,7 +39,7 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'One GPO or all of them against their baseline: missing, different and extra settings'
-    Version  = '0.7.1'
+    Version  = '0.7.2'
     Kind     = 'Report'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
@@ -45,6 +47,30 @@ $NmTool = @{
     Entry    = 'Compare-NmGpoBaseline'
     Summary  = 'Show-NmGpoCompareSummary'
     Columns  = @('Gpo', 'Setting', 'Expected', 'Actual', 'Result')
+    # The window: a card per GPO, its settings under Different, Missing, ... Matches, one line each.
+    CardGroup = @('Gpo', 'Result', 'Line')
+    Pickers  = @{
+        Gpo      = @{ Items = 'Get-NmGpoComparePickItem'; NeedsDomain = $true; Note = 'Tick GPOs, or tick All below for every GPO built from a baseline.' }
+        Baseline = @{ Items = 'Get-NmBaselinePickItem'; Empty = '(the one in each GPO''s comment)' }
+    }
+}
+
+function Get-NmGpoComparePickItem {
+    # The window's list of GPOs: the ones built from a baseline first, saying which.
+    [CmdletBinding()]
+    param()
+    $gpos = @(Get-NmAllGpo)
+    $stamped = @($gpos | Where-Object { Read-NmBaselineStamp -Comment "$($_.Description)" })
+    $other = @($gpos | Where-Object { -not (Read-NmBaselineStamp -Comment "$($_.Description)") })
+    foreach ($g in $stamped) { $st = Read-NmBaselineStamp -Comment "$($g.Description)"; [pscustomobject]@{ Key = "$($g.DisplayName)"; Label = "$($g.DisplayName)"; Detail = "Built from $($st.Id) v$($st.Version)" } }
+    foreach ($g in $other) { [pscustomobject]@{ Key = "$($g.DisplayName)"; Label = "$($g.DisplayName)"; Detail = 'Not built from a baseline: pick the baseline to compare with'; Badge = 'No stamp' } }
+}
+
+function Get-NmBaselinePickItem {
+    # The baselines, for the drop-down.
+    [CmdletBinding()]
+    param()
+    foreach ($b in @(Get-NmBaseline)) { [pscustomobject]@{ Key = $b.Id; Label = $b.Name; Detail = "v$($b.Version)" } }
 }
 
 function Get-NmAllGpo {
@@ -114,11 +140,12 @@ function Compare-NmGpoBaseline {
     #>
     [CmdletBinding()]
     param([string[]]$Gpo = @(), [switch]$All, [string]$Baseline, [switch]$DifferencesOnly)
+    if (-not $All -and -not @($Gpo | Where-Object { "$_".Trim() }).Count) { throw 'Pick the GPOs to compare, or choose All.' }
     $gpos = @(Get-NmAllGpo)
     $targets = if ($All) { @($gpos | Where-Object { Read-NmBaselineStamp -Comment "$($_.Description)" }) }
                else { @(foreach ($n in $Gpo) { $g = @($gpos | Where-Object { $_.DisplayName -eq $n })[0]; if ($g) { $g } else { [pscustomobject]@{ DisplayName = $n; Id = ''; Description = ''; Missing = $true } } }) }
     $rows = New-Object System.Collections.Generic.List[object]
-    $fail = { param($g, $why) $rows.Add([pscustomobject]@{ Gpo = "$($g.DisplayName)"; Baseline = ''; Setting = '(the GPO)'; SettingId = ''; Kind = ''; Expected = ''; Actual = ''; Result = "Failed: $why"; Detail = '' }) }
+    $fail = { param($g, $why) $rows.Add([pscustomobject]@{ Gpo = "$($g.DisplayName)"; Baseline = ''; Setting = '(the GPO)'; SettingId = ''; Kind = ''; Expected = ''; Actual = ''; Result = "Failed: $why"; Detail = ''; Line = "Failed: $why" }) }
     $n = 0
     foreach ($g in $targets) {
         $n++
@@ -133,14 +160,32 @@ function Compare-NmGpoBaseline {
         $b = @(Get-NmBaseline -Id $id)[0]
         if (-not $b) { & $fail $g "the baseline '$id' is not in this toolkit"; continue }
         try {
-            foreach ($r in @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)) {
-                if ($DifferencesOnly -and $r.Result -eq 'Matches') { continue }
-                $rows.Add($r)
+            $found = @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)
+            # What needs attention first, then what matches; each in the baseline's own order.
+            foreach ($res in 'Note', 'Not filled', 'Different', 'Missing', 'Extra', 'Matches') {
+                foreach ($r in @($found | Where-Object { $_.Result -eq $res })) {
+                    if ($DifferencesOnly -and $r.Result -eq 'Matches') { continue }
+                    $r | Add-Member -NotePropertyName Line -NotePropertyValue (Get-NmGpoCompareLine -Row $r) -Force
+                    $rows.Add($r)
+                }
             }
         } catch { & $fail $g "could not be read: $($_.Exception.Message)" }
     }
     Write-Progress -Activity 'Comparing GPOs' -Completed
     return $rows.ToArray()
+}
+
+function Get-NmGpoCompareLine {
+    # One line for a setting in its GPO's card: just the setting when it matches, what was expected
+    # and found when it does not.
+    param($Row)
+    switch ("$($Row.Result)") {
+        'Matches'    { return "$($Row.Setting)$(if ($Row.Detail) { " ($($Row.Detail))" })" }
+        'Missing'    { return "$($Row.Setting): not set (expected $($Row.Expected))" }
+        'Extra'      { return "$($Row.Setting) = $($Row.Actual) ($($Row.Kind), not in the baseline)" }
+        'Note'       { return "$($Row.Detail)" }
+        default      { return "$($Row.Setting): expected $($Row.Expected), found $($Row.Actual)" }
+    }
 }
 
 function Show-NmGpoCompareSummary {

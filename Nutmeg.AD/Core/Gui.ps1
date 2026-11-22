@@ -758,11 +758,48 @@ function Get-NmGuiParamSpec {
                 elseif ($t -eq [string]) { 'Text' }
                 else { $null }
         if (-not $kind) { continue }
+        # A picker (the tool's Pickers): chosen from a list, not typed. [string[]] ticks several,
+        # [string] picks one from a drop-down.
+        $picker = $null
+        if ($Tool.PSObject.Properties['Pickers'] -and $Tool.Pickers -and $Tool.Pickers.ContainsKey($n) -and ($kind -eq 'List' -or $kind -eq 'Text')) {
+            $picker = $Tool.Pickers[$n]
+            $kind = if ($kind -eq 'List') { 'PickMany' } else { 'PickOne' }
+        }
         # Required: mandatory in every parameter set it belongs to.
         $pa = @($p.Attributes | Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] })
         $required = $pa.Count -gt 0 -and @($pa | Where-Object { -not $_.Mandatory }).Count -eq 0
-        [pscustomobject]@{ Name = $n; Label = ConvertTo-NmGuiLabel $n; Kind = $kind; Choices = $set; Default = $defaults[$n]; Required = $required }
+        [pscustomobject]@{ Name = $n; Label = ConvertTo-NmGuiLabel $n; Kind = $kind; Choices = $set; Default = $defaults[$n]; Required = $required; Picker = $picker }
     }
+}
+
+function Get-NmGuiPickItem {
+    <#
+    .SYNOPSIS
+        A picker's items (no WPF): Key (what the tool gets), Label, Detail (a grey line), Badge and
+        Disabled, from the tool's Items function. Strings become items with Key = Label.
+    #>
+    param([Parameter(Mandatory)]$Field)
+    $fn = "$($Field.Picker.Items)"
+    @(foreach ($it in @(& $fn)) {
+        if ($null -eq $it) { continue }
+        if ($it -is [string]) { [pscustomobject]@{ Key = $it; Label = $it; Detail = ''; Badge = ''; Disabled = $false }; continue }
+        $key = if ($it.PSObject.Properties['Key'] -and "$($it.Key)") { "$($it.Key)" } else { "$($it.Label)" }
+        [pscustomobject]@{
+            Key      = $key
+            Label    = $(if ($it.PSObject.Properties['Label'] -and "$($it.Label)") { "$($it.Label)" } else { $key })
+            Detail   = $(if ($it.PSObject.Properties['Detail']) { "$($it.Detail)" } else { '' })
+            Badge    = $(if ($it.PSObject.Properties['Badge']) { "$($it.Badge)" } else { '' })
+            Disabled = [bool]($it.PSObject.Properties['Disabled'] -and $it.Disabled)
+        }
+    })
+}
+
+function Test-NmGuiPickMatch {
+    # Does a pick item match the list's search text (label, detail or badge)?
+    param($Item, [string]$Text)
+    $t = "$Text".Trim()
+    if (-not $t) { return $true }
+    return ("$($Item.Label) $($Item.Detail) $($Item.Badge)" -like "*$t*")
 }
 
 function ConvertFrom-NmGuiForm {
@@ -783,8 +820,11 @@ function ConvertFrom-NmGuiForm {
             'List'   { $items = @("$v" -split '[,;\s]+' | Where-Object { $_ }); if ($items.Count) { $a[$f.Name] = [string[]]$items } }
             'Date'   { if ("$v".Trim()) { $d = [datetime]::MinValue; if (-not [datetime]::TryParse("$v".Trim(), [ref]$d)) { throw "$($f.Label): '$v' is not a date." }; $a[$f.Name] = $d } }
             'Text'   { if ("$v".Trim()) { $a[$f.Name] = "$v".Trim() } }
+            'PickMany' { $items = @(@($v) | Where-Object { "$_".Trim() } | ForEach-Object { "$_" }); if ($items.Count) { $a[$f.Name] = [string[]]$items } }
+            'PickOne'  { if ("$(@($v)[0])".Trim()) { $a[$f.Name] = "$(@($v)[0])".Trim() } }
         }
         if ($f.Required -and $f.Kind -ne 'Switch' -and -not $a.ContainsKey($f.Name)) {
+            if ($f.Kind -eq 'PickMany') { throw "Tick at least one in $($f.Label)." }
             throw "$($f.Label) is required."
         }
     }
@@ -1240,7 +1280,9 @@ function Get-NmGuiStatusLevel {
     param([string]$Column, [string]$Value)
     $v = "$Value".Trim()
     if ($Column -eq 'Severity' -and $script:NmGuiSeverityColors.ContainsKey($v)) { return $v }
-    if ($v -match '^(?i)(failed|failure|error|denied|blocked|refused|not found|missing|not ready)') { return 'High' }
+    if ($v -match '^(?i)(failed|failure|error|denied|blocked|refused|not found|missing|not ready|different|not filled)') { return 'High' }
+    if ($v -match '^(?i)(extra)$') { return 'Medium' }
+    if ($v -match '^(?i)(matches)$') { return 'OK' }
     if ($v -match '^(?i)(whatif|cancel|skipped|not changed|already|unchanged|none|n/a)') { return 'Info' }
     if ($v -match '^(?i)(warn|partial|suspicious|expir|interrupt|pending|disabled)') { return 'Medium' }
     if ($v -match '^(?i)(granted|added|removed|set\b|success|succeeded|ok\b|done|created|updated|enabled|deleted|changed|sent|saved|yes\b|active|works|connected|complete|passed)') { return 'OK' }
@@ -1358,8 +1400,12 @@ function Get-NmGuiGroupedCardModel {
         if (-not $byKey.ContainsKey($k)) { $byKey[$k] = New-Object System.Collections.Generic.List[int]; $order.Add($k) }
         $byKey[$k].Add($i)
     }
+    $lineCol = "$(@($GroupBy)[2])"
+    if ($lineCol -and @($All[0].PSObject.Properties.Name) -notcontains $lineCol) { $lineCol = '' }
     $itemCols = @($Columns | Where-Object { $_ -ne $groupCol -and $_ -ne $splitCol -and $_ -ne $FacetColumn })
     if (-not $itemCols.Count) { $itemCols = @($Columns | Where-Object { $_ -ne $groupCol -and $_ -ne $splitCol }) }
+    # A third CardGroup column: the one line each row shows in its card (gpo-compare: "Setting: expected X, found Y").
+    if ($lineCol) { $itemCols = @($lineCol) }
     $rank = @{ 'High' = 0; 'Medium' = 1; 'OK' = 2; 'Info' = 3 }
     $keep = [Math]::Max(1, $Limit)
     $items = foreach ($k in @($order | Select-Object -First $keep)) {
@@ -1387,7 +1433,14 @@ function Get-NmGuiGroupedCardModel {
             [pscustomobject]@{ Name = $(if ($lines[$p].Count -gt 1) { "$label ($($lines[$p].Count))" } else { $label }); Value = ($lines[$p] -join "`n") }
         })
         $status = ''; $level = ''
-        if ($FacetColumn -and $FacetColumn -ne $splitCol) {
+        if ($FacetColumn -and $FacetColumn -eq $splitCol) {
+            # Split by the status itself (gpo-compare: Different, Missing, Matches): the card's status
+            # is the worst of them, so a card that needs attention says so.
+            $vals = @($idx | ForEach-Object { Get-NmGuiFacetValue -Column $FacetColumn -Value $All[$_].$FacetColumn } | Sort-Object -Unique)
+            $worst = @($vals | Sort-Object { $l = Get-NmGuiStatusLevel -Column $FacetColumn -Value $_; if ($rank.ContainsKey($l)) { $rank[$l] } else { 9 } })[0]
+            $status = "$worst"; $level = Get-NmGuiStatusLevel -Column $FacetColumn -Value $worst
+        }
+        elseif ($FacetColumn -and $FacetColumn -ne $splitCol) {
             $vals = @($idx | ForEach-Object { Get-NmGuiFacetValue -Column $FacetColumn -Value $All[$_].$FacetColumn } | Sort-Object -Unique)
             $levels = @($vals | ForEach-Object { Get-NmGuiStatusLevel -Column $FacetColumn -Value $_ })
             if ($vals.Count -eq 1) { $status = $vals[0]; $level = $levels[0] }
@@ -3159,6 +3212,12 @@ function Build-NmGuiOptionForm {
     foreach ($f in $script:NmGui.Spec) {
         $box = New-Object System.Windows.Controls.StackPanel
         $box.Width = 230; $box.Margin = '0,0,16,10'
+        if ($f.Kind -eq 'PickMany' -or $f.Kind -eq 'PickOne') {
+            $box.Width = $(if ($f.Kind -eq 'PickMany') { 620 } else { 320 })
+            New-NmGuiPicker -Field $f -Box $box
+            [void]$c.OptionsPanel.Children.Add($box)
+            continue
+        }
         switch ($f.Kind) {
             'Switch' {
                 $cb = New-Object System.Windows.Controls.CheckBox
@@ -3189,12 +3248,133 @@ function Build-NmGuiOptionForm {
     }
 }
 
+function New-NmGuiPicker {
+    <#
+    .SYNOPSIS
+        A picker field in the options form: ticks (PickMany) or a drop-down (PickOne), each item with
+        its grey detail line and badge, a search box for long lists, Select all / none and a count.
+        A list that needs the domain, before the domain is read, shows "Load the list" instead.
+    #>
+    param([Parameter(Mandatory)]$Field, [Parameter(Mandatory)]$Box)
+    $f = $Field
+    $note = "$($f.Picker.Note)"
+    $head = New-NmGuiTextBlock -Text "$($f.Label)$(if ($f.Required) { ' *' })" -Size 12 -Weight 'SemiBold' -Color '#3D4450'
+    [void]$Box.Children.Add($head)
+    if ($note) { $n = New-NmGuiTextBlock -Text $note -Size 12 -Color '#5B6370' -Wrap; $n.Margin = '0,2,0,0'; [void]$Box.Children.Add($n) }
+
+    $t = $script:NmGui.Tool
+    $loaded = $true
+    if ($f.Picker.NeedsDomain) { foreach ($svc in @($t.Services)) { if (-not ($script:NmSession.Services -and $script:NmSession.Services[$svc])) { $loaded = $false } } }
+    if (-not $loaded) {
+        $b = New-Object System.Windows.Controls.Button
+        $b.Content = 'Load the list (reads the domain)'; $b.MinHeight = 30; $b.Padding = '12,2'; $b.Margin = '0,6,0,0'; $b.HorizontalAlignment = 'Left'
+        $b.Add_Click({
+            Invoke-NmGuiAction -Busy 'Reading the domain...' -Action {
+                if (-not (Assert-NmConnection -Services $script:NmGui.Tool.Services)) { throw 'Could not read the domain from this DC.' }
+                Update-NmGuiBanner
+                Build-NmGuiOptionForm
+            }
+        })
+        [void]$Box.Children.Add($b)
+        $script:NmGui.Inputs[$f.Name] = [pscustomobject]@{ PickBoxes = (New-Object System.Collections.Generic.List[object]); Combo = $null; CountText = $null }
+        return
+    }
+    $items = @()
+    try { $items = @(Get-NmGuiPickItem -Field $f) }
+    catch {
+        $e = New-NmGuiTextBlock -Text "The list could not be read: $($_.Exception.Message)" -Size 12 -Color '#B42318' -Wrap
+        $e.Margin = '0,6,0,0'; [void]$Box.Children.Add($e)
+    }
+
+    if ($f.Kind -eq 'PickOne') {
+        $cmb = New-Object System.Windows.Controls.ComboBox
+        $cmb.MinHeight = 30; $cmb.Margin = '0,4,0,0'
+        $empty = New-Object System.Windows.Controls.ComboBoxItem
+        $empty.Content = $(if ($f.Picker.Empty) { "$($f.Picker.Empty)" } else { '(none)' }); $empty.Tag = ''
+        [void]$cmb.Items.Add($empty)
+        foreach ($it in $items) {
+            $ci = New-Object System.Windows.Controls.ComboBoxItem
+            $ci.Content = "$($it.Label)$(if ($it.Detail) { "   ($($it.Detail))" })"; $ci.Tag = $it.Key; $ci.IsEnabled = -not $it.Disabled
+            [void]$cmb.Items.Add($ci)
+        }
+        $cmb.SelectedIndex = 0
+        [void]$Box.Children.Add($cmb)
+        $script:NmGui.Inputs[$f.Name] = $cmb
+        return
+    }
+
+    # PickMany: a search box for long lists, the ticks, Select all / none and a count.
+    $state = [pscustomobject]@{ PickBoxes = (New-Object System.Collections.Generic.List[object]); Combo = $null; CountText = $null }
+    $bar = New-Object System.Windows.Controls.DockPanel
+    $bar.Margin = '0,6,0,4'; $bar.LastChildFill = $true
+    foreach ($spec in @(@('Select all', $true), @('Select none', $false))) {
+        $sb = New-Object System.Windows.Controls.Button
+        $sb.Content = $spec[0]; $sb.MinHeight = 26; $sb.Padding = '10,0'; $sb.Margin = '0,0,6,0'; $sb.FontSize = 12
+        $sb.DataContext = $state; $sb.Tag = $spec[1]
+        $sb.Add_Click({
+            param($s, $e)
+            $st = $s.DataContext
+            foreach ($cb in $st.PickBoxes) { if ($cb.IsEnabled -and $cb.Visibility -eq 'Visible') { $cb.IsChecked = [bool]$s.Tag } }
+            $st.CountText.Text = "$(@($st.PickBoxes | Where-Object { $_.IsChecked }).Count) of $($st.PickBoxes.Count) ticked"
+        })
+        [System.Windows.Controls.DockPanel]::SetDock($sb, 'Left'); [void]$bar.Children.Add($sb)
+    }
+    $count = New-NmGuiTextBlock -Text "0 of $($items.Count) ticked" -Size 12 -Color '#5B6370'
+    $count.VerticalAlignment = 'Center'; $count.Margin = '6,0,0,0'
+    $state.CountText = $count
+    [System.Windows.Controls.DockPanel]::SetDock($count, 'Right'); [void]$bar.Children.Add($count)
+    if ($items.Count -gt 6) {
+        $search = New-Object System.Windows.Controls.TextBox
+        $search.MinHeight = 26; $search.Margin = '6,0,6,0'; $search.Padding = '6,2'; $search.ToolTip = 'Search the list'; $search.DataContext = $state
+        $search.Add_TextChanged({
+            param($s, $e)
+            $q = "$($s.Text)".Trim()
+            foreach ($cb in $s.DataContext.PickBoxes) { $cb.Visibility = $(if (-not $q -or "$($cb.Uid)" -like "*$q*") { 'Visible' } else { 'Collapsed' }) }
+        })
+        [void]$bar.Children.Add($search)
+    } else { [void]$bar.Children.Add((New-Object System.Windows.Controls.TextBlock)) }
+    [void]$Box.Children.Add($bar)
+
+    $list = New-Object System.Windows.Controls.StackPanel
+    foreach ($it in $items) {
+        $cb = New-Object System.Windows.Controls.CheckBox
+        $cb.Tag = $it.Key; $cb.Uid = "$($it.Label) $($it.Detail) $($it.Badge)"; $cb.IsEnabled = -not $it.Disabled
+        $cb.Margin = '0,3,0,3'; $cb.VerticalContentAlignment = 'Top'; $cb.DataContext = $state
+        $sp = New-Object System.Windows.Controls.StackPanel
+        $line = New-Object System.Windows.Controls.WrapPanel
+        $lt = New-NmGuiTextBlock -Text $it.Label -Size 13 -Weight 'SemiBold'; $lt.Margin = '0,0,8,0'
+        [void]$line.Children.Add($lt)
+        if ($it.Badge) { [void]$line.Children.Add((New-NmGuiPill -Text $it.Badge -Severity 'Medium' -Margin '0,0,0,0')) }
+        [void]$sp.Children.Add($line)
+        if ($it.Detail) { $d = New-NmGuiTextBlock -Text $it.Detail -Size 12 -Color '#5B6370' -Wrap; [void]$sp.Children.Add($d) }
+        $cb.Content = $sp
+        $cb.Add_Click({
+            param($s, $e)
+            $st = $s.DataContext
+            $st.CountText.Text = "$(@($st.PickBoxes | Where-Object { $_.IsChecked }).Count) of $($st.PickBoxes.Count) ticked"
+        })
+        $state.PickBoxes.Add($cb)
+        [void]$list.Children.Add($cb)
+    }
+    if (-not $items.Count) { [void]$list.Children.Add((New-NmGuiTextBlock -Text 'Nothing to pick from.' -Size 12 -Color '#5B6370')) }
+    $sv = New-Object System.Windows.Controls.ScrollViewer
+    $sv.MaxHeight = 300; $sv.VerticalScrollBarVisibility = 'Auto'; $sv.HorizontalScrollBarVisibility = 'Disabled'; $sv.Content = $list
+    $frame = New-Object System.Windows.Controls.Border
+    $frame.BorderBrush = Get-NmGuiBrush '#E2E5EA'; $frame.BorderThickness = 1; $frame.CornerRadius = 8; $frame.Padding = '10,6'; $frame.Child = $sv
+    [void]$Box.Children.Add($frame)
+    $script:NmGui.Inputs[$f.Name] = $state
+}
+
 function Get-NmGuiFormValue {
     $v = @{}
     foreach ($k in $script:NmGui.Inputs.Keys) {
         $ctl = $script:NmGui.Inputs[$k]
-        if ($ctl -is [System.Windows.Controls.CheckBox]) { $v[$k] = [bool]$ctl.IsChecked }
-        elseif ($ctl -is [System.Windows.Controls.ComboBox]) { $v[$k] = "$($ctl.SelectedItem)" }
+        if ($ctl -is [System.Management.Automation.PSCustomObject] -and $ctl.PSObject.Properties['PickBoxes']) { $v[$k] = @($ctl.PickBoxes | Where-Object { $_.IsChecked } | ForEach-Object { "$($_.Tag)" }) }
+        elseif ($ctl -is [System.Windows.Controls.CheckBox]) { $v[$k] = [bool]$ctl.IsChecked }
+        elseif ($ctl -is [System.Windows.Controls.ComboBox]) {
+            $si = $ctl.SelectedItem
+            $v[$k] = $(if ($si -is [System.Windows.Controls.ComboBoxItem]) { "$($si.Tag)" } else { "$si" })
+        }
         else { $v[$k] = $ctl.Text }
     }
     return $v
@@ -3207,8 +3387,17 @@ function Set-NmGuiFormValue {
         $ctl = $script:NmGui.Inputs[$k]
         if (-not $ctl) { continue }
         $val = $Answers[$k]
-        if ($ctl -is [System.Windows.Controls.CheckBox]) { $ctl.IsChecked = [bool]$val }
-        elseif ($ctl -is [System.Windows.Controls.ComboBox]) { if ($ctl.Items.Contains("$val")) { $ctl.SelectedItem = "$val" } }
+        if ($ctl -is [System.Management.Automation.PSCustomObject] -and $ctl.PSObject.Properties['PickBoxes']) {
+            $want = @(@($val) | ForEach-Object { "$_" })
+            foreach ($cb in $ctl.PickBoxes) { $cb.IsChecked = ($want -contains "$($cb.Tag)") }
+            if ($ctl.CountText) { $ctl.CountText.Text = "$(@($ctl.PickBoxes | Where-Object { $_.IsChecked }).Count) of $($ctl.PickBoxes.Count) ticked" }
+        }
+        elseif ($ctl -is [System.Windows.Controls.CheckBox]) { $ctl.IsChecked = [bool]$val }
+        elseif ($ctl -is [System.Windows.Controls.ComboBox]) {
+            $match = @($ctl.Items | Where-Object { $_ -is [System.Windows.Controls.ComboBoxItem] -and "$($_.Tag)" -eq "$val" })
+            if ($match.Count) { $ctl.SelectedItem = $match[0] }
+            elseif ($ctl.Items.Contains("$val")) { $ctl.SelectedItem = "$val" }
+        }
         else { $ctl.Text = ConvertTo-NmGuiValue $val }
     }
 }
@@ -3407,6 +3596,13 @@ function Invoke-NmGuiRun {
         if (-not (Assert-NmConnection -Services $t.Services)) { throw "Could not load what $($t.Name) needs (the modules, or the domain from this DC)." }
         Update-NmGuiBanner
         Clear-NmGuiBuffer
+        # The tool's questions that the form cannot hold (gpo-build: each baseline's values and GPO
+        # name), asked as dialogs now; Cancel runs nothing.
+        if ($t.BeforeRun) {
+            $more = & $t.BeforeRun $EntryArgs
+            if ($null -eq $more) { $script:NmGui.Controls.StatusText.Text = "$($t.Name): cancelled, nothing ran."; return }
+            $EntryArgs = $more
+        }
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
         Write-NmLog "Running $($t.Name) v$($t.Version) (window)." -Level INFO -NoConsole
         try {

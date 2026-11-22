@@ -621,6 +621,92 @@ Test-That 'Compare questions: every stamped GPO, then only what needs attention'
     $true
 }
 
+Write-Host 'The window' -ForegroundColor Cyan
+Test-That 'Window form: baselines and GPOs are pick lists, the compare baseline a drop-down; nothing typed' {
+    $b = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-build))
+    $f = @($b | Where-Object Name -eq 'Baseline')[0]
+    Assert-Equal 'PickMany|True' "$($f.Kind)|$($f.Required)" 'gpo-build Baseline'
+    if (@($b | Where-Object { $_.Name -in 'Values', 'GpoName' }).Count) { throw 'hashtables shown in the form' }
+    $c = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-compare))
+    Assert-Equal 'PickMany|PickOne|Switch' ((@('Gpo', 'Baseline', 'All') | ForEach-Object { $n = $_; @($c | Where-Object Name -eq $n)[0].Kind }) -join '|') 'gpo-compare'
+    if (-not @($c | Where-Object Name -eq 'Gpo')[0].Picker.NeedsDomain) { throw 'the GPO list should wait for the domain' }
+    $true
+}
+
+Test-That 'Window pick list for gpo-build: every baseline, with what it does, what it asks and where it links' {
+    $f = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-build) | Where-Object Name -eq 'Baseline')[0]
+    $items = @(Get-NmGuiPickItem -Field $f)
+    Assert-Equal @(Get-NmBaseline).Count $items.Count 'items'
+    $st = @($items | Where-Object Key -eq 'security-screen-timeout')[0]
+    Assert-Equal 'Security - Screen Timeout' $st.Label 'label'
+    if ($st.Detail -notlike '*4 setting(s)*asks: Seconds before the screen locks*links at: Users*') { throw "detail: $($st.Detail)" }
+    if (-not (Test-NmGuiPickMatch -Item $st -Text 'screen')) { throw 'search' }
+    if (Test-NmGuiPickMatch -Item $st -Text 'kerberos') { throw 'search matched the wrong item' }
+    $true
+}
+
+Test-That 'Window form values: ticks become the list, none ticked asks for one, an empty drop-down is left out' {
+    $spec = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-build))
+    $a = ConvertFrom-NmGuiForm -Spec $spec -Values @{ Baseline = @('security-enforce-uac', 'security-ntlm-hardening') }
+    Assert-Equal 'security-enforce-uac,security-ntlm-hardening' ($a.Baseline -join ',') 'ticked'
+    if ($a.Baseline -isnot [string[]]) { throw 'not a string array' }
+    try { ConvertFrom-NmGuiForm -Spec $spec -Values @{ Baseline = @() }; throw 'no error' } catch { if ("$_" -notlike 'Tick at least one*') { throw } }
+    $cspec = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-compare))
+    $a = ConvertFrom-NmGuiForm -Spec $cspec -Values @{ Gpo = @('Security - Enforce UAC'); Baseline = ''; All = $false }
+    if ($a.ContainsKey('Baseline') -or $a.ContainsKey('All')) { throw "left in: $($a.Keys -join ',')" }
+    $true
+}
+
+Test-That 'Window Run for gpo-build asks each ticked baseline''s name and values (WhatIf kept); an existing GPO is left out' {
+    Answer '', '600'
+    $a = Complete-NmGpoBuildArgs -EntryArgs @{ Baseline = [string[]]@('security-screen-timeout'); WhatIf = $true }
+    Assert-Equal '600' $a.Values['security-screen-timeout'].TimeoutSeconds 'value'
+    Assert-Equal 'Security - Screen Timeout' $a.GpoName['security-screen-timeout'] 'name'
+    if (-not $a.WhatIf) { throw 'WhatIf lost' }
+    New-GPO -Name 'Security - Enforce UAC' | Out-Null
+    Answer '', 'n'
+    if ($null -ne (Complete-NmGpoBuildArgs -EntryArgs @{ Baseline = [string[]]@('security-enforce-uac') })) { throw 'an existing GPO would be built' }
+    $true
+}
+
+Test-That 'Window cards for gpo-compare: one card per GPO, its status the worst, settings under Different / Matches, one line each' {
+    Answer 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening | Out-Null
+    $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('EnableLUA=4,1', 'EnableLUA=4,0')) -Encoding Unicode
+    $rows = @(Compare-NmGpoBaseline -All)
+    Assert-Equal 'Different' $rows[0].Result 'problems first'
+    Assert-Equal 'User Account Control: Run all administrators in Admin Approval Mode = Enabled: expected 4,1, found 4,0' $rows[0].Line 'line'
+    $t = Get-NmTool -Id gpo-compare
+    $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup
+    Assert-Equal 2 $m.Cards 'cards'
+    $uac = @($m.Items | Where-Object Title -eq 'Security - Enforce UAC')[0]
+    Assert-Equal 'Different|High' "$($uac.Status)|$($uac.Level)" 'UAC card status'
+    Assert-Equal 'Different|Matches (6)' (($uac.Fields | ForEach-Object Name) -join '|') 'UAC fields'
+    if ($uac.Fields[0].Value -notlike '*expected 4,1, found 4,0') { throw "line: $($uac.Fields[0].Value)" }
+    $ntlm = @($m.Items | Where-Object Title -eq 'Security - NTLM Hardening')[0]
+    Assert-Equal 'Matches|OK' "$($ntlm.Status)|$($ntlm.Level)" 'NTLM card status'
+    $true
+}
+
+Test-That 'Compare with nothing picked says what to do' {
+    try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
+    $true
+}
+
+Test-That 'Registry: a picker whose list function is missing, and CardGroup with four columns, are refused' {
+    $before = $script:NmToolLoadErrors.Count
+    function script:Invoke-NmPickTest { param([string[]]$Thing) }
+    Register-NmTool -Path 'test.ps1' -Definition @{ Name = 'P'; Id = 'pick-test'; Category = 'GroupPolicy'; Area = 'gpo/Baselines'; Synopsis = 's'; Version = '0.7.1'; Kind = 'Report'; Services = @(); Entry = 'Invoke-NmPickTest'
+        Pickers = @{ Thing = @{ Items = 'Get-NoSuchList' } } }
+    Register-NmTool -Path 'test.ps1' -Definition @{ Name = 'P'; Id = 'pick-test2'; Category = 'GroupPolicy'; Area = 'gpo/Baselines'; Synopsis = 's'; Version = '0.7.1'; Kind = 'Report'; Services = @(); Entry = 'Invoke-NmPickTest'
+        CardGroup = @('a', 'b', 'c', 'd') }
+    $new = @($script:NmToolLoadErrors | Select-Object -Skip $before)
+    if ($new.Count -ne 2 -or $new[0].Reason -notlike "*Items function 'Get-NoSuchList'*" -or $new[1].Reason -notlike '*one to three*') { throw "errors: $($new.Reason -join ' / ')" }
+    if (Get-NmTool -Id pick-test) { throw 'registered anyway' }
+    $true
+}
+
 Test-That 'Both tools are registered under Group Policy > Baselines; compare is read only' {
     $b = Get-NmTool -Id gpo-build
     $c = Get-NmTool -Id gpo-compare
