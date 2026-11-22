@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.4
+    Version: 0.7.5
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.5 - Step progress from the VM run: a status that is only a percent shows the activity with the percent once; the status
+            bar keeps the last progress between records.
     0.7.4 - Core\Steps.ps1: a live step list for long runs (window panel, console lines, progress in the log); background calls
             pass their progress on; the Output panel follows along. The New Forest Build uses it.
     0.7.3 - Fixed the restart loop after promotion (restart steps saved before their notice; Get-NmLastBootTime); notices
@@ -65,7 +67,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.4'
+$script:ModuleVersion = '0.7.5'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

@@ -90,7 +90,7 @@ function Write-NmStepProgress {
     $key = "$Text|$bucket"
     $name = if ($it) { $it.Name } else { '' }
     $logged = if ($script:NmSteps) { $script:NmSteps.LastLogged } else { @{} }
-    if ($Text -and "$($logged[$name])" -ne $key) {
+    if (($Text -or $Percent -ge 0) -and "$($logged[$name])" -ne $key) {
         $logged[$name] = $key
         $label = if ($it) { "$($it.Label): " } else { '' }
         Write-NmLog "$label$Text$(if ($Percent -ge 0) { " ($Percent %)" })" -Level INFO -NoConsole

@@ -631,7 +631,16 @@ Test-That 'Step list in the console: a line when a step is done or fails; nothin
 Test-That 'Progress records read as one line and a percent' {
     $a = Get-NmGuiProgressText -Record ([pscustomobject]@{ Activity = 'Install-WindowsFeature'; StatusDescription = 'Installing'; CurrentOperation = ''; PercentComplete = 40 })
     $b = Get-NmGuiProgressText -Record ([pscustomobject]@{ Activity = 'Configuring the DNS Server service'; StatusDescription = 'Processing'; CurrentOperation = ''; PercentComplete = -1 })
-    ($a.Text -eq 'Installing') -and ($a.Percent -eq 40) -and ($b.Text -eq 'Configuring the DNS Server service') -and ($b.Percent -eq -1)
+    # Install-WindowsFeature puts only the number in its status: the activity is used, the percent once.
+    $c = Get-NmGuiProgressText -Record ([pscustomobject]@{ Activity = 'Installing'; StatusDescription = '6%'; CurrentOperation = ''; PercentComplete = 6 })
+    ($a.Text -eq 'Installing') -and ($a.Percent -eq 40) -and ($b.Text -eq 'Configuring the DNS Server service') -and ($b.Percent -eq -1) -and
+    ($c.Text -eq 'Installing') -and ($c.Percent -eq 6)
+}
+
+Test-That 'The status bar keeps the last progress between records' {
+    $code = (Get-Command Invoke-NmGuiBackground).ScriptBlock.ToString()
+    $loop = $code.Substring($code.IndexOf('while (-not $handle.IsCompleted)'))
+    ($code.IndexOf("`$said = ''") -lt $code.IndexOf('while (-not $handle.IsCompleted)')) -and ($loop -notmatch "`$said = ''")
 }
 
 Test-That 'A background call''s progress reaches the running step and the log while it runs' {
