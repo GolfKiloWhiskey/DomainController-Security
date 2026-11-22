@@ -2170,7 +2170,9 @@ function Get-NmGuiProgressText {
     # "Install-WindowsFeature"); -1 when it gives no percent.
     param($Record)
     $t = "$($Record.StatusDescription)".Trim()
-    if (-not $t -or $t -match '^(?i)(processing|working)$') { $t = "$($Record.Activity)".Trim() }
+    # A status that is only a number ("6%", Install-WindowsFeature's way): the activity says more,
+    # and the percent is shown on its own.
+    if (-not $t -or $t -match '^(?i)(processing|working)$' -or $t -match '^\d+\s*%$') { $t = "$($Record.Activity)".Trim() }
     if ("$($Record.CurrentOperation)".Trim()) { $t = "${t}: $("$($Record.CurrentOperation)".Trim())" }
     $pc = -1
     try { $pc = [int]$Record.PercentComplete } catch { $pc = -1 }
@@ -2240,15 +2242,18 @@ function Invoke-NmGuiBackground {
         $clock = [System.Diagnostics.Stopwatch]::StartNew()
         $handle = $ps.BeginInvoke()
         $seen = 0; $tick = [System.Diagnostics.Stopwatch]::StartNew()
+        $said = ''   # the last thing the call reported: stays in the status bar until it says something new
         while (-not $handle.IsCompleted) {
             # What the call reports (Install-WindowsFeature's percent, the forest's stages): under the
             # running step, in the status bar, and in the log once per change.
-            $said = ''
             $n = $ps.Streams.Progress.Count
             if ($n -gt $seen) {
                 $rec = $ps.Streams.Progress[$n - 1]; $seen = $n
                 $p = Get-NmGuiProgressText -Record $rec
-                if ($p.Text) { Write-NmStepProgress -Text $p.Text -Percent $p.Percent; $said = $p.Text }
+                if ($p.Text -or $p.Percent -ge 0) {
+                    Write-NmStepProgress -Text $p.Text -Percent $p.Percent
+                    $said = (@($p.Text, $(if ($p.Percent -ge 0) { "$($p.Percent) %" })) | Where-Object { $_ }) -join ' '
+                }
             }
             $view = Update-NmGuiProgressState -Id 7 -Activity $Status -Status ('{0}{1:m\:ss} elapsed' -f $(if ($said) { "$said  |  " } else { '' }), $clock.Elapsed)
             if ($script:NmGui.Window) { Show-NmGuiProgress -View $view -Force }

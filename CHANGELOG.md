@@ -6,6 +6,16 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.5 - 11/22/2026
+
+From the VM recording of the live step list (which worked: the install's progress came through):
+
+- **"6%  6 %" under the running step is now "Installing  6 %".** Install-WindowsFeature reports
+  only the number as its status, which was shown and then the percent again.
+- **The status bar no longer flickers** between "...: 6% | 1:11 elapsed" and "...: 1:17 elapsed":
+  the last progress stays until the install reports something new.
+- Not run on Windows yet: tested against stand-ins (209 tests).
+
 ## 0.7.4 - 11/21/2026
 
 **See the build happen** (Cliff: the window and the log went quiet during the role install and the
