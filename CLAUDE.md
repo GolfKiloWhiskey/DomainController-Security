@@ -53,7 +53,8 @@ PDF report (`Core/Report.ps1`, headless Edge) after the DC health checks and dcd
 every DC (0.7.8, waiting for Cliff's console QA). **DNS standard** (Cliff, 0.7.9): 1.1.1.1 is always
 the last DNS server on a DC's adapter (setting `BuildLastDns`), so the RMM agent stays reachable;
 the build ends with its own IP, 127.0.0.1, 1.1.1.1, and the health check warns when it is missing.
-Next: order of work step 2, the baseline file format, then `gpo-build` and `gpo-compare`.
+Step 2 is built (0.7.11, console QA pending): the baseline file format (`docs/baselines/FORMAT.md`,
+`Nutmeg.AD/Baselines/`), `gpo-build` and `gpo-compare`, with the first nine baselines.
 Read `docs/ARCHITECTURE.md` next for how the pieces fit together.
 Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 

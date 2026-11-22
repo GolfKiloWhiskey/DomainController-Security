@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.10
+    Version: 0.7.11
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.11 - Baselines (step 2): the file format (Core\Baseline.ps1, Nutmeg.AD\Baselines\*.psd1), the SYSVOL files (Core\GpoFiles.ps1),
+             writing and comparing (Core\GpoBaseline.ps1); gpo-build and gpo-compare; nine baselines from the reports.
     0.7.10 - CLAUDE.md Status brought up to date (step list, build report, dc-report, 1.1.1.1 standard). No code changes.
     0.7.9 - 1.1.1.1 last on a DC's DNS (setting BuildLastDns; Get-NmLastDns, Add-NmLastDns, Set-NmDnsServer): the build sets it, the
             DC report and health check expect it. CLAUDE.md: check GitHub (open PRs, newest main) before new work.
@@ -75,7 +77,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.10'
+$script:ModuleVersion = '0.7.11'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -95,7 +97,7 @@ $script:NmConfig = [pscustomobject]@{
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Steps', 'Report', 'DcHealth', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
+$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Steps', 'Report', 'DcHealth', 'Baseline', 'GpoFiles', 'GpoBaseline', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
 foreach ($name in $coreFiles) {
     . (Join-Path (Join-Path $PSScriptRoot 'Core') "$name.ps1")
 }
