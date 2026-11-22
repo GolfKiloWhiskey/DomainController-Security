@@ -657,6 +657,17 @@ Test-That 'A background call''s progress reaches the running step and the log wh
     ($it.Progress -eq 'Installing') -and ($it.Percent -eq 40) -and ($new -match 'AD DS, DNS and GPMC: Installing \(40 %\)')
 }
 
+Test-That 'The main window fits the usable screen with a margin: never against the top edge, maximised on a small screen' {
+    $vm = Get-NmGuiWindowPlacement -WorkWidth 1920 -WorkHeight 1032          # 1080p less the taskbar
+    $big = Get-NmGuiWindowPlacement -WorkWidth 2560 -WorkHeight 1392
+    $small = Get-NmGuiWindowPlacement -WorkWidth 1024 -WorkHeight 728
+    ($vm.Width -eq 1440) -and ($vm.Height -eq 900) -and ($vm.Top -eq 66) -and ($vm.Left -eq 240) -and (-not $vm.Maximize) -and
+    ($big.Top -eq 246) -and (-not $big.Maximize) -and $small.Maximize -and
+    ((Get-NmGuiWindowPlacement -WorkWidth 1366 -WorkHeight 728).Height -eq 648) -and
+    # 1920 x 1080 at 125 % scaling: 1536 x 826 in the window's units. The 900-high window no longer fits; it shrinks to 746 with the margin.
+    ((Get-NmGuiWindowPlacement -WorkWidth 1536 -WorkHeight 826).Height -eq 746) -and ((Get-NmGuiWindowPlacement -WorkWidth 1536 -WorkHeight 826).Top -eq 40)
+}
+
 Test-That 'Settings: the window''s results view is a setting (cards by default)' {
     ((Get-NmSetting -Key ResultsView) -eq 'Cards') -and (@($script:NmSettingSections) -contains 'Window')
 }
