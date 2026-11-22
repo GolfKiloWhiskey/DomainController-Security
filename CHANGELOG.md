@@ -6,6 +6,36 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.13 - 11/22/2026
+
+**Build and Compare in the window: lists to tick, and one card per GPO** (Cliff, from QA: the form
+was a blank "Baseline (comma-separated)" box with nothing to choose from, and Compare showed a card
+per setting).
+
+- **Build GPOs from Baselines:**
+  - the baselines are a **list to tick**. Each shows what it does, how many settings, what it will
+    ask and where it links. There is a search box when the list is long, Select all / Select none,
+    and a count of what is ticked;
+  - **Run** then asks each ticked baseline's GPO name and values as dialogs, with the defaults filled
+    in. A GPO that exists is still left alone and Compare is offered. Cancel runs nothing;
+  - Run with nothing ticked says "Tick at least one";
+  - a failed row now names the baseline instead of a blank card.
+- **Compare GPOs with Baselines:**
+  - **one card per GPO.** Its tag is the worst it found: Different and Missing red, Extra amber,
+    Matches green;
+  - inside a card the settings are grouped: what needs attention first, then **Matches (n)**. One
+    line each: just the setting when it matches, "expected X, found Y" when it doesn't;
+  - the GPOs are a list to tick, after **Load the list** (it reads the domain). Each says which
+    baseline it was built from, or "No stamp". The baseline is a drop-down, by default the one in
+    each GPO's comment;
+  - Run with nothing picked and All unticked says what to do;
+  - the console table lists problems first too.
+- **For later tools:** a tool can now have lists to pick from, questions asked on Run, and a line
+  column for its cards (`docs/ARCHITECTURE.md`). The DC Report could use the same list for its DCs;
+  it is left alone while it waits for your console QA.
+- Not run on Windows yet: tested against stand-ins (263 tests). The new list (ticks, search, Select
+  all) is drawn by WPF and can only be checked in the window on the VM.
+
 ## 0.7.12 - 11/22/2026
 
 **The New Forest Build now hands over to the toolkit when it is finished** (Cliff, from the VM:

@@ -63,7 +63,18 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
 - **Required:** `Name`, `Id`, `Category`, `Synopsis`, `Version`, `Kind`, `Services` (`AD`, `GPO` or
   `@()`), `Entry`.
 - **Optional:** `Area`, `AlsoIn`, `Roles`, `Prompt`, `DeepDive`, `Summary`, `Columns`, `View`,
-  `CardGroup`, `BulkAction` with `BulkActions` (as in M365-Tools).
+  `CardGroup`, `BulkAction` with `BulkActions` (as in M365-Tools), and for the window:
+  - `CardGroup = @('<group>', '<split>', '<line>')`: one card per value of the first column, its rows
+    listed under the values of the second, each shown as the third column alone (gpo-compare: a card per
+    GPO, settings under Different / Missing / Matches). When the split column is the status, the card
+    takes the worst status.
+  - `Pickers = @{ <Param> = @{ Items = '<function>'; NeedsDomain; Note; Empty } }`: the parameter is
+    chosen from a list instead of typed: ticks for `[string[]]` (with search, Select all / none and a
+    count), a drop-down for `[string]`. The function returns items with Key (what the tool gets),
+    Label, Detail (a grey line), Badge and Disabled. `NeedsDomain` waits for "Load the list".
+  - `BeforeRun = '<function>'`: takes the form's arguments when Run is pressed, asks what the form
+    cannot hold (dialogs), and returns the full arguments, or `$null` to run nothing (gpo-build: each
+    ticked baseline's values and GPO name).
 
 ## Tests
 

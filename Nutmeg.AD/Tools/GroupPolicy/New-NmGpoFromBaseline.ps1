@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.1
+    Version: 0.7.2
 
 .SYNOPSIS
     Builds new GPOs from the baselines in Nutmeg.AD\Baselines, setting by setting.
@@ -33,6 +33,8 @@
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening
 
 .VERSIONING
+    0.7.2 - The window: baselines picked from a list (name, what it does, what it asks, suggested links); each
+            baseline's values and GPO name asked when Run is pressed (BeforeRun). A failed row names the baseline.
     0.7.1 - First version: the easy kinds (Administrative Templates, registry preferences, security
             options, account settings, user rights, restricted groups, services, audit).
 #>
@@ -43,12 +45,15 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'Pick baselines, answer their parameters, and build each as a new GPO (not linked)'
-    Version  = '0.7.1'
+    Version  = '0.7.2'
     Kind     = 'ReportAndChange'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
     Prompt   = 'Read-NmGpoBuildOption'
     Entry    = 'New-NmGpoFromBaseline'
+    # The window: baselines are ticked in a list; their values and GPO names are asked on Run.
+    Pickers  = @{ Baseline = @{ Items = 'Get-NmGpoBuildPickItem'; Note = 'Tick the baselines to build. Each becomes a new, unlinked GPO; its values and name are asked when you press Run.' } }
+    BeforeRun = 'Complete-NmGpoBuildArgs'
     DeepDive = 'Show-NmGpoBuildDetail'
     Columns  = @('Gpo', 'Baseline', 'Settings', 'Result', 'SuggestedLinks')
 }
@@ -61,29 +66,39 @@ function Get-NmGpoByName {
     return (Get-GPO -Name $Name @gp -ErrorAction SilentlyContinue)
 }
 
-function Read-NmGpoBuildOption {
-    <#
-    .SYNOPSIS
-        Which baselines, their parameters and the GPO names. Returns the entry's parameters, or $null.
-    #>
+function Get-NmGpoBuildPickItem {
+    # The window's list of baselines: what each does, how many settings, what it asks, where it links.
     [CmdletBinding()]
     param()
-    $all = @(Get-NmBaseline)
-    $bad = @(Get-NmBaseline -IncludeInvalid | Where-Object { -not $_.Valid })
-    foreach ($b in $bad) { Write-NmLog "Baseline file $(Split-Path -Leaf $b.Path) is not loaded: $(@($b.Problems)[0])" -Level WARN }
-    if (-not $all.Count) { Write-NmLog 'No baselines found in Nutmeg.AD\Baselines.' -Level WARN; Wait-NmKey; return $null }
-    $items = @(foreach ($b in $all) {
-        $exists = [bool](Get-NmGpoByName -Name $b.Name)
-        [pscustomobject]@{ Label = "$($b.Name)$(if ($exists) { '   (a GPO by this name exists)' })"; Detail = "$($b.Description) [$(@($b.Settings).Count) settings, v$($b.Version)]" }
-    })
-    $picked = @(Read-NmMultiChoice -Title 'Which baselines?' -Items $items -Note 'Each becomes a new GPO. Nothing is linked.')
-    if (-not $picked.Count) { return $null }
+    foreach ($b in @(Get-NmBaseline)) {
+        $asks = @($b.Parameters | ForEach-Object { "$($_.Prompt)" })
+        $links = Get-NmBaselineDefaultLink -Name $b.Name
+        $bits = @("$(@($b.Settings).Count) setting(s)")
+        if ($asks.Count) { $bits += "asks: $($asks -join '; ')" }
+        if ($links -and $links.Links.Count) { $bits += "links at: $($links.Links -join ', ')" }
+        [pscustomobject]@{
+            Key    = $b.Id
+            Label  = $b.Name
+            Detail = "$($b.Description) ($($bits -join ' | '))"
+            Badge  = $(if (@($b.Requires).Count) { "Needs ADMX: $(@($b.Requires) -join ', ')" } else { '' })
+        }
+    }
+}
 
+function Read-NmGpoBuildAnswer {
+    <#
+    .SYNOPSIS
+        For baselines already picked: the GPO name and the parameters of each. A GPO that exists is
+        left out (Compare offered). Returns @{ Baseline; Values; GpoName }, or $null when nothing is left.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$Baseline)
     $ids = New-Object System.Collections.Generic.List[string]
     $values = @{}
     $names = @{}
-    foreach ($ix in $picked) {
-        $b = $all[$ix]
+    foreach ($id in $Baseline) {
+        $b = @(Get-NmBaseline -Id $id)[0]
+        if (-not $b) { Write-NmLog "No valid baseline '$id'." -Level WARN; continue }
         Write-Host ''
         Write-Host $b.Name -ForegroundColor Cyan
         Write-Host "   $($b.Description)" -ForegroundColor DarkGray
@@ -105,6 +120,36 @@ function Read-NmGpoBuildOption {
     }
     if (-not $ids.Count) { return $null }
     return @{ Baseline = $ids.ToArray(); Values = $values; GpoName = $names }
+}
+
+function Complete-NmGpoBuildArgs {
+    # The window's Run: the baselines ticked in the form, then their names and values as dialogs.
+    [CmdletBinding()]
+    param([hashtable]$EntryArgs)
+    $a = Read-NmGpoBuildAnswer -Baseline @($EntryArgs.Baseline)
+    if ($null -eq $a) { return $null }
+    if ($EntryArgs.WhatIf) { $a.WhatIf = $true }
+    return $a
+}
+
+function Read-NmGpoBuildOption {
+    <#
+    .SYNOPSIS
+        Which baselines, their parameters and the GPO names. Returns the entry's parameters, or $null.
+    #>
+    [CmdletBinding()]
+    param()
+    $all = @(Get-NmBaseline)
+    $bad = @(Get-NmBaseline -IncludeInvalid | Where-Object { -not $_.Valid })
+    foreach ($b in $bad) { Write-NmLog "Baseline file $(Split-Path -Leaf $b.Path) is not loaded: $(@($b.Problems)[0])" -Level WARN }
+    if (-not $all.Count) { Write-NmLog 'No baselines found in Nutmeg.AD\Baselines.' -Level WARN; Wait-NmKey; return $null }
+    $items = @(foreach ($b in $all) {
+        $exists = [bool](Get-NmGpoByName -Name $b.Name)
+        [pscustomobject]@{ Label = "$($b.Name)$(if ($exists) { '   (a GPO by this name exists)' })"; Detail = "$($b.Description) [$(@($b.Settings).Count) settings, v$($b.Version)]" }
+    })
+    $picked = @(Read-NmMultiChoice -Title 'Which baselines?' -Items $items -Note 'Each becomes a new GPO. Nothing is linked.')
+    if (-not $picked.Count) { return $null }
+    return (Read-NmGpoBuildAnswer -Baseline @($picked | ForEach-Object { $all[$_].Id }))
 }
 
 function New-NmGpoFromBaseline {
@@ -133,7 +178,7 @@ function New-NmGpoFromBaseline {
         $n++
         Write-Progress -Activity 'Building GPOs' -Status "[$n/$($Baseline.Count)] $id" -PercentComplete ([int](100 * ($n - 1) / $Baseline.Count))
         $b = @(Get-NmBaseline -Id $id)[0]
-        $row = [pscustomobject]@{ Gpo = ''; Baseline = $id; Version = ''; Settings = ''; Result = ''; SuggestedLinks = ''; GpoId = ''; Details = @() }
+        $row = [pscustomobject]@{ Gpo = $id; Baseline = $id; Version = ''; Settings = ''; Result = ''; SuggestedLinks = ''; GpoId = ''; Details = @() }
         $out.Add($row)
         if (-not $b) { $row.Result = "Failed: no valid baseline '$id'"; continue }
         $row.Baseline = $b.Name

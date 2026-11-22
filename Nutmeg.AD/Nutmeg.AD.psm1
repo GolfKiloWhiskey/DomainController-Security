@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.12
+    Version: 0.7.13
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.13 - The window: pick lists (tool Pickers), BeforeRun, CardGroup's line column; gpo-build 0.7.2 and gpo-compare 0.7.2
+             use them (baselines and GPOs ticked in lists, a card per GPO).
     0.7.12 - A finished New Forest Build hands over to the toolkit (Request-NmToolkitHandOff, Get-NmToolkitHandOff; new-forest 0.7.7,
              Start-NutmegAD.ps1 0.7.1).
     0.7.11 - Baselines (step 2): the file format (Core\Baseline.ps1, Nutmeg.AD\Baselines\*.psd1), the SYSVOL files (Core\GpoFiles.ps1),
@@ -79,7 +81,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.12'
+$script:ModuleVersion = '0.7.13'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

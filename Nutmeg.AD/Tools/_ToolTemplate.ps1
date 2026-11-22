@@ -50,6 +50,10 @@ $NmTool = @{
     Entry    = 'Invoke-NmExampleTool'         # function below
     DeepDive = 'Show-NmExampleToolDetail'     # optional: function that takes one result row
     Columns  = @('Name', 'Path')              # optional: columns shown on screen
+    # Optional, for the window (docs/ARCHITECTURE.md):
+    # CardGroup = @('Gpo', 'Result', 'Line') # a card per Gpo, rows under each Result, shown as Line
+    # Pickers   = @{ Name = @{ Items = 'Get-NmExamplePickItem'; Note = 'Tick the ones to use.' } }
+    # BeforeRun = 'Complete-NmExampleArgs'   # asks what the form cannot hold when Run is pressed
 }
 
 function Invoke-NmExampleTool {

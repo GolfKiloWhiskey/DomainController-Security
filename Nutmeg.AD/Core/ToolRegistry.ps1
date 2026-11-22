@@ -102,9 +102,21 @@ function Register-NmTool {
         return
     }
     $cardGroup = @($Definition.CardGroup | Where-Object { "$_".Trim() } | ForEach-Object { "$_" })
-    if ($cardGroup.Count -gt 2) {
-        & $fail "CardGroup takes one or two column names (group by, then split by), not $($cardGroup.Count)."
+    if ($cardGroup.Count -gt 3) {
+        & $fail "CardGroup takes one to three column names (group by, split by, the line to show), not $($cardGroup.Count)."
         return
+    }
+    # Pickers: a parameter chosen from a list in the window (checkboxes for [string[]], a drop-down
+    # for [string]) instead of typed. Each: @{ Items = '<function>'; NeedsDomain; Note; Empty }.
+    $pickers = @{}
+    if ($Definition.Pickers) {
+        if ($Definition.Pickers -isnot [hashtable]) { & $fail 'Pickers must be a hashtable: parameter name -> @{ Items = ''<function>'' }.'; return }
+        foreach ($k in @($Definition.Pickers.Keys)) {
+            $pk = $Definition.Pickers[$k]
+            if ($pk -isnot [hashtable] -or -not $pk.Items) { & $fail "Picker '$k' needs Items = '<function>'."; return }
+            if (-not (Get-Command -Name $pk.Items -CommandType Function -ErrorAction SilentlyContinue)) { & $fail "Picker '$k': Items function '$($pk.Items)' is not defined in the file."; return }
+            $pickers["$k"] = @{ Items = "$($pk.Items)"; NeedsDomain = [bool]$pk.NeedsDomain; Note = "$($pk.Note)"; Empty = "$($pk.Empty)" }
+        }
     }
     if ($Definition.DeepDive -and -not (Get-Command -Name $Definition.DeepDive -CommandType Function -ErrorAction SilentlyContinue)) {
         & $fail "DeepDive function '$($Definition.DeepDive)' is not defined in the file."
@@ -121,7 +133,7 @@ function Register-NmTool {
             return
         }
     }
-    foreach ($hook in 'Prompt', 'Summary') {
+    foreach ($hook in 'Prompt', 'Summary', 'BeforeRun') {
         if ($Definition[$hook] -and -not (Get-Command -Name $Definition[$hook] -CommandType Function -ErrorAction SilentlyContinue)) {
             & $fail "$hook function '$($Definition[$hook])' is not defined in the file."
             return
@@ -166,6 +178,8 @@ function Register-NmTool {
         Columns        = @($Definition.Columns | Where-Object { $_ })
         View           = $(if ($Definition.View) { "$($Definition.View)" } else { 'Table' })
         CardGroup      = $cardGroup
+        Pickers        = $pickers
+        BeforeRun      = $Definition.BeforeRun
         BulkAction     = $Definition.BulkAction
         BulkActions    = @($Definition.BulkActions | Where-Object { "$_".Trim() } | ForEach-Object { "$_" })
         Path           = $Path
