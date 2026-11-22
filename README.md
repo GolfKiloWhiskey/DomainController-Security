@@ -71,6 +71,7 @@ to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Wind
 | Area | Section | Tool | Id | Kind |
 | --- | --- | --- | --- | --- |
 | New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion; phases 2 to 5 to come | `new-forest` | Change |
+| Reports | Reports | DC Report: a report per DC (HTML and PDF): roles, DNS order, replication, SYSVOL, health, dcdiag | `dc-report` | Report |
 | Toolkit | Diagnostics | Session and Prerequisite Check (PowerShell, elevation, DC, modules, domain, admin groups, folders) | `session-info` | Report |
 
 The rest are listed in `docs/TOOL-LIST.md` and arrive in the order given there.

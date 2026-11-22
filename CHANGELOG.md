@@ -6,6 +6,30 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.8 - 11/22/2026
+
+**DC Report** (`dc-report`, Reports), for the second and later DCs (promoted by hand) and any DC
+after that. Console first: it waits for Cliff's QA in the console before it is checked in the
+window.
+
+- **Pick this DC, another DC, or every DC.** Each gets its own report, HTML and PDF, in
+  `C:\Temp\NutmegAD\Reports`. A single report opens when it is written.
+- **What is in it:**
+  - the DC: site, IP, OS and build, last start, global catalog, read-only, the FSMO roles it holds;
+  - the server: hypervisor, processor, memory, free space;
+  - **the DNS order on each adapter, checked against the standard**: with more than one DC, a
+    partner DC first and the DC itself after it; a lone DC, itself first. Anything else is a
+    warning that says what is wrong ("itself first", "192.0.2.1 is not a DC");
+  - **replication**: every partner and naming context, the last success, the last result and
+    the consecutive failures;
+  - SYSVOL replication state (DFSR: Normal, Initial sync, In error);
+  - health (services, SYSVOL and NETLOGON, DNS zones, FSMO roles, time source) and dcdiag, the same
+    checks as the end of the New Forest Build.
+- **Read only:** nothing on any DC changes. Another DC is reached over WMI/CIM and its own tools
+  (`w32tm`, `dcdiag /s:`), so remote management must be allowed to it from this DC.
+- The health checks used by the build can now be pointed at another DC.
+- Not run on Windows yet: tested against stand-ins (224 tests).
+
 ## 0.7.7 - 11/22/2026
 
 **The New Forest Build ends with a report** (Cliff), instead of a path to a JSON file.

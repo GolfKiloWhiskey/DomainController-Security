@@ -5,60 +5,137 @@
 # turns them into check rows: Check, Result (OK, Warning, Failed), Detail. dcdiag's own tests come
 # back as rows too (ConvertFrom-NmDcDiag).
 
+function Get-NmCimArgs {
+    # -ComputerName for CIM calls, or nothing for this server.
+    param([string]$ComputerName)
+    if ($ComputerName) { return @{ ComputerName = $ComputerName; ErrorAction = 'Stop' } }
+    return @{ ErrorAction = 'Stop' }
+}
+
+function Test-NmIsThisComputer {
+    # True when -Name is this server (short name or FQDN), so checks run locally (no remoting needed).
+    param([string]$Name)
+    if (-not $Name) { return $true }
+    return (("$Name" -split '\.')[0] -eq [Environment]::MachineName)
+}
+
 function Get-NmServiceStatus {
-    # A service's status ('Running', 'Stopped', ...), or 'Missing'.
+    # A service's state ('Running', 'Stopped', ...), or 'Missing'. -ComputerName: another DC (CIM).
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory)][string]$Name)
-    $s = Get-Service -Name $Name -ErrorAction SilentlyContinue
+    param([Parameter(Mandatory)][string]$Name, [string]$ComputerName)
+    $ca = Get-NmCimArgs -ComputerName $ComputerName
+    $s = @(Get-CimInstance -ClassName Win32_Service -Filter "Name='$Name'" @ca)[0]
     if (-not $s) { return 'Missing' }
-    return "$($s.Status)"
+    return "$($s.State)"
 }
 
 function Test-NmSmbShare {
-    # True when the share exists on this server (SYSVOL, NETLOGON).
+    # True when the share exists on the server (SYSVOL, NETLOGON).
     [CmdletBinding()]
     [OutputType([bool])]
-    param([Parameter(Mandatory)][string]$Name)
-    return [bool](Get-SmbShare -Name $Name -ErrorAction SilentlyContinue)
+    param([Parameter(Mandatory)][string]$Name, [string]$ComputerName)
+    $ca = Get-NmCimArgs -ComputerName $ComputerName
+    return [bool](@(Get-CimInstance -ClassName Win32_Share -Filter "Name='$Name'" @ca).Count)
 }
 
 function Test-NmDnsZone {
-    # True when this DNS server holds the zone.
+    # True when the DNS server holds the zone.
     [CmdletBinding()]
     [OutputType([bool])]
-    param([Parameter(Mandatory)][string]$Name)
-    return [bool](Get-DnsServerZone -Name $Name -ErrorAction SilentlyContinue)
+    param([Parameter(Mandatory)][string]$Name, [string]$ComputerName)
+    $a = @{ Name = $Name; ErrorAction = 'SilentlyContinue' }
+    if ($ComputerName) { $a.ComputerName = $ComputerName }
+    return [bool](Get-DnsServerZone @a)
 }
 
 function Get-NmTimeSource {
-    # Where this server takes its time from (w32tm /query /source).
+    # Where the server takes its time from (w32tm /query /source).
     [CmdletBinding()]
     [OutputType([string])]
-    param()
-    return ("$(& w32tm.exe /query /source 2>&1)").Trim()
+    param([string]$ComputerName)
+    $w = @('/query', '/source')
+    if ($ComputerName) { $w = @('/query', "/computer:$ComputerName", '/source') }
+    return ("$(& w32tm.exe @w 2>&1)").Trim()
+}
+
+function Get-NmDcNetwork {
+    <#
+    .SYNOPSIS
+        The server's adapters with an IP: Adapter, IPv4, Mask, Gateway, Dns (in order), Mac, Dhcp.
+    #>
+    [CmdletBinding()]
+    param([string]$ComputerName)
+    $ca = Get-NmCimArgs -ComputerName $ComputerName
+    foreach ($n in @(Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -Filter 'IPEnabled = True' @ca)) {
+        $ips = @($n.IPAddress | Where-Object { "$_" -match '^\d+\.\d+\.\d+\.\d+$' })
+        if (-not $ips.Count) { continue }
+        [pscustomobject]@{
+            Adapter = "$($n.Description)"
+            IPv4    = "$($ips[0])"
+            Mask    = "$(@($n.IPSubnet)[0])"
+            Gateway = (@($n.DefaultIPGateway | Where-Object { $_ }) -join ', ')
+            Dns     = @($n.DNSServerSearchOrder | Where-Object { $_ })
+            Mac     = "$($n.MACAddress)"
+            Dhcp    = [bool]$n.DHCPEnabled
+        }
+    }
 }
 
 function Get-NmDnsClientServer {
-    # The DNS servers the adapter with -IPAddress uses, in order.
+    # The DNS servers the adapter with -IPAddress uses (else the first adapter's), in order.
     [CmdletBinding()]
-    param([string]$IPAddress)
-    $ifs = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { -not $IPAddress -or $_.IPAddress -eq $IPAddress } | Select-Object -First 1)
-    if (-not $ifs.Count) { return @() }
-    @((Get-DnsClientServerAddress -InterfaceIndex $ifs[0].InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses)
+    param([string]$IPAddress, [string]$ComputerName)
+    $nics = @(Get-NmDcNetwork -ComputerName $ComputerName)
+    $nic = @($nics | Where-Object { -not $IPAddress -or $_.IPv4 -eq $IPAddress })[0]
+    if (-not $nic) { $nic = $nics[0] }
+    if (-not $nic) { return @() }
+    @($nic.Dns)
+}
+
+function Get-NmHypervisorName {
+    # 'Hyper-V', 'VMware', another vendor's name, or 'None' (physical), from the maker and model.
+    param([string]$Text)
+    if ($Text -match 'Microsoft Corporation.*Virtual Machine') { return 'Hyper-V' }
+    if ($Text -match 'VMware') { return 'VMware' }
+    if ($Text -match 'QEMU|KVM|Xen|VirtualBox|innotek|Nutanix|Parallels') { return ($Text -replace '\s+', ' ').Trim() }
+    return 'None'
 }
 
 function Get-NmHardwareInfo {
-    # CPU, logical processors and memory (GB).
+    # The server: OS and build, last start, hypervisor, CPU, logical processors, memory (GB), free space on the system drive (GB).
     [CmdletBinding()]
-    param()
-    $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
-    $cpu = @(Get-CimInstance -ClassName Win32_Processor -ErrorAction SilentlyContinue)[0]
+    param([string]$ComputerName)
+    $ca = Get-NmCimArgs -ComputerName $ComputerName
+    $cs = Get-CimInstance -ClassName Win32_ComputerSystem @ca
+    $os = Get-CimInstance -ClassName Win32_OperatingSystem @ca
+    $cpu = @(Get-CimInstance -ClassName Win32_Processor @ca)[0]
+    $sys = "$($os.SystemDrive)"; if (-not $sys) { $sys = 'C:' }
+    $disk = @(Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='$sys'" @ca)[0]
     [pscustomobject]@{
+        Os         = "$($os.Caption)"
+        Build      = "$($os.BuildNumber)"
+        LastBoot   = $(if ($os.LastBootUpTime) { ([datetime]$os.LastBootUpTime).ToString('yyyy-MM-dd HH:mm') } else { '' })
+        Hypervisor = (Get-NmHypervisorName -Text "$($cs.Manufacturer) $($cs.Model)")
         Cpu        = $(if ($cpu) { ("$($cpu.Name)" -replace '\s+', ' ').Trim() } else { '' })
         Processors = [int]$cs.NumberOfLogicalProcessors
         MemoryGB   = [math]::Round(([double]$cs.TotalPhysicalMemory / 1GB), 1)
+        FreeGB     = $(if ($disk) { [math]::Round(([double]$disk.FreeSpace / 1GB), 1) } else { $null })
     }
+}
+
+function Get-NmSysvolState {
+    # SYSVOL's DFS Replication state on the server: Normal, Initial sync, In error, ... ('' when not read).
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$ComputerName)
+    $ca = Get-NmCimArgs -ComputerName $ComputerName
+    $f = @(Get-CimInstance -Namespace 'root/microsoftdfs' -ClassName DfsrReplicatedFolderInfo -Filter "ReplicatedFolderName='SYSVOL Share'" @ca)[0]
+    if (-not $f) { return '' }
+    $names = @{ 0 = 'Uninitialized'; 1 = 'Initialized'; 2 = 'Initial sync'; 3 = 'Auto recovery'; 4 = 'Normal'; 5 = 'In error' }
+    $n = [int]$f.State
+    if ($names.ContainsKey($n)) { return $names[$n] }
+    return "State $n"
 }
 
 function Invoke-NmDcDiagRaw {
@@ -106,6 +183,8 @@ function Get-NmDcHealth {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Server, [Parameter(Mandatory)][string]$Domain, [string]$IPAddress, [switch]$NoDcDiag)
     $rows = New-Object System.Collections.Generic.List[object]
+    # Another DC is checked over CIM / its own tools; this one locally.
+    $cn = if (Test-NmIsThisComputer -Name $Server) { '' } else { $Server }
     $row = { param($c, $r, $d) $rows.Add([pscustomobject]@{ Check = $c; Result = $r; Detail = "$d" }) }
     $short = ($Server -split '\.')[0]
 
@@ -119,21 +198,21 @@ function Get-NmDcHealth {
     } catch { & $row 'FSMO roles' 'Warning' "not read: $($_.Exception.Message)" }
 
     foreach ($svc in @(@('NTDS', 'Active Directory Domain Services'), @('DNS', 'DNS Server'), @('Netlogon', 'Netlogon'), @('Kdc', 'Kerberos Key Distribution Center'), @('DFSR', 'DFS Replication (SYSVOL)'))) {
-        $st = Get-NmServiceStatus -Name $svc[0]
+        $st = try { Get-NmServiceStatus -Name $svc[0] -ComputerName $cn } catch { "not read: $($_.Exception.Message)" }
         & $row "Service: $($svc[1])" $(if ($st -eq 'Running') { 'OK' } else { 'Failed' }) $st
     }
     foreach ($share in 'SYSVOL', 'NETLOGON') {
-        $ok = Test-NmSmbShare -Name $share
+        $ok = try { Test-NmSmbShare -Name $share -ComputerName $cn } catch { $false }
         & $row "Share: $share" $(if ($ok) { 'OK' } else { 'Failed' }) $(if ($ok) { 'shared' } else { 'not shared yet (SYSVOL may still be initialising: check again in a few minutes)' })
     }
     foreach ($zone in @($Domain, "_msdcs.$Domain")) {
-        $ok = Test-NmDnsZone -Name $zone
+        $ok = try { Test-NmDnsZone -Name $zone -ComputerName $cn } catch { $false }
         & $row "DNS zone: $zone" $(if ($ok) { 'OK' } else { 'Failed' }) $(if ($ok) { 'present' } else { 'missing' })
     }
-    $dns = @(Get-NmDnsClientServer -IPAddress $IPAddress)
-    $self = @($dns | Where-Object { $_ -eq '127.0.0.1' -or $_ -eq $IPAddress }).Count -gt 0
+    $dns = @(try { Get-NmDnsClientServer -IPAddress $IPAddress -ComputerName $cn } catch { })
+    $self = @($dns | Where-Object { $_ -eq '127.0.0.1' -or ($IPAddress -and $_ -eq $IPAddress) }).Count -gt 0
     & $row 'DNS client settings' $(if ($self) { 'OK' } else { 'Warning' }) $(if ($dns.Count) { ($dns -join ', ') + $(if (-not $self) { ' (the DC should use its own DNS)' }) } else { 'none' })
-    $ts = Get-NmTimeSource
+    $ts = try { Get-NmTimeSource -ComputerName $cn } catch { '' }
     & $row 'Time source' $(if ($ts -match '(?i)local cmos clock|free-running') { 'Warning' } else { 'OK' }) $(if ($ts) { $ts } else { 'unknown' })
 
     $diag = @()

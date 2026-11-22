@@ -35,6 +35,7 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 | Tool | Id | Kind | What it does |
 | --- | --- | --- | --- |
 | AD Health and Inventory Report | `ad-report` | Report | Cliff's AD-Advanced-Report (v4.5), kept whole: one HTML report with executive summary and findings JSON, covering DC health, replication, sites and DNS, users, groups, privileged access, security, computers and LAPS, OUs and GPOs. The tool asks for client name, logo and folder (and the day thresholds) through the core, then runs the script in its own process with `-NoPrompt`. Replaces the separate DC health, replication, privileged groups, stale accounts and DC events tools in the first draft |
+| DC Report | `dc-report` | Report | **Built in 0.7.8 (console QA pending).** A report per DC (HTML and PDF) for this DC, another, or every DC: the DC (site, IP, OS, GC, RODC, FSMO roles), the server, each adapter's DNS order against the standard (a partner DC first, itself after; a lone DC itself first), replication partners with last success and failures, SYSVOL replication state, health (services, shares, zones, time) and dcdiag. For the second and later DCs, which are promoted by hand; read only |
 
 ### Active Directory (`ad`)
 
