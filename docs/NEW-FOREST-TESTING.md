@@ -56,8 +56,8 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
   Check the step times, the health table and dcdiag, and that it prints well.
 
 - The pre-flight table and the results table of each phase (a screenshot is fine).
-- `Get-NetIPConfiguration`: the static IP, gateway and DNS (after promotion DNS should be `127.0.0.1`,
-  set by Windows itself).
+- `Get-NetIPConfiguration`: the static IP, gateway and DNS. After the build the DNS order is the DC's own IP,
+  `127.0.0.1`, then `1.1.1.1` (the "DNS order on the DC" step).
 - `Get-ADDomain` and `Get-ADForest`: names and levels as answered.
 - `Get-ScheduledTask -TaskName 'Nutmeg AD Toolkit - New Forest Build'`: gone at the end (while the
   build runs in the console, its action ends in `-NewForest -Console`; in the window, in `-NewForest`).

@@ -211,7 +211,11 @@ function Get-NmDcHealth {
     }
     $dns = @(try { Get-NmDnsClientServer -IPAddress $IPAddress -ComputerName $cn } catch { })
     $self = @($dns | Where-Object { $_ -eq '127.0.0.1' -or ($IPAddress -and $_ -eq $IPAddress) }).Count -gt 0
-    & $row 'DNS client settings' $(if ($self) { 'OK' } else { 'Warning' }) $(if ($dns.Count) { ($dns -join ', ') + $(if (-not $self) { ' (the DC should use its own DNS)' }) } else { 'none' })
+    # The standard also ends the list with the last-DNS server (1.1.1.1 by default; see Get-NmLastDns).
+    $last = Get-NmLastDns
+    $lastOk = (-not $last) -or ($dns.Count -and $dns[-1] -eq $last)
+    $why = @($(if (-not $self) { 'the DC should use its own DNS' }), $(if (-not $lastOk) { "$last should be the last entry" })) | Where-Object { $_ }
+    & $row 'DNS client settings' $(if ($self -and $lastOk) { 'OK' } else { 'Warning' }) $(if ($dns.Count) { ($dns -join ', ') + $(if (@($why).Count) { " ($(@($why) -join '; '))" }) } else { 'none' })
     $ts = try { Get-NmTimeSource -ComputerName $cn } catch { '' }
     & $row 'Time source' $(if ($ts -match '(?i)local cmos clock|free-running') { 'Warning' } else { 'OK' }) $(if ($ts) { $ts } else { 'unknown' })
 

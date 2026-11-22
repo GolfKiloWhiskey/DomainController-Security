@@ -55,6 +55,9 @@ Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
   the console before it goes into the WPF window (ported from M365-Tools in 0.3.0). A step may go straight into the
   window only when Cliff and Claude both agree to it for that step.
 
+- **Check GitHub before any new work** (Cliff, Nov 2026): list the open PRs and fetch `main`. One PR
+  at a time, always started from the newest `main`. Never build on a PR that is not merged, and never
+  ask Cliff to merge one: he merges before asking for more. If one is still open, say it is pending.
 - **Work on the session's branch and open the PR against `main`.** One PR per piece of work; Cliff
   merges, never merge yourself.
 - **Every PR also updates:** the version in `Nutmeg.AD.psd1` (`ModuleVersion`) and in `Nutmeg.AD.psm1`

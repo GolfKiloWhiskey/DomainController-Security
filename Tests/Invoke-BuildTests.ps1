@@ -88,7 +88,8 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Test-NmSmbShare { param($Name, $ComputerName) $true }
     function script:Test-NmDnsZone { param($Name, $ComputerName) $true }
     function script:Get-NmTimeSource { param($ComputerName) 'Local CMOS Clock' }
-    function script:Get-NmDnsClientServer { param($IPAddress, $ComputerName) @('127.0.0.1') }
+    function script:Get-NmDnsClientServer { param($IPAddress, $ComputerName) $script:FakeDcDns }
+    function script:Set-NmDnsServer { param($InterfaceIndex, $Servers) $script:Calls.Add("Dns $InterfaceIndex $($Servers -join ',')"); $script:FakeDcDns = @($Servers) }
     function script:Get-NmHardwareInfo { param($ComputerName) [pscustomobject]@{ Cpu = 'Virtual CPU'; Processors = 4; MemoryGB = 8 } }
     function script:Invoke-NmDcDiagRaw { param($Server) $script:Calls.Add('dcdiag'); @(
         '         ......................... DC01 passed test Connectivity'
@@ -114,7 +115,7 @@ function global:Reset-Server {
         $script:FakeWinPs = $true; $script:FakeElevated = $true; $script:FakeProductType = 3; $script:FakeBlocked = @()
         $script:FakePc = [pscustomobject]@{ Name = 'WIN-7Q2B4K9'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'WIN-7Q2B4K9' }
         $script:FakeNics = @([pscustomobject]@{ Name = 'Ethernet'; Index = 4; Mac = '00-15-5D-00-00-01'; Description = 'Microsoft Hyper-V Network Adapter'; IPv4 = '192.0.2.37'; PrefixLength = 24; Gateway = '192.0.2.1'; Dns = @('192.0.2.1'); Dhcp = $true })
-        $script:FakeStopped = @(); $script:FakeEdge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+        $script:FakeStopped = @(); $script:FakeDcDns = @('127.0.0.1'); $script:FakeEdge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
         $script:FakePending = $false; $script:FakeNow = [datetime]'2026-11-21 13:00:00'; $script:FakeBoot = [datetime]'2026-01-01 08:00:00'
         $script:FakeTz = 'UTC'; $script:FakeIpInUse = $false; $script:FakeDomainAnswers = $false; $script:FakePreCheck = 'Success'
         $p = Get-NmBuildStatePath
@@ -375,7 +376,7 @@ Test-That 'Results start with what is being built and end with the steps still t
     $todo = @($rows | Where-Object Phase -eq 'Still to do')
     ($rows[0].Phase -eq 'Build: clientx.local') -and ((($info | ForEach-Object Step) -join ',') -eq 'Forest,This server,Network,Folders,Started') -and
         ($info[0].Detail -like 'clientx.local (CLIENTX), Windows Server 2025*more DCs planned: no') -and ($info[2].Detail -like '192.0.2.50/24 on Ethernet, gateway 192.0.2.1*') -and
-        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,DC health and dcdiag,Finish') -and
+        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,DNS order on the DC,DC health and dcdiag,Finish') -and
         (@($todo | Where-Object Result -ne 'Next').Count -eq 0) -and ($todo[2].Detail -like '*CLIENTX\Administrator*') -and ($rows[-1].Phase -eq 'Still to do')
 }
 
@@ -385,9 +386,30 @@ Test-That 'The live step list: every step of both phases, phase 0 ticked as it r
     $null = Read-NmNewForestPlan 6>$null
     $out = & { $null = Invoke-NmNewForestBuild -Resume } 6>&1 | Out-String
     $items = $script:NmSteps.Items.ToArray()
-    ($items.Count -eq 11) -and (@($items | Where-Object { $_.Group -like 'Phase 0*' -and $_.Status -eq 'Done' }).Count -eq 5) -and
-        (@($items | Where-Object { $_.Group -like 'Phase 1*' -and $_.Status -eq 'Waiting' }).Count -eq 6) -and
+    ($items.Count -eq 12) -and (@($items | Where-Object { $_.Group -like 'Phase 0*' -and $_.Status -eq 'Done' }).Count -eq 5) -and
+        (@($items | Where-Object { $_.Group -like 'Phase 1*' -and $_.Status -eq 'Waiting' }).Count -eq 7) -and
         ($out -match '\[done\] Time zone: Eastern Standard Time') -and ($out -match '\[done\] Static IP: 192.0.2.50/24')
+}
+
+Test-That '1.1.1.1 last: added to the static IP''s DNS (once), shown in the plan; after promotion the DC gets its own IP, 127.0.0.1, 1.1.1.1; blank setting = none' {
+    Reset-Server
+    Answer (@($global:StdAnswers[0..9]) + '192.0.2.1, 1.1.1.1' + @($global:StdAnswers[10..11]))
+    $out = & { $null = Read-NmNewForestPlan } 6>&1 | Out-String
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    $static = @($script:Calls | Where-Object { $_ -like 'StaticIp*' })[0]
+    Restart-Fake
+    Secret @('Dsrm-Pass-1!', 'Dsrm-Pass-1!')
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake -Promoted
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $dnsStep = @($rows | Where-Object Step -eq 'DNS order on the DC')[0]
+    $after = @($script:Calls | Where-Object { $_ -like 'Dns *' })
+    $blank = $null
+    Set-NmSetting -Key BuildLastDns -Value '' 6>$null
+    try { $blank = @(Add-NmLastDns -Dns @('192.0.2.1')) } finally { Clear-NmSetting -Key BuildLastDns 6>$null }
+    ($static -eq 'StaticIp 4 192.0.2.50/24 gw 192.0.2.1 dns 192.0.2.1,1.1.1.1') -and ($out -match 'DNS 192.0.2.1, 1.1.1.1 \(now') -and
+        ($after.Count -eq 1) -and ($after[0] -eq 'Dns 4 192.0.2.50,127.0.0.1,1.1.1.1') -and ($dnsStep.Result -eq 'Done') -and
+        ((@(Add-NmLastDns -Dns @('1.1.1.1', '192.0.2.1')) -join ',') -eq '192.0.2.1,1.1.1.1') -and (($blank -join ',') -eq '192.0.2.1')
 }
 
 Test-That 'The restart is announced; in the console nothing waits for a key' {
@@ -408,7 +430,7 @@ Test-That 'Phase 0: time zone, name, sign-in task, then the IP last, then a rest
     $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
     $c = @($script:Calls)
     $c.Count -eq 5 -and $c[0] -eq 'TimeZone Eastern Standard Time' -and $c[1] -eq 'Rename DC01' -and $c[2] -like 'ResumeTask *Start-NutmegAD.ps1' -and
-        $c[3] -eq 'StaticIp 4 192.0.2.50/24 gw 192.0.2.1 dns 192.0.2.1' -and $c[4] -eq 'Restart 60' -and
+        $c[3] -eq 'StaticIp 4 192.0.2.50/24 gw 192.0.2.1 dns 192.0.2.1,1.1.1.1' -and $c[4] -eq 'Restart 60' -and
         @($rows | Where-Object Result -eq 'Failed').Count -eq 0 -and $script:TestAnswers.Count -eq 0
 }
 
@@ -699,11 +721,17 @@ Test-That 'DC health: FSMO roles elsewhere is a warning, a stopped service a fai
     Restart-Fake -Promoted
     $null = Assert-NmConnection -Services AD
     $script:FakeStopped = @('DFSR')
+    $script:FakeDcDns = @('192.0.2.50', '127.0.0.1', '1.1.1.1')
     $h = Get-NmDcHealth -Server 'DC02.clientx.local' -Domain 'clientx.local' -IPAddress '192.0.2.51' -NoDcDiag
     $c = @{}; foreach ($r in $h.Checks) { $c[$r.Check] = $r }
+    # Without 1.1.1.1 last (the standard last-DNS server), the DNS check warns and says so.
+    $script:FakeDcDns = @('192.0.2.50', '127.0.0.1')
+    $h2 = Get-NmDcHealth -Server 'DC02.clientx.local' -Domain 'clientx.local' -IPAddress '192.0.2.51' -NoDcDiag
+    $d2 = @($h2.Checks | Where-Object Check -eq 'DNS client settings')[0]
     ($c['FSMO roles'].Result -eq 'Warning') -and ($c['FSMO roles'].Detail -like 'not on this DC: PDC emulator*') -and
         ($c['Service: DFS Replication (SYSVOL)'].Result -eq 'Failed') -and ($c['Service: Active Directory Domain Services'].Result -eq 'OK') -and
-        ($c['DNS client settings'].Result -eq 'OK') -and ($c['Time source'].Result -eq 'Warning') -and (@($h.DcDiag).Count -eq 0)
+        ($c['DNS client settings'].Result -eq 'OK') -and ($c['Time source'].Result -eq 'Warning') -and (@($h.DcDiag).Count -eq 0) -and
+        ($d2.Result -eq 'Warning') -and ($d2.Detail -like '*1.1.1.1 should be the last entry*')
 }
 
 Test-That 'No Edge: no PDF, the HTML report is still written and the finish says to print it' {

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.5
+    Version: 0.7.6
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,8 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.6 - The last-DNS server (1.1.1.1 by default) ends the DNS list at the static IP step, and a new step after promotion
+            sets the DC's order: its own IP, 127.0.0.1, 1.1.1.1.
     0.7.5 - The build ends with a report (HTML and PDF): the build, network, server, server check, every step with its times,
             the new DC's health and dcdiag (new step), next steps.
     0.7.4 - A live step list while the build runs (Start-NmStepList), with what the installs report as they go.
@@ -57,7 +59,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.5'
+    Version  = '0.7.6'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -331,7 +333,8 @@ function Read-NmNewForestAnswer {
     $dnsDefault = if (@($nic.Dns).Count) { @($nic.Dns) -join ', ' } else { $a.Gateway }
     $dnsListTest = { param($x) @($x).Count -gt 0 -and @(@($x) | Where-Object { -not (Test-NmIPv4Text "$_") }).Count -eq 0 }
     $null = & $answer 'DnsServers' 'DNS servers until promotion' $dnsListTest {
-        Write-Host 'Separate several with commas. After promotion the DC uses its own DNS.' -ForegroundColor DarkGray
+        $last = Get-NmLastDns
+        Write-Host "Separate several with commas. $(if ($last) { "$last is added last (Settings > New forest build). " })After promotion the DC uses its own DNS." -ForegroundColor DarkGray
         $dnsText = Read-NmCheckedInput -Prompt 'DNS servers until promotion' -Default $dnsDefault -Test { param($x) @($x -split '[,\s]+' | Where-Object { $_ } | Where-Object { -not (Test-NmIPv4Text $_) }).Count -eq 0 } -Why 'IPv4 addresses, separated by commas.'
         , @($dnsText -split '[,\s]+' | Where-Object { $_ })
     } { param($x) @($x) -join ', ' }
@@ -367,7 +370,7 @@ function Get-NmNewForestPlanText {
         "Time zone: $($a.TimeZone)"
         "Computer name: $($a.ComputerName)$(if ($rename) { " (now $((Get-NmLocalComputer).Name))" } else { ' (unchanged)' })"
         'Sign-in task: reopens the build after each restart (removed at the end)'
-        "Static IP on $($a.AdapterName): $($a.IPAddress)/$($a.PrefixLength), gateway $($a.Gateway), DNS $(@($a.DnsServers) -join ', ') (now $($a.CurrentIp))"
+        "Static IP on $($a.AdapterName): $($a.IPAddress)/$($a.PrefixLength), gateway $($a.Gateway), DNS $(@(Add-NmLastDns -Dns @($a.DnsServers)) -join ', ') (now $($a.CurrentIp))"
         $(if ($rename) { 'Restart (for the new name)' } elseif (Test-NmPendingRebootSafe) { 'Restart (Windows is waiting for one)' } else { 'No restart needed yet' })
         'Install AD DS, DNS, Group Policy Management and the AD module'
         "New forest $($a.Domain) ($($a.NetBIOS)), level $($a.FunctionalLevel), DNS on this DC; DSRM password asked then, never saved"
@@ -530,7 +533,7 @@ function Get-NmNewForestInfoRow {
     $row = { param($step, $detail) [pscustomobject]@{ Phase = $phase; Step = $step; Result = ''; Detail = $detail } }
     & $row 'Forest' "$($a.Domain) ($($a.NetBIOS)), $level; more DCs planned: $(if ($a.MoreDCs) { 'yes' } else { 'no' })"
     & $row 'This server' "$($a.ComputerName), time zone $($a.TimeZone)"
-    & $row 'Network' "$($a.IPAddress)/$($a.PrefixLength) on $($a.AdapterName), gateway $($a.Gateway), DNS until promotion $(@($a.DnsServers) -join ', ')"
+    & $row 'Network' "$($a.IPAddress)/$($a.PrefixLength) on $($a.AdapterName), gateway $($a.Gateway), DNS until promotion $(@(Add-NmLastDns -Dns @($a.DnsServers)) -join ', '); after: $(@(Get-NmDcDnsAfterPromotion -Answers $a) -join ', ')"
     & $row 'Folders' "database $($a.DatabasePath), logs $($a.LogPath), SYSVOL $($a.SysvolPath)"
     if ($State) {
         & $row 'Started' "$($State.Started)$(if ($State.LogPath) { "; log $($State.LogPath)" })"
@@ -548,6 +551,7 @@ $script:NmBuildStepList = @(
     @{ Name = 'Promote'; Phase = 1; Label = 'New forest'; Detail = 'DSRM password (asked then, never saved), Microsoft''s pre-checks, then the forest' }
     @{ Name = 'PromoteRestart'; Phase = 1; Label = 'Restart'; Detail = 'sign in as <NETBIOS>\Administrator afterwards' }
     @{ Name = 'Verify'; Phase = 1; Label = 'Check the new DC' }
+    @{ Name = 'DnsOrder'; Phase = 1; Label = 'DNS order on the DC'; Detail = 'its own IP, 127.0.0.1, then the last-DNS server (1.1.1.1)' }
     @{ Name = 'Health'; Phase = 1; Label = 'DC health and dcdiag'; Detail = 'services, SYSVOL, DNS, FSMO roles, time, dcdiag (about a minute)' }
     @{ Name = 'Finish'; Phase = 1; Label = 'Finish'; Detail = 'remove the sign-in task, save a record of the build' }
 )
@@ -597,6 +601,12 @@ function Get-NmRestartSince {
     } catch { return '' }
     if ($boot -and $boot -gt $done) { return "started again at $($boot.ToString('yyyy-MM-dd HH:mm'))" }
     return ''
+}
+
+function Get-NmDcDnsAfterPromotion {
+    # The first DC's DNS order once it is a DC: its own IP, 127.0.0.1, then the last-DNS server.
+    param([Parameter(Mandatory)]$Answers)
+    @(Add-NmLastDns -Dns @("$($Answers.IPAddress)", '127.0.0.1'))
 }
 
 function Get-NmHealthSummary {
@@ -675,7 +685,7 @@ function New-NmBuildReport {
             (& $fact 'Time zone' "$($a.TimeZone)"), (& $fact 'Database' "$($a.DatabasePath)"), (& $fact 'Logs' "$($a.LogPath)"), (& $fact 'SYSVOL' "$($a.SysvolPath)")) }
         @{ Title = 'Network'; Kind = 'Facts'; Rows = @(
             (& $fact 'Adapter' "$($a.AdapterName)$(if ($nic) { " ($($nic.Mac))" })"), (& $fact 'Static IP' "$($a.IPAddress)/$($a.PrefixLength)"),
-            (& $fact 'Default gateway' "$($a.Gateway)"), (& $fact 'DNS before promotion' (@($a.DnsServers) -join ', ')),
+            (& $fact 'Default gateway' "$($a.Gateway)"), (& $fact 'DNS before promotion' (@(Add-NmLastDns -Dns @($a.DnsServers)) -join ', ')),
             (& $fact 'DNS now' $(if ($dnsNow.Count) { $dnsNow -join ', ' } else { 'not read' })), (& $fact 'Address before the build' "$($a.CurrentIp)")) }
         @{ Title = 'Server'; Kind = 'Facts'; Rows = @(
             (& $fact 'Operating system' $(if ($os) { "$($os.Caption) (build $($os.Build))" } else { 'not read' })),
@@ -789,14 +799,16 @@ function Invoke-NmNewForestBuild {
             $rows.Add((Invoke-NmBuildStep -State $state -Name 'StaticIp' -Phase $script:NmPhase0 -Label 'Static IP' -Action {
                 $nic = @(Get-NmNetAdapterInfo | Where-Object { $_.Index -eq [int]$a.AdapterIndex })[0]
                 if ($nic -and -not $nic.Dhcp -and $nic.IPv4 -eq $a.IPAddress) { return "$($a.IPAddress) (already set)" }
-                $null = Confirm-NmChange -Action "Set $($a.AdapterName) to $($a.IPAddress)/$($a.PrefixLength), gateway $($a.Gateway), DNS $(@($a.DnsServers) -join ', ')"
+                # The last-DNS server (1.1.1.1 by default) always ends the list: see Get-NmLastDns.
+                $dns = @(Add-NmLastDns -Dns @($a.DnsServers))
+                $null = Confirm-NmChange -Action "Set $($a.AdapterName) to $($a.IPAddress)/$($a.PrefixLength), gateway $($a.Gateway), DNS $($dns -join ', ')"
                 if ($a.IPAddress -ne $a.CurrentIp) {
                     Write-Host ''
                     Write-Host "   The address changes to $($a.IPAddress) now. If you are connected over RDP, reconnect to $($a.IPAddress)." -ForegroundColor Yellow
                     Write-Host ''
                 }
-                Set-NmStaticIp -InterfaceIndex ([int]$a.AdapterIndex) -IPAddress $a.IPAddress -PrefixLength ([int]$a.PrefixLength) -Gateway $a.Gateway -DnsServers @($a.DnsServers)
-                return "$($a.IPAddress)/$($a.PrefixLength) via $($a.Gateway)"
+                Set-NmStaticIp -InterfaceIndex ([int]$a.AdapterIndex) -IPAddress $a.IPAddress -PrefixLength ([int]$a.PrefixLength) -Gateway $a.Gateway -DnsServers $dns
+                return "$($a.IPAddress)/$($a.PrefixLength) via $($a.Gateway), DNS $($dns -join ', ')"
             }))
             # A restart ends phase 0 when the name changed, or when Windows is waiting for one anyway
             # (the role install can fail with a restart pending).
@@ -879,6 +891,14 @@ function Invoke-NmNewForestBuild {
             if ($s.Domain -ne $a.Domain) { throw "this DC answers for $($s.Domain), not $($a.Domain)" }
             if (-not (Get-NmLocalComputer).IsDC) { throw 'this server is not a domain controller' }
             return "$($s.Server) is a DC of $($s.Domain) ($($s.NetBIOS)), $($s.DomainMode)"
+        }))
+        # Promotion points the adapter at 127.0.0.1 only: set the standard order back (its own IP,
+        # 127.0.0.1, then the last-DNS server, 1.1.1.1 by default: see Get-NmLastDns).
+        $rows.Add((Invoke-NmBuildStep -State $state -Name 'DnsOrder' -Phase $script:NmPhase1 -Label 'DNS order on the DC' -Action {
+            $want = @(Get-NmDcDnsAfterPromotion -Answers $a)
+            $null = Confirm-NmChange -Action "Set the DNS servers on $($a.AdapterName) to $($want -join ', ')"
+            Set-NmDnsServer -InterfaceIndex ([int]$a.AdapterIndex) -Servers $want
+            return ($want -join ', ')
         }))
         $rows.Add((Invoke-NmBuildStep -State $state -Name 'Health' -Phase $script:NmPhase1 -Label 'DC health and dcdiag' -Action {
             $s = Get-NmSession

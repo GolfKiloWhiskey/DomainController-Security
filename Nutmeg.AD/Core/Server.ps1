@@ -148,6 +148,32 @@ function Set-NmStaticIp {
     if (@($DnsServers).Count) { Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses $DnsServers -ErrorAction Stop }
 }
 
+function Get-NmLastDns {
+    # The DNS server that always goes last on a DC's adapter (Settings > New forest build; '' = none).
+    # Cliff's standard: if the DC cannot resolve itself its DNS is broken anyway, and a public
+    # resolver last keeps external lookups working, which the RMM agent needs (remote control above all).
+    [CmdletBinding()]
+    [OutputType([string])]
+    param()
+    return "$(Get-NmSetting -Key BuildLastDns)".Trim()
+}
+
+function Add-NmLastDns {
+    # A DNS list with the last-DNS server at the end, once (moved there if it was typed earlier in the list).
+    [CmdletBinding()]
+    param([string[]]$Dns = @(), [string]$Last = (Get-NmLastDns))
+    $list = @($Dns | Where-Object { "$_".Trim() } | ForEach-Object { "$_".Trim() })
+    if (-not $Last) { return $list }
+    @($list | Where-Object { $_ -ne $Last }) + $Last
+}
+
+function Set-NmDnsServer {
+    # Sets an adapter's DNS servers, in order.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][int]$InterfaceIndex, [Parameter(Mandatory)][string[]]$Servers)
+    Set-DnsClientServerAddress -InterfaceIndex $InterfaceIndex -ServerAddresses $Servers -ErrorAction Stop
+}
+
 # ---------------------------------------------------------------------------
 # Name, time zone, restarts
 # ---------------------------------------------------------------------------
