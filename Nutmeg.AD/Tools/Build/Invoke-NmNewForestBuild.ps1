@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.4
+    Version: 0.7.5
 
 .SYNOPSIS
     Builds the first DC of a brand-new forest on a freshly installed Windows Server (phases 0 and 1).
@@ -32,6 +32,8 @@
     Invoke-NmTool -Id new-forest
 
 .VERSIONING
+    0.7.5 - The build ends with a report (HTML and PDF): the build, network, server, server check, every step with its times,
+            the new DC's health and dcdiag (new step), next steps.
     0.7.4 - A live step list while the build runs (Start-NmStepList), with what the installs report as they go.
     0.7.3 - Restart steps saved as done before their notice (a restart loop on the VM); one that finds the server already
             restarted counts as done. Results start with what is being built (Build: <domain>) and end with the steps still to do.
@@ -55,7 +57,7 @@ $NmTool = @{
     Category = 'Build'
     Area     = 'build/First DC'
     Synopsis = 'A fresh workgroup server to the first DC of a new forest: IP, name, AD DS, promotion'
-    Version  = '0.7.4'
+    Version  = '0.7.5'
     Kind     = 'Change'
     Services = @()
     Roles    = @('Local administrator on a workgroup server')
@@ -441,6 +443,9 @@ function Read-NmNewForestPlan {
 
     $state = New-NmBuildState
     $state.Answers = [pscustomobject]$a
+    # For the report: the server check as it was, and who ran the build.
+    $state | Add-Member -NotePropertyName Preflight -NotePropertyValue @($checks | ForEach-Object { [pscustomobject]@{ Check = $_.Check; Result = $_.Result; Detail = $_.Detail } }) -Force
+    $state | Add-Member -NotePropertyName RunBy -NotePropertyValue "$([Environment]::UserDomainName)\$([Environment]::UserName)" -Force
     Save-NmBuildState -State $state
     Remove-NmBuildDraft   # approved: the build's own state takes over
     return @{ Resume = $true }
@@ -543,6 +548,7 @@ $script:NmBuildStepList = @(
     @{ Name = 'Promote'; Phase = 1; Label = 'New forest'; Detail = 'DSRM password (asked then, never saved), Microsoft''s pre-checks, then the forest' }
     @{ Name = 'PromoteRestart'; Phase = 1; Label = 'Restart'; Detail = 'sign in as <NETBIOS>\Administrator afterwards' }
     @{ Name = 'Verify'; Phase = 1; Label = 'Check the new DC' }
+    @{ Name = 'Health'; Phase = 1; Label = 'DC health and dcdiag'; Detail = 'services, SYSVOL, DNS, FSMO roles, time, dcdiag (about a minute)' }
     @{ Name = 'Finish'; Phase = 1; Label = 'Finish'; Detail = 'remove the sign-in task, save a record of the build' }
 )
 
@@ -591,6 +597,106 @@ function Get-NmRestartSince {
     } catch { return '' }
     if ($boot -and $boot -gt $done) { return "started again at $($boot.ToString('yyyy-MM-dd HH:mm'))" }
     return ''
+}
+
+function Get-NmHealthSummary {
+    # "11 of 12 checks OK; dcdiag: 28 passed, 2 warnings, 0 failed".
+    param([object[]]$Checks = @(), [object[]]$DcDiag = @())
+    $ok = @($Checks | Where-Object Result -eq 'OK').Count
+    $t = "$ok of $(@($Checks).Count) checks OK"
+    if (@($DcDiag).Count) {
+        $t += "; dcdiag: $(@($DcDiag | Where-Object Result -eq 'Passed').Count) passed, $(@($DcDiag | Where-Object Result -eq 'Warning').Count) warning(s), $(@($DcDiag | Where-Object Result -eq 'Failed').Count) failed"
+    }
+    return $t
+}
+
+function Open-NmReport {
+    # Opens a report in the browser (Windows only; a seam for tests).
+    param([Parameter(Mandatory)][string]$Path)
+    if ($script:NmOnWindows) { try { Invoke-Item -LiteralPath $Path } catch { Write-NmLog "The report could not be opened: $($_.Exception.Message)" -Level WARN } }
+}
+
+function Get-NmStepTook {
+    # How long a recorded step took ("6 min 15 s"), from its Began and At.
+    param($Step)
+    if (-not $Step -or -not $Step.Began -or -not $Step.At) { return '' }
+    try {
+        $b = [datetime]::ParseExact("$($Step.Began)", 'yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture)
+        $e = [datetime]::ParseExact("$($Step.At)", 'yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture)
+        if ($e -lt $b) { return '' }   # the time zone changed in between
+        return (Format-NmStepTime -Span ($e - $b))
+    } catch { return '' }
+}
+
+function New-NmBuildReport {
+    <#
+    .SYNOPSIS
+        The build's report (HTML, in the reports folder): the build, the network, the server, the
+        server check, every step with its times, the new DC's health and dcdiag, and next steps.
+        Returns the path. Never holds a password.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$State)
+    $a = $State.Answers
+    $level = if ($script:NmForestLevels.Contains("$($a.FunctionalLevel)")) { $script:NmForestLevels["$($a.FunctionalLevel)"] } else { "$($a.FunctionalLevel)" }
+    $total = ''
+    try {
+        $b = [datetime]::ParseExact("$($State.Started)", 'yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture)
+        $e = [datetime]::ParseExact("$($State.Finished)", 'yyyy-MM-dd HH:mm:ss', [cultureinfo]::InvariantCulture)
+        $total = Format-NmStepTime -Span ($e - $b)
+    } catch { $total = '' }
+    $fact = { param($n, $v) [pscustomobject]@{ Name = $n; Value = "$v" } }
+
+    $nic = $null; $os = $null; $hw = $null; $hyp = ''; $free = ''
+    try { $nic = @(Get-NmNetAdapterInfo | Where-Object { $_.Index -eq [int]$a.AdapterIndex })[0] } catch { $nic = $null }
+    try { $os = Get-NmOsInfo } catch { $os = $null }
+    try { $hw = Get-NmHardwareInfo } catch { $hw = $null }
+    try { $hyp = Get-NmHypervisor } catch { $hyp = '' }
+    try { $free = "$(Get-NmFreeSpaceGB) GB" } catch { $free = '' }
+    $dnsNow = @()
+    try { $dnsNow = @(Get-NmDnsClientServer -IPAddress $a.IPAddress) } catch { $dnsNow = @() }
+
+    $steps = foreach ($s in $script:NmBuildStepList) {
+        $st = $State.Steps.($s.Name)
+        [pscustomobject]@{
+            Phase  = $(if ($s.Phase -eq 0) { 'Phase 0' } else { 'Phase 1' })
+            Step   = $(if ($s.Name -eq 'Promote') { "New forest $($a.Domain)" } else { $s.Label })
+            Result = $(if ($st) { "$($st.Status)" } else { 'Not run' })
+            Began  = "$($st.Began)"
+            Finished = "$($st.At)"
+            Took   = (Get-NmStepTook -Step $st)
+            Detail = "$($st.Detail)"
+        }
+    }
+    $next = @(
+        'Phases 2 to 5 of the build (DNS, time, OUs, GPO baselines) come in later versions of the toolkit; run those tools next.'
+        $(if ($a.MoreDCs) { 'More DCs are planned: promote each by hand, then point every DC''s DNS at its partner first and itself second, and run the DC report on it.' } else { 'Single DC: keep its DNS on its own IP, then 127.0.0.1.' })
+        'Store the DSRM password in the password manager now: the toolkit never records it.'
+        'Take a system state backup of the new DC (wbadmin start systemstatebackup) once it has settled.'
+    )
+    $sections = @(
+        @{ Title = 'The build'; Kind = 'Facts'; Rows = @(
+            (& $fact 'Forest and domain' "$($a.Domain)"), (& $fact 'NetBIOS name' "$($a.NetBIOS)"), (& $fact 'Functional level' $level),
+            (& $fact 'More DCs planned' $(if ($a.MoreDCs) { 'Yes' } else { 'No' })), (& $fact 'Domain controller' "$($a.ComputerName)"),
+            (& $fact 'Time zone' "$($a.TimeZone)"), (& $fact 'Database' "$($a.DatabasePath)"), (& $fact 'Logs' "$($a.LogPath)"), (& $fact 'SYSVOL' "$($a.SysvolPath)")) }
+        @{ Title = 'Network'; Kind = 'Facts'; Rows = @(
+            (& $fact 'Adapter' "$($a.AdapterName)$(if ($nic) { " ($($nic.Mac))" })"), (& $fact 'Static IP' "$($a.IPAddress)/$($a.PrefixLength)"),
+            (& $fact 'Default gateway' "$($a.Gateway)"), (& $fact 'DNS before promotion' (@($a.DnsServers) -join ', ')),
+            (& $fact 'DNS now' $(if ($dnsNow.Count) { $dnsNow -join ', ' } else { 'not read' })), (& $fact 'Address before the build' "$($a.CurrentIp)")) }
+        @{ Title = 'Server'; Kind = 'Facts'; Rows = @(
+            (& $fact 'Operating system' $(if ($os) { "$($os.Caption) (build $($os.Build))" } else { 'not read' })),
+            (& $fact 'Hypervisor' $(if ($hyp) { $hyp } else { 'not read' })),
+            (& $fact 'Processor' $(if ($hw) { "$($hw.Cpu), $($hw.Processors) logical processors" } else { 'not read' })),
+            (& $fact 'Memory' $(if ($hw) { "$($hw.MemoryGB) GB" } else { 'not read' })), (& $fact 'Free on the system drive' $free)) }
+        @{ Title = 'Server check'; Kind = 'Table'; Note = 'Before anything changed.'; Columns = @('Check', 'Result', 'Detail'); StatusColumn = 'Result'; Rows = @($State.Preflight) }
+        @{ Title = 'Steps'; Kind = 'Table'; Columns = @('Phase', 'Step', 'Result', 'Began', 'Finished', 'Took', 'Detail'); StatusColumn = 'Result'; Rows = @($steps) }
+        @{ Title = 'Health of the new DC'; Kind = 'Table'; Note = 'Checked at the end of the build.'; Columns = @('Check', 'Result', 'Detail'); StatusColumn = 'Result'; Rows = @($State.Health) }
+        @{ Title = 'dcdiag'; Kind = 'Table'; Note = 'Warnings: tests that are often noisy for a while after a promotion.'; Columns = @('Test', 'Target', 'Result', 'Detail'); StatusColumn = 'Result'; Rows = @($State.DcDiag) }
+        @{ Title = 'Next steps'; Kind = 'List'; Items = $next }
+    )
+    $path = Join-Path (Get-NmReportFolder) (Get-NmExportFileName -ToolId 'new-forest-report' -Domain $a.Domain -Extension html)
+    return (New-NmHtmlReport -Title "New Forest Build: $($a.Domain)" -Subtitle "First domain controller: $($a.ComputerName)" -Path $path -Sections $sections -Meta @(
+        "Run by $($State.RunBy)", "Started $($State.Started)", "Finished $($State.Finished)", $(if ($total) { "Total $total" } else { '' })))
 }
 
 function Show-NmRestartNotice {
@@ -780,6 +886,14 @@ function Invoke-NmNewForestBuild {
             if (-not (Get-NmLocalComputer).IsDC) { throw 'this server is not a domain controller' }
             return "$($s.Server) is a DC of $($s.Domain) ($($s.NetBIOS)), $($s.DomainMode)"
         }))
+        $rows.Add((Invoke-NmBuildStep -State $state -Name 'Health' -Phase $script:NmPhase1 -Label 'DC health and dcdiag' -Action {
+            $s = Get-NmSession
+            $hl = Get-NmDcHealth -Server "$($s.Server)" -Domain $a.Domain -IPAddress $a.IPAddress
+            $state | Add-Member -NotePropertyName Health -NotePropertyValue @($hl.Checks) -Force
+            $state | Add-Member -NotePropertyName DcDiag -NotePropertyValue @($hl.DcDiag) -Force
+            Save-NmBuildState -State $state
+            return (Get-NmHealthSummary -Checks $hl.Checks -DcDiag $hl.DcDiag)
+        }))
         $rows.Add((Invoke-NmBuildStep -State $state -Name 'Finish' -Phase $script:NmPhase1 -Label 'Finish' -Action {
             Unregister-NmResumeTask
             $state.Finished = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
@@ -788,7 +902,11 @@ function Invoke-NmNewForestBuild {
             if (-not (Test-Path -LiteralPath $folder)) { New-Item -Path $folder -ItemType Directory -Force | Out-Null }
             $record = Join-Path $folder (Get-NmExportFileName -ToolId 'new-forest' -Domain $a.Domain -Extension txt).Replace('.txt', '.json')
             Copy-Item -LiteralPath (Get-NmBuildStatePath) -Destination $record -Force
-            return "sign-in task removed; record of the build: $record"
+            # The report: HTML (opened now) and its PDF copy, both in the reports folder.
+            $html = New-NmBuildReport -State $state
+            $pdf = ConvertTo-NmPdf -HtmlPath $html
+            Open-NmReport -Path $html
+            return "sign-in task removed; report: $html$(if ($pdf) { " (PDF: $pdf)" } else { ' (no PDF copy: print it from the browser)' })"
         }))
         $next = if ($a.MoreDCs) { 'Promote the next DC with the individual tools, then point each DC''s DNS at its partner first and itself second.' } else { 'Single DC: keep its DNS on its own IP, then 127.0.0.1.' }
         $rows.Add([pscustomobject]@{ Phase = 'Next'; Step = 'Phases 2 to 5'; Result = 'Not built yet'; Detail = 'DNS, time, OUs, GPOs and the report come in later versions of the build.' })

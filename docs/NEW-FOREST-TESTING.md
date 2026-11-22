@@ -52,6 +52,9 @@ checkpoint before each run: the build's state file lives on the VM, so a rollbac
 
 ## What to check, and send back
 
+- The report: it opens at the end (HTML), with a PDF next to it in `C:\Temp\NutmegAD\Reports`.
+  Check the step times, the health table and dcdiag, and that it prints well.
+
 - The pre-flight table and the results table of each phase (a screenshot is fine).
 - `Get-NetIPConfiguration`: the static IP, gateway and DNS (after promotion DNS should be `127.0.0.1`,
   set by Windows itself).

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.6
+    Version: 0.7.7
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.7 - Reports: Core\Report.ps1 (self-contained HTML, PDF through headless Edge), Core\DcHealth.ps1 (DC health checks,
+            dcdiag). The New Forest Build ends with its report; build steps record when they began.
     0.7.6 - The window opens sized to the usable screen with a margin (Get-NmGuiWindowPlacement); maximised on a small screen.
     0.7.5 - Step progress from the VM run: a status that is only a percent shows the activity with the percent once; the status
             bar keeps the last progress between records.
@@ -68,7 +70,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.6'
+$script:ModuleVersion = '0.7.7'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -88,7 +90,7 @@ $script:NmConfig = [pscustomobject]@{
 # ---------------------------------------------------------------------------
 # Core
 # ---------------------------------------------------------------------------
-$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Steps', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
+$coreFiles = @('Logging', 'Settings', 'Modules', 'Export', 'Menu', 'Safety', 'Domain', 'PowerShell7', 'Server', 'Steps', 'Report', 'DcHealth', 'Build', 'ToolRegistry', 'Launcher', 'Gui')
 foreach ($name in $coreFiles) {
     . (Join-Path (Join-Path $PSScriptRoot 'Core') "$name.ps1")
 }

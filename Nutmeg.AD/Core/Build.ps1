@@ -64,8 +64,9 @@ function Test-NmBuildStepDone {
 function Set-NmBuildStep {
     # Records one step's outcome in the state and saves it.
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)][string]$Name, [ValidateSet('Done', 'Failed')][string]$Status, [string]$Detail = '')
-    $State.Steps | Add-Member -NotePropertyName $Name -NotePropertyValue ([pscustomobject]@{ Status = $Status; At = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Detail = $Detail }) -Force
+    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)][string]$Name, [ValidateSet('Done', 'Failed')][string]$Status, [string]$Detail = '', [string]$Began = '')
+    # Began and At (finished) go into the report's step table.
+    $State.Steps | Add-Member -NotePropertyName $Name -NotePropertyValue ([pscustomobject]@{ Status = $Status; Began = $Began; At = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss'); Detail = $Detail }) -Force
     Save-NmBuildState -State $State
 }
 
@@ -89,17 +90,18 @@ function Invoke-NmBuildStep {
         return [pscustomobject]@{ Phase = $Phase; Step = $Label; Result = 'Already done'; Detail = "$($State.Steps.$Name.Detail)" }
     }
     Write-NmLog "Build step: $Label" -Level INFO
+    $began = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     Set-NmStepStatus -Name $Name -Status Running   # the live step list (Core\Steps.ps1), when one is running
     try {
         $detail = "$(& $Action)"
-        Set-NmBuildStep -State $State -Name $Name -Status Done -Detail $detail
+        Set-NmBuildStep -State $State -Name $Name -Status Done -Detail $detail -Began $began
         Set-NmStepStatus -Name $Name -Status Done -Detail $detail
         Write-NmLog "Build step done: $Label - $detail" -Level SUCCESS -NoConsole
         Write-NmRunHistory -ToolId 'new-forest' -Kind Change -ItemCount 1 -Notes "$Label ($detail)"
         return [pscustomobject]@{ Phase = $Phase; Step = $Label; Result = 'Done'; Detail = $detail }
     } catch {
         $why = "$($_.Exception.Message)"
-        Set-NmBuildStep -State $State -Name $Name -Status Failed -Detail $why
+        Set-NmBuildStep -State $State -Name $Name -Status Failed -Detail $why -Began $began
         Set-NmStepStatus -Name $Name -Status Failed -Detail $why
         Write-NmRunHistory -ToolId 'new-forest' -Kind Change -Result Failed -Notes "$Label ($why)"
         Write-NmLog "Build step failed: $Label - $why" -Level ERROR
