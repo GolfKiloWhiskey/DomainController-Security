@@ -71,10 +71,16 @@ to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Wind
 | Area | Section | Tool | Id | Kind |
 | --- | --- | --- | --- | --- |
 | New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion; phases 2 to 5 to come | `new-forest` | Change |
+| Group Policy | Baselines | Build GPOs from Baselines: pick baselines, answer their parameters, each becomes a new GPO (not linked; an existing GPO is never overwritten) | `gpo-build` | Report + Change |
+| Group Policy | Baselines | Compare GPOs with Baselines: missing, different, extra and not-filled settings, per GPO | `gpo-compare` | Report |
 | Reports | Reports | DC Report: a report per DC (HTML and PDF): roles, DNS order, replication, SYSVOL, health, dcdiag | `dc-report` | Report |
 | Toolkit | Diagnostics | Session and Prerequisite Check (PowerShell, elevation, DC, modules, domain, admin groups, folders) | `session-info` | Report |
 
 The rest are listed in `docs/TOOL-LIST.md` and arrive in the order given there.
+
+**Baselines** (`Nutmeg.AD/Baselines/`, one `.psd1` file each, format in `docs/baselines/FORMAT.md`):
+Enforce UAC, NTLM Hardening, Kerberos Encryption, LDAPS Hardening (DC's) and (Devices), Disable Print
+Spooler, Domain Auditing (DC's), Screen Timeout, Time Synchronization. More follow as they are converted.
 
 ## Run a tool without the menu
 
@@ -95,10 +101,12 @@ Nutmeg.AD/
   Core/                     domain session, modules, logging, menus, exports, safety, settings, registry, launcher,
                             PowerShell 7, the server and the build state (New Forest Build)
   Tools/<Category>/         one file per tool; _ToolTemplate.ps1 shows the format
+  Baselines/                one .psd1 file per GPO baseline (docs/baselines/FORMAT.md)
   Data/                     OuStandard.csv, GpoDefaultLinks.csv
 Tests/Invoke-CoreTests.ps1  core tests (no domain or AD module needed)
 Tests/Invoke-BuildTests.ps1 New Forest Build tests (a fake fresh server)
 Tests/Invoke-GetTests.ps1   Get-NutmegAD.ps1 tests (fake GitHub zips)
+Tests/Invoke-GpoTests.ps1   baselines, gpo-build and gpo-compare (fake GroupPolicy cmdlets, a temp SYSVOL)
 Tests/Invoke-AllTests.ps1   runs every test file and prints a total
 Legacy/                     source material: scripts, GPO reports, screenshots; INDEX.md tracks each item
 docs/                       ARCHITECTURE.md, TOOL-LIST.md, baselines/

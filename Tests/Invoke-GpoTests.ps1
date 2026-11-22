@@ -1,0 +1,643 @@
+<#
+.NOTES
+    Author:  Cliff Waite
+    Date:    11/22/2026
+    Email:   cliff.ps@nutmegtech.com
+    Version: 0.7.1
+
+.SYNOPSIS
+    Tests for the baselines, gpo-build and gpo-compare. No domain, no DC and no GroupPolicy module needed.
+
+.DESCRIPTION
+    - Checks every baseline file in Nutmeg.AD\Baselines, and that the checks catch bad ones.
+    - Fake GroupPolicy cmdlets (New-GPO, Get-GPO, Set-GPRegistryValue, Set-GPPrefRegistryValue)
+      write real Registry.pol and Registry.xml files into a temp SYSVOL, and refuse what the real
+      ones refuse (a GPO name used twice, an unknown GPO, a key outside HKLM\ and HKCU\).
+    - Fake AD holds each GPO's version and extension list (Get-ADObject, Set-ADObject) and one
+      domain group for account lookups.
+    - Covers the file formats (Registry.pol, GptTmpl.inf, audit.csv, GPT.INI), building each kind,
+      the questions, existing GPOs, -WhatIf, cancel, failures, and comparing (matches, different,
+      missing, extra, not filled, older baseline, unstamped GPOs).
+    - Exits with code 1 if any test fails.
+
+.EXAMPLE
+    pwsh -File .\Tests\Invoke-GpoTests.ps1
+
+.VERSIONING
+    0.7.1 - Initial tests.
+#>
+
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("NmGpoTests_" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
+$global:FakeSysvol = Join-Path $testRoot 'SYSVOL'
+
+# ---------------------------------------------------------------------------
+# Fake GroupPolicy and AD
+# ---------------------------------------------------------------------------
+$global:FakeGpos = New-Object System.Collections.Generic.List[object]
+$global:FakeGpoAd = @{}
+$global:GpCalls = New-Object System.Collections.Generic.List[string]
+$global:FailRegistryValue = ''
+
+function global:Get-FakeGpoFolder { param([string]$Id) Join-Path $global:FakeSysvol "{$("$Id".Trim('{', '}').ToUpper())}" }
+function global:Find-FakeGpo {
+    param([string]$Guid)
+    $g = @($global:FakeGpos.ToArray() | Where-Object { "$($_.Id)" -eq "$Guid".Trim('{', '}') })[0]
+    if (-not $g) { throw "A GPO with ID {$Guid} was not found in the clientx.local domain." }
+    $g
+}
+function global:Add-FakeGpoVersion {
+    param($Gpo, [int]$By, [string]$Ext)
+    $dn = $Gpo.Path
+    $global:FakeGpoAd[$dn].versionNumber += $By
+    if ($Ext -and $global:FakeGpoAd[$dn].gPCMachineExtensionNames -notlike "*$Ext*") { $global:FakeGpoAd[$dn].gPCMachineExtensionNames += "[$Ext]" }
+    $ini = Join-Path (Get-FakeGpoFolder $Gpo.Id) 'GPT.INI'
+    Set-Content -LiteralPath $ini -Value "[General]`r`nVersion=$($global:FakeGpoAd[$dn].versionNumber)`r`n" -NoNewline
+}
+
+function global:New-GPO {
+    param([string]$Name, [string]$Comment, $Domain, $Server, $ErrorAction)
+    $global:GpCalls.Add("New-GPO $Name @$Server")
+    if (@($global:FakeGpos.ToArray() | Where-Object { $_.DisplayName -eq $Name }).Count) { throw "The GPO '$Name' already exists in the clientx.local domain." }
+    $id = [guid]::NewGuid()
+    $g = [pscustomobject]@{ Id = $id; DisplayName = $Name; Description = $Comment; Path = "cn={$("$id".ToUpper())},cn=policies,cn=system,DC=clientx,DC=local" }
+    $global:FakeGpos.Add($g)
+    $global:FakeGpoAd[$g.Path] = @{ versionNumber = 0; gPCMachineExtensionNames = '' }
+    $folder = Get-FakeGpoFolder $id
+    New-Item -Path (Join-Path $folder 'Machine'), (Join-Path $folder 'User') -ItemType Directory -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $folder 'GPT.INI') -Value "[General]`r`nVersion=0`r`n" -NoNewline
+    $g
+}
+function global:Get-GPO {
+    param([string]$Name, $Guid, [switch]$All, $Domain, $Server, $ErrorAction)
+    if ($All) { return $global:FakeGpos.ToArray() }
+    if ($Name) {
+        $g = @($global:FakeGpos.ToArray() | Where-Object { $_.DisplayName -eq $Name })[0]
+        if (-not $g -and $ErrorAction -ne 'SilentlyContinue') { throw "GPO '$Name' was not found." }
+        return $g
+    }
+    Find-FakeGpo -Guid "$Guid"
+}
+function global:Set-GPRegistryValue {
+    param($Guid, [string]$Key, [string]$ValueName, [string]$Type, $Value, $Domain, $Server, $ErrorAction)
+    $global:GpCalls.Add("Set-GPRegistryValue $Key\$ValueName=$Value ($Type) @$Server")
+    $g = Find-FakeGpo -Guid "$Guid"
+    if ($Key -notmatch '^(HKLM|HKCU)\\') { throw 'The key must start with HKLM\ or HKCU\.' }
+    if (@('String', 'ExpandString', 'Binary', 'DWord', 'MultiString', 'QWord') -notcontains $Type) { throw "Type $Type is not valid." }
+    if ($global:FailRegistryValue -and $ValueName -eq $global:FailRegistryValue) { throw 'Access is denied.' }
+    $user = $Key -like 'HKCU\*'
+    $path = Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($user) { 'User' } else { 'Machine' })) 'Registry.pol'
+    $m = $global:NmTestModuleG
+    $entries = @(& $m { param($p) if (Test-Path $p) { ConvertFrom-NmRegistryPol -Bytes ([IO.File]::ReadAllBytes($p)) } } $path)
+    $keyNoHive = $Key.Substring(5)
+    $entries = @($entries | Where-Object { -not ($_.Key -eq $keyNoHive -and $_.ValueName -eq $ValueName) })
+    $data = if ($Type -eq 'DWord') { [uint32][int64]([int]$Value -band 0xFFFFFFFFL) } else { $Value }
+    $entries += [pscustomobject]@{ Key = $keyNoHive; ValueName = $ValueName; Type = $Type; Value = $data }
+    $bytes = & $m { param($e) ConvertTo-NmRegistryPol -Entries $e } $entries
+    [IO.File]::WriteAllBytes($path, $bytes)
+    Add-FakeGpoVersion -Gpo $g -By $(if ($user) { 65536 } else { 1 }) -Ext $(if ($user) { '' } else { '{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}' })
+}
+function global:Set-GPPrefRegistryValue {
+    param($Guid, [string]$Context, [string]$Action, [string]$Key, [string]$ValueName, [string]$Type, $Value, $Domain, $Server, $ErrorAction)
+    $global:GpCalls.Add("Set-GPPrefRegistryValue $Context $Action $Key\$ValueName=$Value ($Type)")
+    $g = Find-FakeGpo -Guid "$Guid"
+    if ($Key -notmatch '^(HKLM|HKCU)\\') { throw 'The key must start with HKLM\ or HKCU\.' }
+    $folder = Join-Path (Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($Context -eq 'User') { 'User' } else { 'Machine' })) 'Preferences') 'Registry'
+    New-Item -Path $folder -ItemType Directory -Force | Out-Null
+    $hive = if ($Key -like 'HKLM\*') { 'HKEY_LOCAL_MACHINE' } else { 'HKEY_CURRENT_USER' }
+    $t = @{ String = 'REG_SZ'; DWord = 'REG_DWORD'; ExpandString = 'REG_EXPAND_SZ'; MultiString = 'REG_MULTI_SZ'; QWord = 'REG_QWORD' }[$Type]
+    $v = if ($Type -eq 'DWord') { ([uint32][int64]([int]$Value -band 0xFFFFFFFFL)).ToString('X8') } else { "$Value" }
+    $act = $Action.Substring(0, 1)
+    $xml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><RegistrySettings clsid=`"{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}`"><Registry clsid=`"{9CD4B2F4-923D-47f5-A062-E897DD1DAD50}`" name=`"$ValueName`"><Properties action=`"$act`" hive=`"$hive`" key=`"$($Key.Substring(5))`" name=`"$ValueName`" type=`"$t`" value=`"$v`"/></Registry></RegistrySettings>"
+    Set-Content -LiteralPath (Join-Path $folder 'Registry.xml') -Value $xml
+    Add-FakeGpoVersion -Gpo $g -By 1 -Ext '{B087BE9D-ED37-454F-AF9C-04291E351182}{BEE07A6A-EC9F-4659-B8C9-0B1937907C83}'
+}
+function global:Get-ADObject {
+    param($Identity, $Properties, $Server, $ErrorAction)
+    if (-not $global:FakeGpoAd.ContainsKey("$Identity")) { throw "Cannot find an object with identity: '$Identity'." }
+    [pscustomobject]$global:FakeGpoAd["$Identity"]
+}
+function global:Set-ADObject {
+    param($Identity, [hashtable]$Replace, $Server, $ErrorAction)
+    $global:GpCalls.Add("Set-ADObject $Identity @$Server")
+    if (-not $global:FakeGpoAd.ContainsKey("$Identity")) { throw "Cannot find an object with identity: '$Identity'." }
+    foreach ($k in $Replace.Keys) { $global:FakeGpoAd["$Identity"][$k] = $Replace[$k] }
+}
+function global:Get-ADGroup {
+    param($Filter, $Server, $ErrorAction)
+    if ("$Filter" -match "'RDP Admins'") { return [pscustomobject]@{ Name = 'RDP Admins'; SID = 'S-1-5-21-1000-2000-3000-1105' } }
+}
+function global:Get-ADUser { param($Filter, $Server, $ErrorAction) }
+
+# ---------------------------------------------------------------------------
+Import-Module (Join-Path (Join-Path $repoRoot 'Nutmeg.AD') 'Nutmeg.AD.psd1') -Force
+$mod = Get-Module Nutmeg.AD
+$global:NmTestModuleG = $mod
+& $mod { $script:NmSettingsTestFile = Join-Path ([System.IO.Path]::GetTempPath()) ("NmGpoSettings_" + [guid]::NewGuid().ToString('N') + '.json'); $script:NmSettingsData = $null; Update-NmConfigFromSetting }
+& $mod {
+    param($root)
+    $script:NmConfig.ExportRoot = Join-Path $root 'Exports'
+    $script:NmConfig.DataRoot   = Join-Path $root 'Data'
+    $script:NmLogPath = $null
+    $script:TestAnswers = New-Object System.Collections.Generic.Queue[string]
+    function script:Read-NmHost { param([string]$Prompt) if ($script:TestAnswers.Count -gt 0) { $script:TestAnswers.Dequeue() } else { throw 'Test ran out of scripted answers.' } }
+    function script:Get-NmGpoFolder { param([string]$Id) Get-FakeGpoFolder $Id }
+    function script:Assert-NmConnection { param($Services) $true }
+    function script:Clear-NmScreen { }
+} $testRoot
+
+function global:Reset-Gpo {
+    & $global:NmTestModuleG {
+        $script:TestAnswers.Clear()
+        $script:NmBaselineTestFolder = $null
+        $script:NmBaselineCache = $null
+        $script:NmPlanApproved = $null
+        Reset-NmSession
+        $script:NmSession.Domain = 'clientx.local'; $script:NmSession.NetBIOS = 'CLIENTX'; $script:NmSession.DomainSid = 'S-1-5-21-1000-2000-3000'
+        $script:NmSession.DomainDN = 'DC=clientx,DC=local'; $script:NmSession.PdcEmulator = 'DC01.clientx.local'; $script:NmSession.Server = 'DC01.clientx.local'
+        $script:NmSession.Services = @{ AD = $true; GPO = $true }
+    }
+    $global:FakeGpos.Clear(); $global:FakeGpoAd.Clear(); $global:GpCalls.Clear(); $global:FailRegistryValue = ''
+    if (Test-Path $global:FakeSysvol) { Remove-Item $global:FakeSysvol -Recurse -Force }
+    New-Item -Path $global:FakeSysvol -ItemType Directory -Force | Out-Null
+}
+function global:Answer { param([string[]]$Values) & $global:NmTestModuleG { param($v) foreach ($x in $v) { $script:TestAnswers.Enqueue($x) } } $Values }
+function global:Write-TestBaseline {
+    # A baseline file of the test's own in a temp folder (the shipped ones are left alone).
+    param([string]$Text, [string]$File = 'Test.psd1')
+    $dir = Join-Path $global:FakeSysvol '..\TestBaselines'
+    New-Item -Path $dir -ItemType Directory -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $dir $File) -Value $Text
+    & $global:NmTestModuleG { param($d) $script:NmBaselineTestFolder = $d; $script:NmBaselineCache = $null } (Resolve-Path $dir).Path
+}
+
+$script:Passed = 0
+$script:Failed = New-Object System.Collections.Generic.List[string]
+function Test-That {
+    param([string]$Name, [scriptblock]$Body)
+    try {
+        Reset-Gpo
+        $result = & $mod $Body
+        if ($result -eq $false) { throw 'returned false' }
+        $script:Passed++
+        Write-Host "  [PASS] $Name" -ForegroundColor Green
+    } catch {
+        $script:Failed.Add("$Name : $($_.Exception.Message)")
+        Write-Host "  [FAIL] $Name" -ForegroundColor Red
+        Write-Host "         - $($_.Exception.Message) (line $($_.InvocationInfo.ScriptLineNumber))" -ForegroundColor Red
+    }
+}
+function global:Assert-Equal { param($Expected, $Actual, [string]$What = 'value') if ("$Expected" -ne "$Actual") { throw "$What`: expected '$Expected', got '$Actual'" } }
+
+# A minimal valid baseline, changed by each check test.
+$global:GoodBaseline = @{
+    Id = 'test-baseline'; Name = 'Test Baseline'; Version = '0.7.1'; Description = 'For tests.'
+    Parameters = @( @{ Name = 'Seconds'; Prompt = 'Seconds'; Type = 'Int'; Default = 900; Min = 60; Max = 7200 } )
+    Settings = @( @{ Id = 'one'; Kind = 'Policy'; Side = 'User'; Title = 'One'; Tags = @()
+        Values = @( @{ Key = 'HKCU\Software\Policies\Test'; ValueName = 'V'; Type = 'String'; Value = '{Seconds}' } ) } )
+}
+function global:Copy-Good { $c = @{}; foreach ($k in $global:GoodBaseline.Keys) { $c[$k] = $global:GoodBaseline[$k] }; $c }
+
+Write-Host 'Baseline files' -ForegroundColor Cyan
+# ---------------------------------------------------------------------------
+Test-That 'Every shipped baseline loads and passes the checks; Ids unique; names in GpoDefaultLinks.csv; sources exist' {
+    $all = @(Get-NmBaseline -IncludeInvalid)
+    if ($all.Count -lt 9) { throw "only $($all.Count) baselines" }
+    $bad = @($all | Where-Object { -not $_.Valid })
+    if ($bad.Count) { throw "invalid: $(($bad | ForEach-Object { "$($_.Id): $($_.Problems -join '; ')" }) -join ' / ')" }
+    $links = @(Import-Csv (Join-Path $script:NmModuleRoot 'Data\GpoDefaultLinks.csv') | ForEach-Object Baseline)
+    foreach ($b in $all) {
+        if ($links -notcontains $b.Name) { throw "$($b.Name) is not in GpoDefaultLinks.csv" }
+        if ($b.Source -and -not (Test-Path (Join-Path (Split-Path $script:NmModuleRoot) $b.Source))) { throw "$($b.Id): source $($b.Source) not found" }
+        if ($b.Version -ne '0.7.1') { throw "$($b.Id) version $($b.Version)" }
+    }
+    $true
+}
+
+Test-That 'The checks catch: unknown field and kind, wrong side, bad tag, undeclared and unused parameters, placeholder in a key, duplicate Id, bad audit name, wrong hive' {
+    Assert-Equal 0 @(Test-NmBaseline -Data (Copy-Good)).Count 'problems in the good one'
+    $cases = @(
+        @{ Why = 'unknown field';      Change = { param($b) $b.Colour = 'red' };                                                       Expect = "unknown field 'Colour'" }
+        @{ Why = 'unknown kind';       Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'Wireless'; Side = 'Computer'; Title = 'x'; Tags = @() }); $b.Parameters = @() }; Expect = "Kind 'Wireless'" }
+        @{ Why = 'side';               Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'Service'; Side = 'User'; Title = 'x'; Tags = @(); Service = 'Spooler'; StartMode = 'Disabled' }); $b.Parameters = @() }; Expect = 'must be Computer' }
+        @{ Why = 'tag';                Change = { param($b) $b.Settings[0].Tags = @('PCI:1.2') };                                       Expect = "tag 'PCI:1.2'" }
+        @{ Why = 'undeclared';         Change = { param($b) $b.Parameters = @() };                                                      Expect = '{Seconds} is used but not declared' }
+        @{ Why = 'unused';             Change = { param($b) $b.Parameters = @($b.Parameters) + @{ Name = 'Spare'; Prompt = 'x'; Type = 'String'; Default = '' } }; Expect = 'Spare is declared but not used' }
+        @{ Why = 'placeholder in key'; Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'SecurityOption'; Side = 'Computer'; Title = 'x'; Tags = @(); Key = 'MACHINE\Software\{Seconds}\V'; Type = 'DWord'; Value = 1 }) }; Expect = 'can only be used in a value' }
+        @{ Why = 'duplicate id';       Change = { param($b) $b.Settings = @($b.Settings[0], $b.Settings[0]) };                          Expect = 'Id is used twice' }
+        @{ Why = 'audit name';         Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'Audit'; Side = 'Computer'; Title = 'x'; Tags = @(); Subcategory = 'Logins'; Setting = 'Success' }); $b.Parameters = @() }; Expect = "'Logins' is not an audit subcategory" }
+        @{ Why = 'hive';               Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'Policy'; Side = 'Computer'; Title = 'x'; Tags = @(); Values = @(@{ Key = 'HKCU\Software\X'; ValueName = 'V'; Type = 'DWord'; Value = 1 }) }); $b.Parameters = @() }; Expect = 'must start with HKLM\' }
+        @{ Why = 'missing tags';       Change = { param($b) $b.Settings = @(@{ Id = 'x'; Kind = 'Service'; Side = 'Computer'; Title = 'x'; Service = 'Spooler'; StartMode = 'Disabled' }); $b.Parameters = @() }; Expect = 'Tags is missing' }
+    )
+    foreach ($c in $cases) {
+        $b = Copy-Good
+        $b.Settings = @(foreach ($s in $global:GoodBaseline.Settings) { $h = @{}; foreach ($k in $s.Keys) { $h[$k] = $s[$k] }; $h })
+        & $c.Change $b
+        $p = @(Test-NmBaseline -Data $b)
+        if (-not @($p | Where-Object { $_ -like "*$($c.Expect)*" }).Count) { throw "$($c.Why): expected '$($c.Expect)', got: $($p -join ' | ')" }
+    }
+    $true
+}
+
+Test-That 'Control tags: Framework:Control with a known framework' {
+    foreach ($ok in 'HIPAA:164.312(a)(2)(iii)', 'NIST800-53:AC-11', 'NIST800-171:3.1.10', 'CIS:2.3.17.1', 'STIG:V-254253') { if (-not (Test-NmBaselineTag -Tag $ok)) { throw "$ok refused" } }
+    foreach ($no in 'AC-11', 'hipaa:1', 'NIST800-53:', 'Made:Up') { if (Test-NmBaselineTag -Tag $no) { throw "$no accepted" } }
+    $true
+}
+
+Test-That 'A file that will not read, and two files with one Id, are reported and not offered' {
+    Write-TestBaseline -File 'Broken.psd1' -Text "@{ Id = 'x'"
+    Write-TestBaseline -File 'A.psd1' -Text "@{ Id = 'same'; Name = 'A'; Version = '0.7.1'; Description = 'a'; Settings = @( @{ Id = 's'; Kind = 'Service'; Side = 'Computer'; Title = 't'; Tags = @(); Service = 'Spooler'; StartMode = 'Disabled' } ) }"
+    Write-TestBaseline -File 'B.psd1' -Text "@{ Id = 'same'; Name = 'B'; Version = '0.7.1'; Description = 'b'; Settings = @( @{ Id = 's'; Kind = 'Service'; Side = 'Computer'; Title = 't'; Tags = @(); Service = 'Spooler'; StartMode = 'Disabled' } ) }"
+    $all = @(Get-NmBaseline -IncludeInvalid)
+    Assert-Equal 3 $all.Count 'files'
+    if (@(Get-NmBaseline).Count) { throw 'an invalid baseline was offered' }
+    if (-not @($all | Where-Object { "$($_.Problems)" -like '*could not be read*' }).Count) { throw 'broken file not reported' }
+    if (@($all | Where-Object { "$($_.Problems)" -like '*also used by another file*' }).Count -ne 2) { throw 'duplicate Id not reported' }
+    $true
+}
+
+Write-Host 'Parameters and placeholders' -ForegroundColor Cyan
+Test-That 'Placeholders: found, filled in, {{ }} kept as braces, unknown names left alone' {
+    Assert-Equal 'A,B' ((Get-NmBaselinePlaceholder -Value @{ x = '{A} and {B}'; y = @('{A}', '{{Not}}') }) -join ',') 'found'
+    Assert-Equal '900 {Other} {literal}' (Expand-NmBaselineText -Text '{Seconds} {Other} {{literal}}' -Values @{ Seconds = 900 }) 'expanded'
+    $e = Expand-NmBaselineValue -Value @{ Members = @('{G}', 'Administrators'); N = 5 } -Values @{ G = 'RDP Admins' }
+    Assert-Equal 'RDP Admins,Administrators' ($e.Members -join ',') 'array'
+    Assert-Equal 5 $e.N 'number kept'
+    $true
+}
+
+Test-That 'Defaults from the session and settings; values checked (range, choice, FQDN, IP range)' {
+    Assert-Equal 'DC01.clientx.local,0x1' (Get-NmBaselineDefault -Parameter @{ Default = '{Session:Pdc},0x1' }) 'session'
+    Assert-Equal 'Eastern Standard Time' (Get-NmBaselineDefault -Parameter @{ Default = '{Setting:BuildTimeZone}' }) 'setting'
+    $int = @{ Name = 'S'; Type = 'Int'; Min = 60; Max = 7200 }
+    if (Test-NmBaselineParamValue -Parameter $int -Value 900) { throw '900 refused' }
+    if (-not (Test-NmBaselineParamValue -Parameter $int -Value 30)) { throw '30 accepted' }
+    if (-not (Test-NmBaselineParamValue -Parameter $int -Value 'ten')) { throw 'text accepted' }
+    if (-not (Test-NmBaselineParamValue -Parameter @{ Type = 'Choice'; Choices = @('Compatible', 'Modern') } -Value 'Legacy')) { throw 'bad choice accepted' }
+    if (Test-NmBaselineParamValue -Parameter @{ Type = 'Fqdn' } -Value 'print01.clientx.local') { throw 'FQDN refused' }
+    if (-not (Test-NmBaselineParamValue -Parameter @{ Type = 'Fqdn' } -Value 'print01')) { throw 'short name accepted as FQDN' }
+    if (Test-NmBaselineParamValue -Parameter @{ Type = 'IpRange' } -Value '192.0.2.0/24') { throw 'range refused' }
+    if (-not (Test-NmBaselineParamValue -Parameter @{ Type = 'String' } -Value '')) { throw 'empty accepted' }
+    if (Test-NmBaselineParamValue -Parameter @{ Type = 'String'; Optional = $true } -Value '') { throw 'optional empty refused' }
+    $r = Resolve-NmBaselineValues -Baseline ([pscustomobject]@{ Parameters = @(@{ Name = 'Seconds'; Type = 'Int'; Default = 900; Min = 60; Max = 7200 }) }) -Given @{ Seconds = 5 }
+    if (-not "$($r.Problems)".Contains('Seconds: at least 60')) { throw "problems: $($r.Problems)" }
+    $true
+}
+
+Test-That 'Audit subcategories: by name, with "Audit " in front, and "Audit Policy Change" (a name that starts with Audit)' {
+    Assert-Equal '{0cce923f-69ae-11d9-bed3-505054503030}' (Get-NmAuditSubcategoryGuid -Name 'Credential Validation') 'name'
+    Assert-Equal '{0cce9215-69ae-11d9-bed3-505054503030}' (Get-NmAuditSubcategoryGuid -Name 'Audit Logon') 'prefixed'
+    Assert-Equal '{0cce922f-69ae-11d9-bed3-505054503030}' (Get-NmAuditSubcategoryGuid -Name 'Audit Policy Change') 'Audit Policy Change'
+    Assert-Equal 'Audit Policy Change' (Get-NmAuditSubcategoryName -Guid '{0CCE922F-69AE-11D9-BED3-505054503030}') 'back to a name'
+    Assert-Equal 59 $script:NmAuditSubcategories.Count 'subcategories'
+    $true
+}
+
+Write-Host 'File formats' -ForegroundColor Cyan
+Test-That 'Registry.pol: reads bytes built by hand (PReg header, a DWord and a string), and round-trips' {
+    $u = [Text.Encoding]::Unicode
+    $b = New-Object System.Collections.Generic.List[byte]
+    $b.AddRange([byte[]](0x50, 0x52, 0x65, 0x67, 1, 0, 0, 0))
+    $b.AddRange($u.GetBytes("[Software\Policies\T`0;Dw`0;")); $b.AddRange([BitConverter]::GetBytes(4)); $b.AddRange($u.GetBytes(';'))
+    $b.AddRange([BitConverter]::GetBytes(4)); $b.AddRange($u.GetBytes(';')); $b.AddRange([BitConverter]::GetBytes([uint32]2147483632)); $b.AddRange($u.GetBytes(']'))
+    $b.AddRange($u.GetBytes("[Software\Policies\T`0;Sz`0;")); $b.AddRange([BitConverter]::GetBytes(1)); $b.AddRange($u.GetBytes(';'))
+    $b.AddRange([BitConverter]::GetBytes(8)); $b.AddRange($u.GetBytes(';')); $b.AddRange($u.GetBytes("900`0")); $b.AddRange($u.GetBytes(']'))
+    $e = @(ConvertFrom-NmRegistryPol -Bytes $b.ToArray())
+    Assert-Equal 2 $e.Count 'entries'
+    Assert-Equal 'Software\Policies\T|Dw|DWord|2147483632' "$($e[0].Key)|$($e[0].ValueName)|$($e[0].Type)|$($e[0].Value)" 'dword'
+    Assert-Equal 'Sz|String|900' "$($e[1].ValueName)|$($e[1].Type)|$($e[1].Value)" 'string'
+    $again = @(ConvertFrom-NmRegistryPol -Bytes (ConvertTo-NmRegistryPol -Entries $e))
+    Assert-Equal ($e | ConvertTo-Json -Compress) ($again | ConvertTo-Json -Compress) 'round trip'
+    try { ConvertFrom-NmRegistryPol -Bytes ([byte[]](1, 2, 3, 4, 5, 6, 7, 8)); throw 'no error' } catch { if ("$_" -notlike '*PReg*') { throw } }
+    $true
+}
+
+Test-That 'GptTmpl.inf lines for each kind, as GPMC writes them' {
+    $l = { param($s) @(ConvertTo-NmGptTmplLine -Setting $s) }
+    Assert-Equal 'Registry Values|MACHINE\System\CurrentControlSet\Control\Lsa\LmCompatibilityLevel=4,5' "$((& $l @{ Kind = 'SecurityOption'; Key = 'MACHINE\System\CurrentControlSet\Control\Lsa\LmCompatibilityLevel'; Type = 'DWord'; Value = 5 }) | ForEach-Object { "$($_.Section)|$($_.Line)" })" 'dword'
+    Assert-Equal 'MACHINE\Software\X\Caption=1,"Say ""hi"""' (& $l @{ Kind = 'SecurityOption'; Key = 'MACHINE\Software\X\Caption'; Type = 'String'; Value = 'Say "hi"' })[0].Line 'string'
+    Assert-Equal 'NewAdministratorName = "LocalBoss"' (& $l @{ Kind = 'SystemAccess'; Name = 'NewAdministratorName'; Value = 'LocalBoss' })[0].Line 'system access text'
+    Assert-Equal 'EnableGuestAccount = 0' (& $l @{ Kind = 'SystemAccess'; Name = 'EnableGuestAccount'; Value = 0 })[0].Line 'system access number'
+    Assert-Equal 'SeRemoteInteractiveLogonRight = *S-1-5-32-544,*S-1-5-32-555' (& $l @{ Kind = 'UserRight'; Right = 'SeRemoteInteractiveLogonRight'; Members = @('S-1-5-32-544', '*S-1-5-32-555') })[0].Line 'user right'
+    $g = & $l @{ Kind = 'RestrictedGroup'; Group = 'S-1-5-32-555'; Members = @('S-1-5-21-1-1105'); MemberOf = @() }
+    Assert-Equal '*S-1-5-32-555__Memberof = |*S-1-5-32-555__Members = *S-1-5-21-1-1105' (($g | ForEach-Object Line) -join '|') 'restricted group'
+    $svc = (& $l @{ Kind = 'Service'; Service = 'Spooler'; StartMode = 'Disabled' })[0]
+    if ($svc.Line -notlike '"Spooler",4,"D:AR(*;;;BA)*') { throw "service: $($svc.Line)" }
+    $true
+}
+
+Test-That 'GptTmpl.inf: merged into an existing file, written as UTF-16 with a BOM, sections in order, read back' {
+    $id = [guid]::NewGuid().ToString()
+    $path = Get-NmGpoFilePath -Id $id -File GptTmpl
+    Write-NmGpoText -Path $path -Text "[Unicode]`r`nUnicode=yes`r`n[Registry Values]`r`nMACHINE\Software\Old=4,1`r`n[Version]`r`nsignature=`"`$CHICAGO`$`"`r`nRevision=1`r`n" -Encoding Unicode
+    Write-NmGptTmpl -Id $id -Lines @([pscustomobject]@{ Section = 'Registry Values'; Line = 'MACHINE\Software\New=4,0' }, [pscustomobject]@{ Section = 'System Access'; Line = 'EnableGuestAccount = 0' }, [pscustomobject]@{ Section = 'Registry Values'; Line = 'MACHINE\Software\Old=4,2' })
+    $bytes = [IO.File]::ReadAllBytes($path)
+    if (-not ($bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE)) { throw 'no UTF-16 BOM' }
+    $text = [IO.File]::ReadAllText($path)
+    $order = @('[Unicode]', '[System Access]', '[Registry Values]', '[Version]' | ForEach-Object { $text.IndexOf($_) })
+    if (($order | Sort-Object) -join ',' -ne ($order -join ',') -or $order -contains -1) { throw "sections out of order: $text" }
+    $doc = Read-NmGpoGptTmpl -Id $id
+    Assert-Equal 'MACHINE\Software\Old=4,2' $doc['Registry Values']['machine\software\old'] 'replaced, not duplicated'
+    Assert-Equal 2 $doc['Registry Values'].Count 'registry values'
+    $true
+}
+
+Test-That 'audit.csv: header, one row per subcategory with GUID and value, merged by GUID' {
+    $id = [guid]::NewGuid().ToString()
+    Write-NmGpoAudit -Id $id -Settings @(@{ Subcategory = 'Logon'; Setting = 'Success' }, @{ Subcategory = 'Audit Policy Change'; Setting = 'SuccessAndFailure' })
+    Write-NmGpoAudit -Id $id -Settings @(@{ Subcategory = 'Logon'; Setting = 'SuccessAndFailure' })
+    $lines = @((Read-NmGpoText -Path (Get-NmGpoFilePath -Id $id -File Audit)) -split "`r`n" | Where-Object { $_ })
+    Assert-Equal 3 $lines.Count 'lines'
+    Assert-Equal $script:NmAuditCsvHeader $lines[0] 'header'
+    Assert-Equal ',System,Audit Logon,{0cce9215-69ae-11d9-bed3-505054503030},Success and Failure,,3' $lines[1] 'logon, merged'
+    Assert-Equal ',System,Audit Audit Policy Change,{0cce922f-69ae-11d9-bed3-505054503030},Success and Failure,,3' $lines[2] 'audit policy change'
+    $true
+}
+
+Test-That 'Extension names: merged, sorted by GUID, nothing twice; the version goes up by one in AD and GPT.INI' {
+    $m = Merge-NmGpoExtensionName -Current '[{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}]' -Add @($script:NmCseSecurity, $script:NmCseAudit, $script:NmCseSecurity)
+    Assert-Equal '[{35378EAC-683F-11D2-A89A-00C04FBBCFA2}{D02B1F72-3407-48AE-BA88-E8213C6761F1}][{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}][{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}]' $m 'merged'
+    $g = New-GPO -Name 'Version test'
+    $global:FakeGpoAd[$g.Path].versionNumber = 65538
+    $v = Update-NmGpoVersion -Id "$($g.Id)" -Path $g.Path -Extensions @(, $script:NmCseSecurity)
+    Assert-Equal 65539 $v 'new version'
+    Assert-Equal 65539 $global:FakeGpoAd[$g.Path].versionNumber 'AD'
+    if ((Get-Content (Join-Path (Get-FakeGpoFolder $g.Id) 'GPT.INI') -Raw) -notmatch 'Version=65539') { throw 'GPT.INI not updated' }
+    if ($global:FakeGpoAd[$g.Path].gPCMachineExtensionNames -notlike '*{827D319E-6EAC-11D2-A4EA-00C04F79F83A}*') { throw 'security CSE not added' }
+    if (-not @($global:GpCalls | Where-Object { $_ -like 'Set-ADObject*@DC01.clientx.local' }).Count) { throw 'AD write did not go to the session DC' }
+    $true
+}
+
+Test-That 'Accounts as SIDs: SIDs, well-known names, domain groups by RID, AD lookups; an unknown name fails' {
+    Assert-Equal 'S-1-5-32-544' (Resolve-NmAccountSid -Name 'Administrators') 'builtin'
+    Assert-Equal 'S-1-5-32-555' (Resolve-NmAccountSid -Name 'BUILTIN\Remote Desktop Users') 'with prefix'
+    Assert-Equal 'S-1-5-21-1000-2000-3000-512' (Resolve-NmAccountSid -Name 'CLIENTX\Domain Admins') 'domain admins'
+    Assert-Equal 'S-1-5-21-1000-2000-3000-1105' (Resolve-NmAccountSid -Name 'RDP Admins') 'AD lookup'
+    Assert-Equal 'S-1-5-11' (Resolve-NmAccountSid -Name '*S-1-5-11') 'sid'
+    try { Resolve-NmAccountSid -Name 'Nobody Here'; throw 'no error' } catch { if ("$_" -notlike '*No account named*') { throw } }
+    $true
+}
+
+Write-Host 'gpo-build' -ForegroundColor Cyan
+Test-That 'Build: -WhatIf creates nothing; the plan lists the settings' {
+    $r = @(New-NmGpoFromBaseline -Baseline security-enforce-uac -WhatIf)
+    Assert-Equal 'WhatIf: not changed' $r[0].Result 'result'
+    Assert-Equal 0 $global:FakeGpos.Count 'GPOs'
+    $true
+}
+
+Test-That 'Build: UAC (security options) - stamped, GptTmpl.inf written, security extension and version raised, on the session DC' {
+    Answer 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline security-enforce-uac)
+    Assert-Equal 'Created' $r[0].Result 'result'
+    Assert-Equal '7 of 7' $r[0].Settings 'settings'
+    Assert-Equal 'Domain root' $r[0].SuggestedLinks 'suggested links'
+    $g = $global:FakeGpos[0]
+    Assert-Equal 'Security - Enforce UAC' $g.DisplayName 'name'
+    Assert-Equal 'Nutmeg baseline: security-enforce-uac 0.7.1' $g.Description 'stamp'
+    if ($global:GpCalls[0] -ne 'New-GPO Security - Enforce UAC @DC01.clientx.local') { throw "New-GPO: $($global:GpCalls[0])" }
+    $doc = Read-NmGpoGptTmpl -Id "$($g.Id)"
+    Assert-Equal 7 $doc['Registry Values'].Count 'registry values'
+    Assert-Equal 'MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\EnableLUA=4,1' $doc['Registry Values']['machine\software\microsoft\windows\currentversion\policies\system\enablelua'] 'EnableLUA'
+    Assert-Equal 1 $global:FakeGpoAd[$g.Path].versionNumber 'version'
+    if ($global:FakeGpoAd[$g.Path].gPCMachineExtensionNames -notlike '*{827D319E-6EAC-11D2-A4EA-00C04F79F83A}{803E14A0-B4FB-11D0-A0D0-00A0C90F574B}*') { throw 'security CSE missing' }
+    if (-not @(Get-NmRunHistory | Where-Object { $_.ToolId -eq 'gpo-build' -and $_.Notes -like 'Security - Enforce UAC*' }).Count) { throw 'no run history' }
+    $true
+}
+
+Test-That 'Build: Screen Timeout (user policy) with a value given; Registry.pol on the user side holds it' {
+    Answer 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline security-screen-timeout -Values @{ 'security-screen-timeout' = @{ TimeoutSeconds = 600 } } -GpoName @{ 'security-screen-timeout' = 'Screen Lock 10 min' })
+    Assert-Equal 'Created' $r[0].Result 'result'
+    $g = $global:FakeGpos[0]
+    Assert-Equal 'Screen Lock 10 min' $g.DisplayName 'name'
+    $pol = @(Read-NmGpoRegistryPol -Id "$($g.Id)" -Side User)
+    Assert-Equal 4 $pol.Count 'values'
+    Assert-Equal '600' (@($pol | Where-Object ValueName -eq 'ScreenSaveTimeOut')[0].Value) 'timeout'
+    if (@(Read-NmGpoRegistryPol -Id "$($g.Id)" -Side Computer).Count) { throw 'computer side written' }
+    $true
+}
+
+Test-That 'Build: Time Synchronization (policy + preference) - NTP server defaults to the PDC; DWord preference written' {
+    Answer 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline network-time-synchronization)
+    Assert-Equal 'Created' $r[0].Result 'result'
+    Assert-Equal 'Devices' $r[0].SuggestedLinks 'links'
+    $g = $global:FakeGpos[0]
+    $pol = @(Read-NmGpoRegistryPol -Id "$($g.Id)" -Side Computer)
+    Assert-Equal 'DC01.clientx.local,0x1' (@($pol | Where-Object ValueName -eq 'NtpServer')[0].Value) 'ntp server'
+    Assert-Equal 'DWord' (@($pol | Where-Object ValueName -eq 'SpecialPollInterval')[0].Type) 'poll type'
+    $pref = @(Read-NmGpoPrefRegistry -Id "$($g.Id)" -Side Computer)
+    Assert-Equal 'HKLM|SYSTEM\CurrentControlSet\Services\tzautoupdate|Start|DWord|3|Update' "$($pref[0].Hive)|$($pref[0].Key)|$($pref[0].ValueName)|$($pref[0].Type)|$($pref[0].Value)|$($pref[0].Action)" 'preference'
+    $true
+}
+
+Test-That 'Build: Domain Auditing (audit) and Print Spooler (service) - audit.csv and the audit extension; service line' {
+    Answer 'y', 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline security-domain-auditing-dcs, security-disable-print-spooler)
+    Assert-Equal 'Created|Created' (($r | ForEach-Object Result) -join '|') 'results'
+    $audit = $global:FakeGpos[0]
+    Assert-Equal 23 @(Read-NmGpoAudit -Id "$($audit.Id)").Count 'audit rows'
+    if ($global:FakeGpoAd[$audit.Path].gPCMachineExtensionNames -notlike '*{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}*') { throw 'audit CSE missing' }
+    if ($global:FakeGpoAd[$audit.Path].gPCMachineExtensionNames -like '*827D319E*') { throw 'security CSE added with no security template' }
+    $svc = Read-NmGpoGptTmpl -Id "$($global:FakeGpos[1].Id)"
+    if ($svc['Service General Setting']['spooler'] -notlike '"Spooler",4,*') { throw 'service line' }
+    $true
+}
+
+Test-That 'Build: an existing GPO is never changed; a bad value, a missing baseline and Cancel each stop before anything is created' {
+    New-GPO -Name 'Security - NTLM Hardening' | Out-Null
+    $global:GpCalls.Clear()
+    $r = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening)
+    if ($r[0].Result -notlike 'Already there*') { throw "existing: $($r[0].Result)" }
+    if ($global:GpCalls.Count) { throw "calls made: $($global:GpCalls -join '; ')" }
+    $r = @(New-NmGpoFromBaseline -Baseline security-screen-timeout -Values @{ TimeoutSeconds = 5 })
+    if ($r[0].Result -notlike 'Failed: TimeoutSeconds: at least 60*') { throw "bad value: $($r[0].Result)" }
+    $r = @(New-NmGpoFromBaseline -Baseline no-such-baseline)
+    if ($r[0].Result -notlike "Failed: no valid baseline*") { throw "missing: $($r[0].Result)" }
+    Answer 'n'
+    $r = @(New-NmGpoFromBaseline -Baseline security-enforce-uac)
+    Assert-Equal 'Cancelled' $r[0].Result 'cancel'
+    Assert-Equal 1 $global:FakeGpos.Count 'GPOs'
+    $true
+}
+
+Test-That 'Build: a setting that fails is reported; the rest are still written' {
+    $global:FailRegistryValue = 'SpecialPollInterval'
+    Answer 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline network-time-synchronization)
+    if ($r[0].Result -notlike 'Failed: 1 of 3 settings not written*Access is denied*') { throw "result: $($r[0].Result)" }
+    Assert-Equal '2 of 3' $r[0].Settings 'settings'
+    if (@(Read-NmGpoPrefRegistry -Id "$($global:FakeGpos[0].Id)").Count -ne 1) { throw 'the preference after it was not written' }
+    $true
+}
+
+Test-That 'Build: user rights and restricted groups resolve accounts to SIDs; an unknown account fails only its setting' {
+    Write-TestBaseline -Text @'
+@{
+    Id = 'test-rights'; Name = 'Test Rights'; Version = '0.7.1'; Description = 'Rights.'
+    Parameters = @( @{ Name = 'RdpGroup'; Prompt = 'Group allowed to RDP'; Type = 'Group'; Default = 'RDP Admins' } )
+    Settings = @(
+        @{ Id = 'rdp-right'; Kind = 'UserRight'; Side = 'Computer'; Title = 'Allow log on through Remote Desktop Services'; Tags = @(); Right = 'SeRemoteInteractiveLogonRight'; Members = @('Administrators', '{RdpGroup}') }
+        @{ Id = 'rdp-group'; Kind = 'RestrictedGroup'; Side = 'Computer'; Title = 'Remote Desktop Users'; Tags = @(); Group = 'Remote Desktop Users'; Members = @('{RdpGroup}') }
+        @{ Id = 'guest'; Kind = 'SystemAccess'; Side = 'Computer'; Title = 'Guest account disabled'; Tags = @(); Name = 'EnableGuestAccount'; Value = 0 }
+        @{ Id = 'bad'; Kind = 'UserRight'; Side = 'Computer'; Title = 'Nobody'; Tags = @(); Right = 'SeBatchLogonRight'; Members = @('Nobody Here') }
+    )
+}
+'@
+    Answer 'y'
+    $r = @(New-NmGpoFromBaseline -Baseline test-rights)
+    if ($r[0].Result -notlike "Failed: 1 of 4 settings not written (Nobody: No account named 'Nobody Here'*") { throw "result: $($r[0].Result)" }
+    $doc = Read-NmGpoGptTmpl -Id "$($global:FakeGpos[0].Id)"
+    Assert-Equal 'SeRemoteInteractiveLogonRight = *S-1-5-32-544,*S-1-5-21-1000-2000-3000-1105' $doc['Privilege Rights']['seremoteinteractivelogonright'] 'right'
+    Assert-Equal '*S-1-5-32-555__Members = *S-1-5-21-1000-2000-3000-1105' $doc['Group Membership']['*s-1-5-32-555__members'] 'restricted group'
+    Assert-Equal 'EnableGuestAccount = 0' $doc['System Access']['enableguestaccount'] 'system access'
+    if ($doc['Privilege Rights'].Contains('sebatchlogonright')) { throw 'the failed right was written' }
+    $true
+}
+
+Test-That 'Build questions: pick a baseline, keep the name, answer its parameter (a bad answer is asked again)' {
+    $all = @(Get-NmBaseline)
+    $ix = [array]::IndexOf(@($all | ForEach-Object Id), 'security-screen-timeout') + 1
+    Answer "$ix", '', '30', '600'
+    $a = Read-NmGpoBuildOption
+    Assert-Equal 'security-screen-timeout' ($a.Baseline -join ',') 'baseline'
+    Assert-Equal '600' $a.Values['security-screen-timeout'].TimeoutSeconds 'value'
+    Assert-Equal 'Security - Screen Timeout' $a.GpoName['security-screen-timeout'] 'name'
+    if ($script:TestAnswers.Count) { throw "answers left over: $($script:TestAnswers.Count)" }
+    $true
+}
+
+Test-That 'Build questions: a GPO that exists is not built; Compare is offered and shown' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac | Out-Null
+    $all = @(Get-NmBaseline)
+    $ix = [array]::IndexOf(@($all | ForEach-Object Id), 'security-enforce-uac') + 1
+    Answer "$ix", '', 'y', ''
+    $a = Read-NmGpoBuildOption
+    if ($null -ne $a) { throw 'something would be built' }
+    $true
+}
+
+Test-That 'Build through Invoke-NmTool with parameters (unattended, as the New Forest Build will call it)' {
+    $r = @(Invoke-NmTool -Id gpo-build -Parameters @{ Baseline = @('security-ldaps-hardening-dcs'); WhatIf = $true } -NoMenu)
+    Assert-Equal 'WhatIf: not changed' $r[0].Result 'result'
+    Assert-Equal 'Domain Controllers' $r[0].SuggestedLinks 'links'
+    $true
+}
+
+Write-Host 'gpo-compare' -ForegroundColor Cyan
+Test-That 'Compare: a GPO just built matches its baseline everywhere; the parameter value is shown' {
+    Answer 'y', 'y', 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-screen-timeout, network-time-synchronization, security-domain-auditing-dcs -Values @{ TimeoutSeconds = 600 } | Out-Null
+    $rows = @(Compare-NmGpoBaseline -All)
+    $notOk = @($rows | Where-Object { $_.Result -ne 'Matches' })
+    if ($notOk.Count) { throw "not matching: $(($notOk | ForEach-Object { "$($_.Gpo): $($_.Setting) [$($_.Result)] exp '$($_.Expected)' got '$($_.Actual)'" }) -join ' / ')" }
+    Assert-Equal (7 + 4 + 3 + 23) $rows.Count 'rows'
+    Assert-Equal 'TimeoutSeconds = 600' (@($rows | Where-Object SettingId -eq 'screensaver-timeout')[0].Detail) 'parameter'
+    Assert-Equal 'NtpServer = DC01.clientx.local,0x1' (@($rows | Where-Object SettingId -eq 'ntp-client')[0].Detail) 'ntp parameter'
+    $true
+}
+
+Test-That 'Compare: different, missing, extra and not-filled settings are found' {
+    Answer 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-screen-timeout | Out-Null
+    $uac = $global:FakeGpos[0]
+    $path = Get-NmGpoFilePath -Id "$($uac.Id)" -File GptTmpl
+    $text = [IO.File]::ReadAllText($path)
+    $text = $text.Replace('EnableLUA=4,1', 'EnableLUA=4,0').Replace("MACHINE\Software\Microsoft\Windows\CurrentVersion\Policies\System\PromptOnSecureDesktop=4,1`r`n", '')
+    $text = $text.Replace('[Version]', "[System Access]`r`nEnableGuestAccount = 1`r`n[Version]")
+    Write-NmGpoText -Path $path -Text $text -Encoding Unicode
+    Set-GPRegistryValue -Guid $global:FakeGpos[1].Id -Key 'HKCU\Software\Policies\Microsoft\Windows\Control Panel\Desktop' -ValueName 'ScreenSaveTimeOut' -Type String -Value '{TimeoutSeconds}'
+    $rows = @(Compare-NmGpoBaseline -All -DifferencesOnly)
+    $get = { param($id) @($rows | Where-Object SettingId -eq $id)[0] }
+    Assert-Equal 'Different' (& $get 'admin-approval-all').Result 'EnableLUA'
+    Assert-Equal '4,1' (& $get 'admin-approval-all').Expected 'expected'
+    Assert-Equal '4,0' (& $get 'admin-approval-all').Actual 'actual'
+    Assert-Equal 'Missing' (& $get 'secure-desktop').Result 'missing'
+    Assert-Equal 'Not filled' (& $get 'screensaver-timeout').Result 'not filled'
+    $extra = @($rows | Where-Object Result -eq 'Extra')
+    Assert-Equal 'EnableGuestAccount' $extra[0].Setting 'extra'
+    if (@($rows | Where-Object Result -eq 'Matches').Count) { throw 'matches shown with -DifferencesOnly' }
+    $true
+}
+
+Test-That 'Compare: older baseline noted; unstamped GPO needs a baseline; -Baseline compares any GPO; unknown GPO fails' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
+    $global:FakeGpos[0].Description = 'Nutmeg baseline: security-ntlm-hardening 0.7.0'
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening')
+    Assert-Equal 'Note' $rows[0].Result 'note'
+    Assert-Equal 'Matches' $rows[1].Result 'setting'
+    $global:FakeGpos[0].Description = 'Made by hand'
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening')
+    if ($rows[0].Result -notlike 'Failed: not built from a baseline*') { throw "unstamped: $($rows[0].Result)" }
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening' -Baseline security-ntlm-hardening)
+    Assert-Equal 'Matches' $rows[0].Result 'with -Baseline'
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - LDAPS Hardening (Devices)' -Baseline security-ldaps-hardening-devices)
+    if ($rows[0].Result -notlike 'Failed: no GPO*') { throw "unknown GPO: $($rows[0].Result)" }
+    if (@(Compare-NmGpoBaseline -All).Count) { throw 'an unstamped GPO was included in -All' }
+    $true
+}
+
+Test-That 'Compare: user rights and restricted groups - a {Param} member matches any one account; an added account is Different' {
+    Write-TestBaseline -Text @'
+@{
+    Id = 'test-rights'; Name = 'Test Rights'; Version = '0.7.1'; Description = 'Rights.'
+    Parameters = @( @{ Name = 'RdpGroup'; Prompt = 'Group allowed to RDP'; Type = 'Group'; Default = 'RDP Admins' } )
+    Settings = @(
+        @{ Id = 'rdp-right'; Kind = 'UserRight'; Side = 'Computer'; Title = 'RDP right'; Tags = @(); Right = 'SeRemoteInteractiveLogonRight'; Members = @('Administrators', '{RdpGroup}') }
+        @{ Id = 'rdp-group'; Kind = 'RestrictedGroup'; Side = 'Computer'; Title = 'Remote Desktop Users'; Tags = @(); Group = 'Remote Desktop Users'; Members = @('{RdpGroup}') }
+    )
+}
+'@
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline test-rights | Out-Null
+    $rows = @(Compare-NmGpoBaseline -All)
+    Assert-Equal 'Matches|Matches' (($rows | ForEach-Object Result) -join '|') 'results'
+    Assert-Equal '{RdpGroup} = S-1-5-21-1000-2000-3000-1105' $rows[0].Detail 'parameter member'
+    $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('*S-1-5-32-544,', '*S-1-5-32-544,*S-1-5-21-1000-2000-3000-512,')) -Encoding Unicode
+    $rows = @(Compare-NmGpoBaseline -All)
+    Assert-Equal 'Different' $rows[0].Result 'extra member'
+    if ($rows[0].Actual -notlike '*Domain Admins*') { throw "SIDs not shown by name: $($rows[0].Actual)" }
+    $true
+}
+
+Test-That 'Compare questions: every stamped GPO, then only what needs attention' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
+    Answer '1', 'y'
+    $a = Read-NmGpoCompareOption
+    if (-not $a.All -or -not $a.DifferencesOnly) { throw "answers: $($a | ConvertTo-Json -Compress)" }
+    Answer '3', '1', '1', 'n'
+    $a = Read-NmGpoCompareOption
+    Assert-Equal 'Security - NTLM Hardening' ($a.Gpo -join ',') 'gpo'
+    Assert-Equal (@(Get-NmBaseline)[0].Id) $a.Baseline 'baseline'
+    $true
+}
+
+Test-That 'Both tools are registered under Group Policy > Baselines; compare is read only' {
+    $b = Get-NmTool -Id gpo-build
+    $c = Get-NmTool -Id gpo-compare
+    Assert-Equal 'gpo|Baselines|ReportAndChange' "$($b.AdminCenter)|$($b.Section)|$($b.Kind)" 'gpo-build'
+    Assert-Equal 'gpo|Baselines|Report' "$($c.AdminCenter)|$($c.Section)|$($c.Kind)" 'gpo-compare'
+    $src = Get-Content (Join-Path $script:NmModuleRoot 'Tools\GroupPolicy\Compare-NmGpoBaseline.ps1') -Raw
+    if ($src -match '\b(New|Set|Remove)-GP|Set-ADObject|Write-NmGpo|Update-NmGpoVersion') { throw 'compare writes something' }
+    $true
+}
+
+# ---------------------------------------------------------------------------
+Remove-Item -Path $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+& $mod { if ($script:NmSettingsTestFile -and (Test-Path $script:NmSettingsTestFile)) { Remove-Item $script:NmSettingsTestFile -Force } }
+Write-Host '=============================================' -ForegroundColor Cyan
+if ($script:Failed.Count -eq 0) {
+    Write-Host "   All $script:Passed tests passed." -ForegroundColor Green
+    exit 0
+}
+Write-Host "   $($script:Failed.Count) failed, $script:Passed passed." -ForegroundColor Red
+exit 1

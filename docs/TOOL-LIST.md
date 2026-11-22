@@ -22,9 +22,9 @@ Same idea as the M365 toolkit's admin centers: a section, then the task, then th
 
 | Tool | Id | Kind | What it does |
 | --- | --- | --- | --- |
-| Build GPOs from Baselines | `gpo-build` | Report + Change | Pick one or several baselines. For each one: answer its parameters (defaults offered), name the GPO (baseline name by default), create it and write its settings. Asks first; `-WhatIf`. If a GPO by that name exists, it stops and offers Compare instead of overwriting. Then the per-GPO step: link, filter, delegate (`gpo-scope`), or skip and do it later |
+| Build GPOs from Baselines | `gpo-build` | Report + Change | **Built in 0.7.11 (console QA pending).** Pick one or several baselines. For each one: answer its parameters (defaults offered), name the GPO (baseline name by default), create it and write its settings. Asks first; `-WhatIf`. If a GPO by that name exists, it stops and offers Compare instead of overwriting. Then the per-GPO step: link, filter, delegate (`gpo-scope`), or skip and do it later |
 | Links, Filtering and Delegation | `gpo-scope` | Report + Change | One GPO at a time: link or unlink OUs (order, enforced, enabled), security filtering (add groups or computers, take out Authenticated Users), exclusions (deny apply for one computer, group or user), WMI filter, delegation (edit, read). Shows the current state first |
-| Compare GPOs with Baselines | `gpo-compare` | Report | One GPO or all of them against their baseline: missing settings, different values, extra settings, and parameters that weren't filled in. This is the check that a client still matches the standard |
+| Compare GPOs with Baselines | `gpo-compare` | Report | **Built in 0.7.11 (console QA pending).** One GPO or all of them against their baseline: missing settings, different values, extra settings, and parameters that weren't filled in. This is the check that a client still matches the standard |
 | WMI Filters | `gpo-wmi` | Report + Change | List the domain's WMI filters and create standard ones from a short library: desktops, laptops (chassis type), servers, DCs, workstations by OS |
 | ADMX Central Store | `gpo-admx` | Report + Change | Check `SYSVOL\Policies\PolicyDefinitions`: whether it exists, and whether it has the templates the baselines need (Windows, PowerShell Core, Duo). Create it and copy templates in, asking first. The Duo and PowerShell 7 baselines need this before they can be built |
 | GPO Inventory | `gpo-inventory` | Report | Every GPO: links, status, filtering, WMI filter, last change, and which baseline it matches. Flags empty, unlinked, disabled and "applies to nobody" GPOs. Exports the GPMC HTML report per GPO for documentation |
@@ -69,8 +69,13 @@ Claude agreed: it had passed QA in the console).
 2. The baseline file format, and `gpo-build` and `gpo-compare` for the easy kinds (template settings,
    registry preferences, security options, user rights, audit, services). About 20 of the 32 baselines.
    The format includes a control-tag field on every setting from the start (see Compliance profiles).
+   **Built in 0.7.11, console QA pending.** Format agreed with Cliff (Nov 2026): one `.psd1` per baseline,
+   tags as `Framework:Control` strings, Restricted Groups added to this step, and the GPO's comment
+   stamped `Nutmeg baseline: <Id> <Version>` for compare (`docs/baselines/FORMAT.md`). First nine
+   baselines converted (Legacy/INDEX.md); the other easy ones follow once the writers pass QA on the VM.
 3. `gpo-scope`, `gpo-wmi`, `gpo-admx`, `gpo-inventory`.
-4. Firewall baselines, then the hard kinds: wireless, software installation, certificate trust.
+4. Firewall baselines, then the hard kinds: wireless, software installation, certificate trust, and
+   preference service items (Duo Desktop).
 5. `ad-report` (wrapping the existing script), `ou-layout`, `ready` and `ready-aes`, `ad-groups`.
 6. The AD admin tools.
 7. `gpo-capture`.

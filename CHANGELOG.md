@@ -6,6 +6,50 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.11 - 11/22/2026
+
+**Baselines, step 2: the file format, Build GPOs from Baselines and Compare GPOs with Baselines**
+(Group Policy > Baselines). Console first: both wait for your QA in the console.
+
+- **The format, as agreed:** one `.psd1` file per baseline in `Nutmeg.AD\Baselines`, the GPO's
+  settings only. Each setting has a control-tag list (`NIST800-53:AC-11`) for the compliance profiles
+  later. Values that change per client are parameters with defaults. Every file is checked by the
+  tests; one with a mistake is not offered and the mistake is logged. Written up in
+  `docs/baselines/FORMAT.md`.
+- **Nine baselines** from your reports: Enforce UAC, NTLM Hardening, Kerberos Encryption, LDAPS
+  Hardening (DC's) and (Devices), Disable Print Spooler, Domain Auditing (DC's), Screen Timeout (the
+  timeout is a parameter, 900 s) and Time Synchronization (the NTP server is a parameter, the PDC by
+  default). Print Spooler uses the built-in Administrators for the service's permissions, not the
+  client's Domain Admins as in the report.
+- **Build GPOs from Baselines** (`gpo-build`):
+  - pick one or several baselines; for each, the GPO name (the baseline's by default) and its
+    parameters;
+  - a GPO that already exists is **never changed**: Compare is offered instead;
+  - asks before each GPO; `-WhatIf` shows the plan;
+  - the GPO's comment says `Nutmeg baseline: <id> <version>`, so Compare finds its baseline;
+  - the GPO is **not linked**: the table shows the suggested links (GpoDefaultLinks.csv) for when
+    `gpo-scope` comes in step 3;
+  - one setting that fails doesn't stop the rest; the row says which and why.
+- **How it writes:** Administrative Templates and registry preferences with the GroupPolicy cmdlets.
+  Security options, user rights, Restricted Groups, account settings, services and audit policy have
+  no cmdlet, so they go into the GPO's own files in SYSVOL (GptTmpl.inf, audit.csv), the way GPMC
+  writes them. The GPO's extension list and version are then raised so computers apply them.
+  Accounts are written as SIDs.
+- **Compare GPOs with Baselines** (`gpo-compare`): every GPO built from a baseline, one of them, or
+  any GPO against a baseline you pick. It reads the GPO's files, so it sees what computers see. Each
+  setting comes out as one of:
+  - Matches (with the parameter's value shown);
+  - Different;
+  - Missing;
+  - Not filled;
+  - Extra (in the GPO but not the baseline).
+
+  It also notes a GPO built from an older version of its baseline. Summary [S] counts per GPO.
+  Read only.
+- **Not run on Windows yet:** tested against stand-ins (255 tests, 30 new). The SYSVOL writers are
+  the part to check on the VM: build a few GPOs, open them in GPMC and look at the settings report,
+  then run `gpupdate` on a test machine and Compare.
+
 ## 0.7.10 - 11/22/2026
 
 **CLAUDE.md's Status is up to date.** It stopped at 0.6.0; it now also covers the live step list,
