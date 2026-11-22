@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.11
+    Version: 0.7.12
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.12 - A finished New Forest Build hands over to the toolkit (Request-NmToolkitHandOff, Get-NmToolkitHandOff; new-forest 0.7.7,
+             Start-NutmegAD.ps1 0.7.1).
     0.7.11 - Baselines (step 2): the file format (Core\Baseline.ps1, Nutmeg.AD\Baselines\*.psd1), the SYSVOL files (Core\GpoFiles.ps1),
              writing and comparing (Core\GpoBaseline.ps1); gpo-build and gpo-compare; nine baselines from the reports.
     0.7.10 - CLAUDE.md Status brought up to date (step list, build report, dc-report, 1.1.1.1 standard). No code changes.
@@ -77,7 +79,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.11'
+$script:ModuleVersion = '0.7.12'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
@@ -147,7 +149,7 @@ if (Test-Path $toolRoot) {
 # Exports
 # ---------------------------------------------------------------------------
 $publicCore = @(
-    'Start-NmToolkit', 'Start-NmToolkitGui', 'Get-NmStartMode'
+    'Start-NmToolkit', 'Start-NmToolkitGui', 'Get-NmStartMode', 'Get-NmToolkitHandOff'
     'Get-NmTool', 'Get-NmAdminCenter', 'Invoke-NmTool', 'Get-NmToolLoadError'
     'Get-NmSession', 'Assert-NmConnection', 'Get-NmServiceState', 'Set-NmServer', 'Get-NmADParams', 'Get-NmGPParams'
     'Get-NmLocalComputer', 'Test-NmElevated', 'Get-NmAdminMembership'

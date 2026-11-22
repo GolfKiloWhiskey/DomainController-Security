@@ -756,9 +756,19 @@ Test-That 'A finished build only reports that it is finished' {
 }
 
 Test-That 'Opening a finished build says so and runs nothing (no loop back into it)' {
+    $script:NmToolkitHandOff = $false
+    Answer @('n')
+    $r = Read-NmNewForestPlan 6>$null
+    ($null -eq $r) -and $script:TestAnswers.Count -eq 0 -and -not (Get-NmToolkitHandOff)
+}
+
+Test-That 'A finished build hands over to the toolkit (Enter = yes); the launcher reads it' {
+    $script:NmToolkitHandOff = $false
     Answer @('')
     $r = Read-NmNewForestPlan 6>$null
-    ($null -eq $r) -and $script:TestAnswers.Count -eq 0
+    $launcher = Get-Content (Join-Path (Split-Path -Parent $script:NmModuleRoot) 'Start-NutmegAD.ps1') -Raw
+    ($null -eq $r) -and (Get-NmToolkitHandOff) -and $script:TestAnswers.Count -eq 0 -and
+        $launcher -match '(?s)Start-NmToolkitGui -NewForest.*if \(Get-NmToolkitHandOff\).*-Toolkit'
 }
 
 Test-That 'A saved build is offered to continue, not asked again' {

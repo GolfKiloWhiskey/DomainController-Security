@@ -2,6 +2,34 @@
 # Launcher.ps1 - Start-NmToolkit: the main menu, built from the tool registry
 # ---------------------------------------------------------------------------
 
+# Set when a finished New Forest Build hands over to the toolkit (Request-NmToolkitHandOff);
+# Start-NutmegAD.ps1 reads it once the build's window or menu has closed.
+$script:NmToolkitHandOff = $false
+
+function Request-NmToolkitHandOff {
+    <#
+    .SYNOPSIS
+        The build is finished: close the build (its window, if open) and let the launcher open the toolkit.
+    #>
+    [CmdletBinding()]
+    param()
+    $script:NmToolkitHandOff = $true
+    Write-NmLog 'The build is finished: handing over to the toolkit.' -Level INFO -NoConsole
+    if ($script:NmGui -and $script:NmGui.Active -and $script:NmGui.Window) {
+        # After the current dialog's handler returns, not from inside it.
+        $win = $script:NmGui.Window
+        [void]$win.Dispatcher.BeginInvoke([action]{ $win.Close() }.GetNewClosure())
+    }
+}
+
+function Get-NmToolkitHandOff {
+    # True once a finished build asked for the toolkit (read by Start-NutmegAD.ps1).
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    return [bool]$script:NmToolkitHandOff
+}
+
 function Get-NmStartMode {
     <#
     .SYNOPSIS

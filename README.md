@@ -34,6 +34,8 @@ On a domain controller, as a domain admin:
 
 - Checks the server first: a fresh workgroup server, or one with a New Forest Build in progress,
   opens the build; a DC or domain member opens the toolkit. `-NewForest` or `-Toolkit` says which.
+- When the build finishes it offers to open the toolkit (Yes by default): the build closes and the
+  toolkit opens, in PowerShell 7 when it is installed.
 - Opens the window. `-Console` opens the console menu instead.
 - Runs in PowerShell 7 whenever it is installed: started in Windows PowerShell 5.1, it moves to 7
   without asking. Not installed: it offers to install the current LTS release (Microsoft's signed
@@ -70,7 +72,7 @@ to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Wind
 
 | Area | Section | Tool | Id | Kind |
 | --- | --- | --- | --- | --- |
-| New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion; phases 2 to 5 to come | `new-forest` | Change |
+| New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion, then on to the toolkit; phases 2 to 5 to come | `new-forest` | Change |
 | Group Policy | Baselines | Build GPOs from Baselines: pick baselines, answer their parameters, each becomes a new GPO (not linked; an existing GPO is never overwritten) | `gpo-build` | Report + Change |
 | Group Policy | Baselines | Compare GPOs with Baselines: missing, different, extra and not-filled settings, per GPO | `gpo-compare` | Report |
 | Reports | Reports | DC Report: a report per DC (HTML and PDF): roles, DNS order, replication, SYSVOL, health, dcdiag | `dc-report` | Report |
