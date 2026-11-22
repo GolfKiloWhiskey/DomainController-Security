@@ -6,6 +6,25 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.9 - 11/22/2026
+
+**1.1.1.1 is always the last DNS server on a DC's adapter** (Cliff's standard). If a DC cannot
+resolve itself its DNS server is broken anyway, and a public resolver last keeps external lookups
+working, which the RMM agent needs (remote control above all).
+
+- **New setting:** Settings > New forest build > "Last DNS server on a DC", `1.1.1.1` by default;
+  blank adds none.
+- **New Forest Build:**
+  - the static IP step puts it last in the DNS list (once, even if it was typed);
+  - the DNS question says it is added; the plan and the Build card show the full list;
+  - promotion points the adapter at 127.0.0.1 alone, so **a new step after the check of the new
+    DC, "DNS order on the DC"**, sets the standard order: its own IP, 127.0.0.1, then 1.1.1.1.
+- **DC Report and the health check:** 1.1.1.1 at the end is the standard (not "not a DC"); a DC
+  without it gets a Warning, "1.1.1.1 should be the last entry".
+- **How work is delivered:** before new work, GitHub is checked for open PRs and the newest `main`;
+  one PR at a time, never built on an unmerged one (written into CLAUDE.md).
+- Not run on Windows yet: tested against stand-ins (225 tests).
+
 ## 0.7.8 - 11/22/2026
 
 **DC Report** (`dc-report`, Reports), for the second and later DCs (promoted by hand) and any DC

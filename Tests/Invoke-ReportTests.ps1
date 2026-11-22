@@ -89,7 +89,7 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
         param($ComputerName)
         $script:Asked.Add("net @$ComputerName")
         if ($ComputerName) { [pscustomobject]@{ Adapter = 'Ethernet'; IPv4 = '192.0.2.51'; Mask = '255.255.255.0'; Gateway = '192.0.2.1'; Dns = $script:Dc02Dns; Mac = '00-15-5D-00-00-02'; Dhcp = $false } }
-        else { [pscustomobject]@{ Adapter = 'Ethernet'; IPv4 = '192.0.2.50'; Mask = '255.255.255.0'; Gateway = '192.0.2.1'; Dns = @('192.0.2.51', '127.0.0.1'); Mac = '00-15-5D-00-00-01'; Dhcp = $false } }
+        else { [pscustomobject]@{ Adapter = 'Ethernet'; IPv4 = '192.0.2.50'; Mask = '255.255.255.0'; Gateway = '192.0.2.1'; Dns = @('192.0.2.51', '127.0.0.1', '1.1.1.1'); Mac = '00-15-5D-00-00-01'; Dhcp = $false } }
     }
     function script:Get-NmDnsClientServer { param($IPAddress, $ComputerName) @((Get-NmDcNetwork -ComputerName $ComputerName)[0].Dns) }
     function script:Get-NmHardwareInfo { param($ComputerName) [pscustomobject]@{ Os = 'Windows Server 2025 Standard'; Build = '26100'; LastBoot = '2026-11-22 08:00'; Hypervisor = 'Hyper-V'; Cpu = 'Virtual CPU'; Processors = 4; MemoryGB = 8; FreeGB = 90 } }
@@ -101,7 +101,7 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
 } $testRoot
 
 function global:Reset-Report {
-    & $global:NmTestModuleR { Reset-NmSession; $script:Asked.Clear(); $script:TestAnswers.Clear(); $script:Dc02Dns = @('192.0.2.51', '192.0.2.50') }
+    & $global:NmTestModuleR { Reset-NmSession; $script:Asked.Clear(); $script:TestAnswers.Clear(); $script:Dc02Dns = @('192.0.2.51', '192.0.2.50', '1.1.1.1') }
     $global:FakeDcs = @($global:FakeDcsAll)
     $global:AdWrites.Clear()
 }
@@ -134,16 +134,22 @@ Test-That 'The tool is registered in Reports, reads only, and needs the AD modul
     ($t.AdminCenter -eq 'report') -and ($t.Kind -eq 'Report') -and (@($t.Services) -contains 'AD') -and ($t.Prompt -eq 'Read-NmDcReportOption')
 }
 
-Test-That 'DNS order: more DCs = a partner first and itself after; one DC = itself first' {
-    $ok = Test-NmDcDnsOrder -Dns @('192.0.2.51', '127.0.0.1') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51')
-    $selfFirst = Test-NmDcDnsOrder -Dns @('127.0.0.1', '192.0.2.51') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51')
-    $noSelf = Test-NmDcDnsOrder -Dns @('192.0.2.51') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51')
-    $router = Test-NmDcDnsOrder -Dns @('192.0.2.1', '192.0.2.50') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51')
-    $single = Test-NmDcDnsOrder -Dns @('192.0.2.50', '127.0.0.1') -OwnIp '192.0.2.50'
-    $singleBad = Test-NmDcDnsOrder -Dns @('192.0.2.1') -OwnIp '192.0.2.50'
-    $none = Test-NmDcDnsOrder -Dns @() -OwnIp '192.0.2.50'
-    ($ok.Result -eq 'OK') -and ($selfFirst.Result -eq 'Warning') -and ($selfFirst.Detail -like '*itself first*') -and ($noSelf.Result -eq 'Warning') -and
-    ($router.Detail -like '*192.0.2.1 is not a DC*') -and ($single.Result -eq 'OK') -and ($singleBad.Result -eq 'Warning') -and ($none.Result -eq 'Failed')
+Test-That 'DNS order: more DCs = a partner first and itself after; one DC = itself first; 1.1.1.1 last either way' {
+    $L = '1.1.1.1'
+    $ok = Test-NmDcDnsOrder -Dns @('192.0.2.51', '127.0.0.1', $L) -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last $L
+    $noLast = Test-NmDcDnsOrder -Dns @('192.0.2.51', '127.0.0.1') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last $L
+    $selfFirst = Test-NmDcDnsOrder -Dns @('127.0.0.1', '192.0.2.51', $L) -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last $L
+    $noSelf = Test-NmDcDnsOrder -Dns @('192.0.2.51', $L) -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last $L
+    $router = Test-NmDcDnsOrder -Dns @('192.0.2.1', '192.0.2.50', $L) -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last $L
+    $single = Test-NmDcDnsOrder -Dns @('192.0.2.50', '127.0.0.1', $L) -OwnIp '192.0.2.50' -Last $L
+    $singleBad = Test-NmDcDnsOrder -Dns @('192.0.2.1', $L) -OwnIp '192.0.2.50' -Last $L
+    $onlyLast = Test-NmDcDnsOrder -Dns @($L) -OwnIp '192.0.2.50' -Last $L
+    $none = Test-NmDcDnsOrder -Dns @() -OwnIp '192.0.2.50' -Last $L
+    $noSetting = Test-NmDcDnsOrder -Dns @('192.0.2.51', '127.0.0.1') -OwnIp '192.0.2.50' -OtherDcIps @('192.0.2.51') -Last ''
+    ($ok.Result -eq 'OK') -and ($ok.Detail -notlike '*should be the last*') -and ($noLast.Result -eq 'Warning') -and ($noLast.Detail -like '*1.1.1.1 should be the last entry*') -and
+    ($selfFirst.Result -eq 'Warning') -and ($selfFirst.Detail -like '*itself first*') -and ($noSelf.Result -eq 'Warning') -and
+    ($router.Detail -like '*192.0.2.1 is not a DC*') -and ($single.Result -eq 'OK') -and ($singleBad.Result -eq 'Warning') -and ($onlyLast.Result -eq 'Warning') -and
+    ($none.Result -eq 'Failed') -and ($noSetting.Result -eq 'OK')
 }
 
 Test-That 'Questions: this DC by default; another DC from the list; every DC' {
@@ -169,7 +175,7 @@ Test-That 'This DC: checked locally; report written (HTML, PDF), opened; roles, 
 
 Test-That 'Another DC: every check asked of that DC, its DNS order judged against the others, its replication read' {
     $null = Assert-NmConnection -Services AD
-    $script:Dc02Dns = @('127.0.0.1', '192.0.2.50')
+    $script:Dc02Dns = @('127.0.0.1', '192.0.2.50', '1.1.1.1')
     $rows = @(Get-NmDcReport -Server 'DC02' -NoPdf 6>$null)
     $t = Get-Content -LiteralPath $rows[0].Report -Raw
     ($rows[0].Result -eq 'Written') -and ($script:Asked -contains 'svc NTDS @DC02.clientx.local') -and ($script:Asked -contains 'net @DC02.clientx.local') -and

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.1
+    Version: 0.7.2
 
 .SYNOPSIS
     A report per domain controller (HTML and PDF): what is specific to that DC, and whether it is healthy.
@@ -14,7 +14,8 @@
     - The DC: name, site, IP, OS and build, last start, global catalog, read-only, FSMO roles it holds.
     - The server: hypervisor, processor, memory, free space.
     - Network: each adapter's IP, gateway, MAC and DNS order, checked against the standard: with more
-      than one DC, a partner DC first and the DC itself second; a single DC, itself first.
+      than one DC, a partner DC first and the DC itself second; a single DC, itself first; and the
+      last-DNS server (1.1.1.1 by default, Settings > New forest build) at the end.
     - Replication: every partner and naming context, with the last success, the last result and
       consecutive failures (Get-ADReplicationPartnerMetadata). SYSVOL replication state (DFSR).
     - Health: the AD services, SYSVOL and NETLOGON, the DNS zones, the time source, and dcdiag
@@ -32,6 +33,7 @@
     Get-NmDcReport -All
 
 .VERSIONING
+    0.7.2 - The DNS order expects the last-DNS server (1.1.1.1 by default) at the end.
     0.7.1 - First version.
 #>
 
@@ -41,7 +43,7 @@ $NmTool = @{
     Category = 'Reports'
     Area     = 'report/Reports'
     Synopsis = 'A report per domain controller (HTML and PDF): roles, network and DNS order, replication, health, dcdiag'
-    Version  = '0.7.1'
+    Version  = '0.7.2'
     Kind     = 'Report'
     Services = @('AD')
     Roles    = @('Domain Admins')
@@ -103,24 +105,36 @@ function Test-NmDcDnsOrder {
     <#
     .SYNOPSIS
         Is a DC's DNS order the standard? More than one DC: a partner DC first, the DC itself (its own
-        IP or 127.0.0.1) after it. A single DC: itself first. Returns Result (OK, Warning, Failed) and Detail.
+        IP or 127.0.0.1) after it. A single DC: itself first. Either way the last-DNS server (-Last,
+        1.1.1.1 by default, Settings > New forest build) ends the list. Returns Result (OK, Warning,
+        Failed) and Detail.
     #>
     [CmdletBinding()]
-    param([string[]]$Dns = @(), [string]$OwnIp, [string[]]$OtherDcIps = @())
+    param([string[]]$Dns = @(), [string]$OwnIp, [string[]]$OtherDcIps = @(), [string]$Last = (Get-NmLastDns))
     $Dns = @($Dns | Where-Object { $_ })
     $self = { param($x) $x -eq '127.0.0.1' -or ($OwnIp -and $x -eq $OwnIp) }
     if (-not $Dns.Count) { return [pscustomobject]@{ Result = 'Failed'; Detail = 'no DNS servers set' } }
     $shown = $Dns -join ', '
-    if (-not @($OtherDcIps | Where-Object { $_ }).Count) {
-        if (& $self $Dns[0]) { return [pscustomobject]@{ Result = 'OK'; Detail = "$shown (the only DC: itself first)" } }
-        return [pscustomobject]@{ Result = 'Warning'; Detail = "$shown (the only DC should use its own DNS first)" }
+    # The last-DNS server at the end is the standard; the order is judged on the rest.
+    $hasLast = (-not $Last) -or ($Dns[-1] -eq $Last)
+    $core = @(if ($Last -and $Dns[-1] -eq $Last) { $Dns | Select-Object -First ($Dns.Count - 1) } else { $Dns })
+    $lastNote = if ($hasLast) { '' } else { "; $Last should be the last entry" }
+    $res = {
+        param($r, $d)
+        if ($r -eq 'OK' -and -not $hasLast) { $r = 'Warning' }
+        [pscustomobject]@{ Result = $r; Detail = "$shown ($d$lastNote)" }
     }
-    $first = $Dns[0]
-    $hasSelf = @($Dns | Where-Object { & $self $_ }).Count -gt 0
-    if ($OtherDcIps -contains $first -and $hasSelf) { return [pscustomobject]@{ Result = 'OK'; Detail = "$shown (a partner DC first, itself after)" } }
-    if (& $self $first) { return [pscustomobject]@{ Result = 'Warning'; Detail = "$shown (itself first: a partner DC should come first, then itself)" } }
-    if ($OtherDcIps -contains $first) { return [pscustomobject]@{ Result = 'Warning'; Detail = "$shown (itself is missing: add it after the partner)" } }
-    return [pscustomobject]@{ Result = 'Warning'; Detail = "$shown ($first is not a DC of this domain)" }
+    if (-not $core.Count) { return (& $res 'Warning' 'only the last-DNS server: the DC should use its own DNS') }
+    if (-not @($OtherDcIps | Where-Object { $_ }).Count) {
+        if (& $self $core[0]) { return (& $res 'OK' 'the only DC: itself first') }
+        return (& $res 'Warning' 'the only DC should use its own DNS first')
+    }
+    $first = $core[0]
+    $hasSelf = @($core | Where-Object { & $self $_ }).Count -gt 0
+    if ($OtherDcIps -contains $first -and $hasSelf) { return (& $res 'OK' 'a partner DC first, itself after') }
+    if (& $self $first) { return (& $res 'Warning' 'itself first: a partner DC should come first, then itself') }
+    if ($OtherDcIps -contains $first) { return (& $res 'Warning' 'itself is missing: add it after the partner') }
+    return (& $res 'Warning' "$first is not a DC of this domain")
 }
 
 function Get-NmDcReplication {
