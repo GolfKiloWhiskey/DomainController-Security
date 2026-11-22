@@ -29,9 +29,10 @@ $ErrorActionPreference = 'Stop'
 function global:Get-ADDomain {
     param($Server, $ErrorAction)
     [pscustomobject]@{ DNSRoot = 'clientx.local'; NetBIOSName = 'CLIENTX'; DistinguishedName = 'DC=clientx,DC=local'
-        DomainSID = 'S-1-5-21-1000-2000-3000'; DomainMode = 'Windows2025Domain'; PDCEmulator = 'DC01.clientx.local' }
+        DomainSID = 'S-1-5-21-1000-2000-3000'; DomainMode = 'Windows2025Domain'; PDCEmulator = 'DC01.clientx.local'
+        RIDMaster = 'DC01.clientx.local'; InfrastructureMaster = 'DC01.clientx.local' }
 }
-function global:Get-ADForest { param($Server, $ErrorAction) [pscustomobject]@{ RootDomain = 'clientx.local'; ForestMode = 'Windows2025Forest' } }
+function global:Get-ADForest { param($Server, $ErrorAction) [pscustomobject]@{ RootDomain = 'clientx.local'; ForestMode = 'Windows2025Forest'; SchemaMaster = 'DC01.clientx.local'; DomainNamingMaster = 'DC01.clientx.local' } }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Import-Module (Join-Path (Join-Path $repoRoot 'Nutmeg.AD') 'Nutmeg.AD.psd1') -Force
@@ -82,6 +83,21 @@ New-Item -Path $testRoot -ItemType Directory -Force | Out-Null
     function script:Install-NmAddsFeature { $script:Calls.Add('Features'); [pscustomobject]@{ Success = $true; RestartNeeded = 'No' } }
     function script:Test-NmForestInstallation { param($ForestArgs) $script:Calls.Add('PreCheck'); $script:ForestArgsSeen = $ForestArgs; [pscustomobject]@{ Status = $script:FakePreCheck; Message = 'The local Administrator password does not meet requirements.' } }
     function script:Install-NmForest { param($ForestArgs) $script:Calls.Add('Promote'); [pscustomobject]@{ Status = 'Success'; Message = '' } }
+    # The new DC's health, dcdiag and the report.
+    function script:Get-NmServiceStatus { param($Name) if ($script:FakeStopped -contains $Name) { 'Stopped' } else { 'Running' } }
+    function script:Test-NmSmbShare { param($Name) $true }
+    function script:Test-NmDnsZone { param($Name) $true }
+    function script:Get-NmTimeSource { 'Local CMOS Clock' }
+    function script:Get-NmDnsClientServer { param($IPAddress) @('127.0.0.1') }
+    function script:Get-NmHardwareInfo { [pscustomobject]@{ Cpu = 'Virtual CPU'; Processors = 4; MemoryGB = 8 } }
+    function script:Invoke-NmDcDiagRaw { param($Server) $script:Calls.Add('dcdiag'); @(
+        '         ......................... DC01 passed test Connectivity'
+        '         ......................... DC01 passed test Advertising'
+        '         ......................... DC01 failed test SystemLog'
+        '         ......................... DC01 failed test NetLogons') }
+    function script:Find-NmEdge { $script:FakeEdge }
+    function script:Invoke-NmEdgePdf { param($Edge, $HtmlPath, $PdfPath) $script:Calls.Add('Pdf'); Set-Content -LiteralPath $PdfPath -Value '%PDF-1.7'; 0 }
+    function script:Open-NmReport { param($Path) $script:Calls.Add("Open $(Split-Path -Leaf $Path)") }
     # AD module for the check after promotion.
     function script:Find-NmModule { param($Name) [pscustomobject]@{ Name = $Name; Version = [version]'1.0.0.0' } }
     function script:Test-NmModuleLoaded { param($Name) $false }
@@ -98,6 +114,7 @@ function global:Reset-Server {
         $script:FakeWinPs = $true; $script:FakeElevated = $true; $script:FakeProductType = 3; $script:FakeBlocked = @()
         $script:FakePc = [pscustomobject]@{ Name = 'WIN-7Q2B4K9'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'WIN-7Q2B4K9' }
         $script:FakeNics = @([pscustomobject]@{ Name = 'Ethernet'; Index = 4; Mac = '00-15-5D-00-00-01'; Description = 'Microsoft Hyper-V Network Adapter'; IPv4 = '192.0.2.37'; PrefixLength = 24; Gateway = '192.0.2.1'; Dns = @('192.0.2.1'); Dhcp = $true })
+        $script:FakeStopped = @(); $script:FakeEdge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
         $script:FakePending = $false; $script:FakeNow = [datetime]'2026-11-21 13:00:00'; $script:FakeBoot = [datetime]'2026-01-01 08:00:00'
         $script:FakeTz = 'UTC'; $script:FakeIpInUse = $false; $script:FakeDomainAnswers = $false; $script:FakePreCheck = 'Success'
         $p = Get-NmBuildStatePath
@@ -358,7 +375,7 @@ Test-That 'Results start with what is being built and end with the steps still t
     $todo = @($rows | Where-Object Phase -eq 'Still to do')
     ($rows[0].Phase -eq 'Build: clientx.local') -and ((($info | ForEach-Object Step) -join ',') -eq 'Forest,This server,Network,Folders,Started') -and
         ($info[0].Detail -like 'clientx.local (CLIENTX), Windows Server 2025*more DCs planned: no') -and ($info[2].Detail -like '192.0.2.50/24 on Ethernet, gateway 192.0.2.1*') -and
-        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,Finish') -and
+        ((($todo | ForEach-Object Step) -join ',') -eq 'AD DS, DNS and GPMC,New forest clientx.local,Restart,Check the new DC,DC health and dcdiag,Finish') -and
         (@($todo | Where-Object Result -ne 'Next').Count -eq 0) -and ($todo[2].Detail -like '*CLIENTX\Administrator*') -and ($rows[-1].Phase -eq 'Still to do')
 }
 
@@ -368,8 +385,8 @@ Test-That 'The live step list: every step of both phases, phase 0 ticked as it r
     $null = Read-NmNewForestPlan 6>$null
     $out = & { $null = Invoke-NmNewForestBuild -Resume } 6>&1 | Out-String
     $items = $script:NmSteps.Items.ToArray()
-    ($items.Count -eq 10) -and (@($items | Where-Object { $_.Group -like 'Phase 0*' -and $_.Status -eq 'Done' }).Count -eq 5) -and
-        (@($items | Where-Object { $_.Group -like 'Phase 1*' -and $_.Status -eq 'Waiting' }).Count -eq 5) -and
+    ($items.Count -eq 11) -and (@($items | Where-Object { $_.Group -like 'Phase 0*' -and $_.Status -eq 'Done' }).Count -eq 5) -and
+        (@($items | Where-Object { $_.Group -like 'Phase 1*' -and $_.Status -eq 'Waiting' }).Count -eq 6) -and
         ($out -match '\[done\] Time zone: Eastern Standard Time') -and ($out -match '\[done\] Static IP: 192.0.2.50/24')
 }
 
@@ -643,7 +660,7 @@ Test-That 'A restart step left unrecorded is not done twice: the server already 
         (($rows | Where-Object Step -eq 'Check the new DC').Result -eq 'Done') -and (Get-NmBuildState).Finished
 }
 
-Test-That 'After the second restart: the new DC is checked, the sign-in task removed, a record saved' {
+Test-That 'After the second restart: the new DC is checked, its health and dcdiag recorded, the sign-in task removed, a report written (HTML and PDF) and opened' {
     Reset-Server
     Answer $global:StdAnswers
     $null = Read-NmNewForestPlan 6>$null
@@ -654,10 +671,54 @@ Test-That 'After the second restart: the new DC is checked, the sign-in task rem
     Restart-Fake -Promoted
     $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
     $verify = $rows | Where-Object Step -eq 'Check the new DC'
-    $recordPath = if (($rows | Where-Object Step -eq 'Finish').Detail -match 'record of the build: (.+)$') { $Matches[1] } else { '' }
-    $record = @(if ($recordPath -and (Test-Path -LiteralPath $recordPath)) { Get-Item -LiteralPath $recordPath })
-    $verify.Result -eq 'Done' -and $verify.Detail -match 'DC01\.clientx\.local is a DC of clientx\.local' -and ($script:Calls -contains 'ResumeTask removed') -and
-        (Get-NmBuildState).Finished -and $record.Count -eq 1 -and ($rows | Where-Object Step -eq 'More DCs').Result -eq 'Not planned'
+    $health = $rows | Where-Object Step -eq 'DC health and dcdiag'
+    $finish = ($rows | Where-Object Step -eq 'Finish').Detail
+    $html = if ($finish -match 'report: (\S+\.html)') { $Matches[1] } else { '' }
+    $pdf = if ($finish -match '\(PDF: (\S+\.pdf)\)') { $Matches[1] } else { '' }
+    $text = if ($html -and (Test-Path -LiteralPath $html)) { Get-Content -LiteralPath $html -Raw } else { '' }
+    $st = Get-NmBuildState
+    $verify.Result -eq 'Done' -and $verify.Detail -match 'DC01\.clientx\.local is a DC of clientx\.local' -and ($script:Calls -contains 'ResumeTask removed') -and $st.Finished -and
+        ($health.Detail -eq '11 of 12 checks OK; dcdiag: 2 passed, 1 warning(s), 1 failed') -and (@($st.DcDiag | Where-Object Test -eq 'SystemLog')[0].Result -eq 'Warning') -and
+        $pdf -and (Test-Path -LiteralPath $pdf) -and ($script:Calls -contains "Open $(Split-Path -Leaf $html)") -and
+        ($text -match 'New Forest Build: clientx.local') -and ($text -match '<h2>Health of the new DC</h2>') -and ($text -match '<h2>dcdiag</h2>') -and ($text -match '<h2>Server check</h2>') -and
+        ($text -match 'Store the DSRM password in the password manager') -and ($text -notmatch 'Dsrm-Pass-1') -and
+        ($text -match 'badge b-ok') -and ($text -match 'Time source</td><td><span class="badge b-warn">Warning') -and
+        ($st.Steps.Features.Began) -and ($rows | Where-Object Step -eq 'More DCs').Result -eq 'Not planned'
+}
+
+Test-That 'dcdiag: passed and failed tests read from its text; noisy tests right after a promotion are warnings' {
+    $rows = @(ConvertFrom-NmDcDiag -Lines @(
+        'Doing primary tests', '   Testing server: Default-First-Site-Name\DC01',
+        '      Starting test: Connectivity', '         ......................... DC01 passed test Connectivity',
+        '         ......................... DC01 failed test DFSREvent', '         ......................... clientx.local failed test LocatorCheck'))
+    ($rows.Count -eq 3) -and ((($rows | ForEach-Object { "$($_.Test)=$($_.Result)" }) -join ',') -eq 'Connectivity=Passed,DFSREvent=Warning,LocatorCheck=Failed') -and ($rows[2].Target -eq 'clientx.local')
+}
+
+Test-That 'DC health: FSMO roles elsewhere is a warning, a stopped service a failure, a DC not using its own DNS a warning' {
+    Reset-Server
+    Restart-Fake -Promoted
+    $null = Assert-NmConnection -Services AD
+    $script:FakeStopped = @('DFSR')
+    $h = Get-NmDcHealth -Server 'DC02.clientx.local' -Domain 'clientx.local' -IPAddress '192.0.2.51' -NoDcDiag
+    $c = @{}; foreach ($r in $h.Checks) { $c[$r.Check] = $r }
+    ($c['FSMO roles'].Result -eq 'Warning') -and ($c['FSMO roles'].Detail -like 'not on this DC: PDC emulator*') -and
+        ($c['Service: DFS Replication (SYSVOL)'].Result -eq 'Failed') -and ($c['Service: Active Directory Domain Services'].Result -eq 'OK') -and
+        ($c['DNS client settings'].Result -eq 'OK') -and ($c['Time source'].Result -eq 'Warning') -and (@($h.DcDiag).Count -eq 0)
+}
+
+Test-That 'No Edge: no PDF, the HTML report is still written and the finish says to print it' {
+    Reset-Server
+    $script:FakeEdge = ''
+    Answer $global:StdAnswers
+    $null = Read-NmNewForestPlan 6>$null
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake
+    Secret @('Dsrm-Pass-1!', 'Dsrm-Pass-1!')
+    $null = Invoke-NmNewForestBuild -Resume 6>$null
+    Restart-Fake -Promoted
+    $rows = @(Invoke-NmNewForestBuild -Resume 6>$null)
+    $finish = ($rows | Where-Object Step -eq 'Finish').Detail
+    ($finish -match 'report: \S+\.html \(no PDF copy: print it from the browser\)') -and ($script:Calls -notcontains 'Pdf')
 }
 
 Test-That 'A finished build only reports that it is finished' {

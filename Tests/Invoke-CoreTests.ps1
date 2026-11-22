@@ -184,6 +184,30 @@ Test-That 'The launcher passes the log on: plain to direct calls, quoted to Star
         $text -match '\$relaunch \+= \$logArgsQuoted' -and $text -match '\$env:NUTMEG_AD_LOG = \$LogPath'
 }
 
+Test-That 'HTML report: one self-contained, print-ready file; text encoded (no markup or non-ASCII gets through raw); badges by status' {
+    $p = Join-Path (Get-NmReportFolder) 'report-test.html'
+    $null = New-NmHtmlReport -Title 'Test <report>' -Subtitle 'Caf' -Meta @('Run by CLIENTX\admin') -Path $p -Sections @(
+        @{ Title = 'Facts'; Kind = 'Facts'; Rows = @([pscustomobject]@{ Name = 'Domain'; Value = 'clientx.local' }, [pscustomobject]@{ Name = 'Name'; Value = ('Jos' + [char]0x00E9) }) }
+        @{ Title = 'Checks'; Kind = 'Table'; Columns = @('Check', 'Result'); StatusColumn = 'Result'; Rows = @([pscustomobject]@{ Check = '<script>x</script>'; Result = 'OK' }, [pscustomobject]@{ Check = 'b'; Result = 'Warning' }, [pscustomobject]@{ Check = 'c'; Result = 'Failed' }) }
+        @{ Title = 'Next'; Kind = 'List'; Items = @('one', 'two') })
+    $t = Get-Content -LiteralPath $p -Raw
+    $bytes = [System.IO.File]::ReadAllBytes($p)
+    ($t -match '<title>Test &lt;report&gt;</title>') -and ($t -notmatch '<script>') -and ($t -match '&lt;script&gt;') -and ($t -match 'Jos&#233;') -and
+    ($t -match 'badge b-ok">OK') -and ($t -match 'badge b-warn">Warning') -and ($t -match 'badge b-bad">Failed') -and ($t -match '<li>two</li>') -and
+    ($t -match '@media print') -and ($t -notmatch 'https?://') -and (@($bytes | Where-Object { $_ -gt 127 }).Count -eq 0) -and ($bytes[0] -ne 0xEF)
+}
+
+Test-That 'PDF copy: none without Edge (the HTML stays); Edge is asked to print headless' {
+    $p = Join-Path (Get-NmReportFolder) 'report-test.html'
+    $real = ${function:script:Find-NmEdge}
+    try {
+        ${function:script:Find-NmEdge} = { '' }
+        $none = ConvertTo-NmPdf -HtmlPath $p 6>$null
+    } finally { Set-Item -Path function:script:Find-NmEdge -Value $real }
+    $code = (Get-Command Invoke-NmEdgePdf).ScriptBlock.ToString()
+    ($none -eq '') -and (Test-Path -LiteralPath $p) -and ($code -match '--headless') -and ($code -match '--print-to-pdf') -and ($code -match '--no-pdf-header-footer')
+}
+
 Test-That 'Add-NmIndex numbers rows from 1 in a [#] column first' {
     $r = @(Add-NmIndex -InputObject @([pscustomobject]@{ A = 'x' }, [pscustomobject]@{ A = 'y' }))
     $r[0].'#' -eq 1 -and $r[1].'#' -eq 2 -and @($r[0].PSObject.Properties.Name)[0] -eq '#'

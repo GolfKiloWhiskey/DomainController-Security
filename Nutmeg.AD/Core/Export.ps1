@@ -19,7 +19,7 @@ function Get-NmExportFileName {
     param(
         [Parameter(Mandatory)][string]$ToolId,
         [string]$Domain,
-        [ValidateSet('csv', 'txt')][string]$Extension = 'csv',
+        [ValidateSet('csv', 'txt', 'html', 'json')][string]$Extension = 'csv',
         [datetime]$Time = (Get-Date)
     )
 

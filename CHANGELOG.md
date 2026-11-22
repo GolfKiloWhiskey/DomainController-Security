@@ -6,6 +6,29 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.7 - 11/22/2026
+
+**The New Forest Build ends with a report** (Cliff), instead of a path to a JSON file.
+
+- **HTML and PDF**, in `C:\Temp\NutmegAD\Reports`. The HTML opens when the build finishes; the
+  PDF is printed by Edge in the background (headless), so there is no Print dialog. Without Edge
+  there is no PDF, and the HTML can be printed from the browser. The report is one file that needs
+  nothing from the internet, in the toolkit's look, and prints cleanly.
+- **What is in it:** who ran it, when it started and finished, and the total time; the build
+  (forest, NetBIOS, level, more DCs, DC name, time zone, folders); the network (adapter and MAC, IP,
+  gateway, DNS before and after promotion); the server (OS, hypervisor, processor, memory, free
+  space); the server check as it was; **every step with when it began, finished and how long it
+  took**; the new DC's health; dcdiag; next steps. Never a password.
+- **A new last-but-one step, "DC health and dcdiag"** (about a minute): FSMO roles, the AD services
+  (NTDS, DNS, Netlogon, KDC, DFSR), the SYSVOL and NETLOGON shares, the DNS zones (the domain and
+  `_msdcs`), the DC's own DNS settings, its time source, and dcdiag test by test. dcdiag tests that
+  are often noisy for a while after a promotion (SystemLog, DFSREvent, KccEvent, Replications) show
+  as warnings with a note, not failures.
+- The JSON record is still saved next to the exports, as before.
+- The report-writing is part of the toolkit's core: later tools (the DC report for the second and
+  later DCs, the AD report, the GPO baselines) produce the same kind of report.
+- Not run on Windows yet: tested against stand-ins (215 tests).
+
 ## 0.7.6 - 11/22/2026
 
 - **The window opens inside the screen** (Cliff: its title bar sat against the top edge, and in the
