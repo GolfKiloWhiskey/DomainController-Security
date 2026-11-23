@@ -29,7 +29,7 @@ a green label for matched, as well as the links).
   - The tables sort, copy and export like other results, and follow the Windows 11 look and dark mode.
 - **GPMC report** is now its own button: GPMC's full HTML report, opened in the browser, for
   anything the in-app view does not show.
-- Not run on Windows yet: tested against stand-ins (279 tests). The in-app view was tested against
+- Not run on Windows yet: tested against stand-ins (278 tests). The in-app view was tested against
   a sample GPMC report; real reports from the VM may show parts it words less well. Screenshots will
   tell.
 
