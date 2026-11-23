@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.15
+    Version: 0.7.16
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.16 - The window's layout (issues #33, #34): side panels behind a menu button, drag handles, options that fold after Run,
+             Output as its own pane, the layout kept per person (Window.json); the drop-down fixed under the Windows 11 look.
     0.7.15 - The window's look (issue #33): Windows 11 (Fluent, PowerShell 7) or Classic, light or dark as Windows is set, Nutmeg
              brand colours (Resolve-NmGuiColor); tick lists take the full width (List .ToArray() fix).
     0.7.14 - The window: the options area grows with the window, tick lists use its full width, wrap their text and
@@ -85,7 +87,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.15'
+$script:ModuleVersion = '0.7.16'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

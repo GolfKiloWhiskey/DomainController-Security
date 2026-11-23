@@ -744,6 +744,47 @@ Test-That 'Window colours: teal becomes Nutmeg red in both modes; dark mode dark
     $true
 }
 
+Test-That 'Window layout: saved per person, limits kept, a damaged file falls back to the default' {
+    $script:NmGuiLayoutTestFile = Join-Path ([System.IO.Path]::GetTempPath()) ("NmLayout_" + [guid]::NewGuid().ToString('N') + '.json')
+    try {
+        $d = Read-NmGuiLayout
+        Assert-Equal '260|340|False|False|220' "$($d.SidebarWidth)|$($d.ToolsWidth)|$($d.PanelsHidden)|$($d.OutputOpen)|$($d.OutputHeight)" 'default'
+        Save-NmGuiLayout -Layout @{ SidebarWidth = 200; ToolsWidth = 9999; PanelsHidden = $true; OutputOpen = $true; OutputHeight = 10 }
+        $l = Read-NmGuiLayout
+        Assert-Equal '200|640|True|True|80' "$($l.SidebarWidth)|$($l.ToolsWidth)|$($l.PanelsHidden)|$($l.OutputOpen)|$($l.OutputHeight)" 'saved, limits kept'
+        Set-Content -LiteralPath $script:NmGuiLayoutTestFile -Value '{ not json'
+        Assert-Equal 260 (Read-NmGuiLayout).SidebarWidth 'damaged file'
+        $p = ConvertTo-NmGuiLayout -Data ([pscustomobject]@{ SidebarWidth = 'wide'; OutputOpen = 'True' })
+        Assert-Equal '260|True' "$($p.SidebarWidth)|$($p.OutputOpen)" 'bad values'
+    } finally { Remove-Item -LiteralPath $script:NmGuiLayoutTestFile -Force -ErrorAction SilentlyContinue; $script:NmGuiLayoutTestFile = $null }
+    $true
+}
+
+Test-That 'Window layout: the menu button hides both side panels and brings them back; a panel dragged shut comes back at its default width' {
+    $l = Get-NmGuiLayoutDefault
+    $l.SidebarWidth = 300; $l.ToolsWidth = 0
+    $h = Switch-NmGuiPanelState -Layout $l
+    if (-not $h.PanelsHidden) { throw 'not hidden' }
+    Assert-Equal 300 $h.SidebarWidth 'width kept while hidden'
+    $b = Switch-NmGuiPanelState -Layout $h
+    Assert-Equal 'False|300|340' "$($b.PanelsHidden)|$($b.SidebarWidth)|$($b.ToolsWidth)" 'back'
+    if ($l.PanelsHidden) { throw 'the layout passed in was changed' }
+    $true
+}
+
+Test-That 'Window: options fold into one line after Run, in the form''s words' {
+    $spec = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-compare))
+    Assert-Equal 'Gpo: Security - Enforce UAC and 2 more   |   Baseline: security-enforce-uac   |   Differences only' (Get-NmGuiOptionsSummary -Spec $spec -Values @{ Gpo = @('Security - Enforce UAC', 'B', 'C'); Baseline = 'security-enforce-uac'; All = $false; DifferencesOnly = $true }) 'summary'
+    Assert-Equal 'All' (Get-NmGuiOptionsSummary -Spec $spec -Values @{ Gpo = @(); Baseline = ''; All = $true; DifferencesOnly = $false }) 'All only'
+    Assert-Equal 'Default options' (Get-NmGuiOptionsSummary -Spec $spec -Values @{}) 'nothing set'
+    $true
+}
+
+Test-That 'Window: the drop-down''s inner toggle stretches (under the Windows 11 theme it shrank to its arrow on the left)' {
+    if ($script:NmGuiTheme -notmatch '<ToggleButton Focusable="False" ClickMode="Press" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"') { throw 'the ComboBox toggle is not pinned to stretch' }
+    $true
+}
+
 Test-That 'Compare with nothing picked says what to do' {
     try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
     $true

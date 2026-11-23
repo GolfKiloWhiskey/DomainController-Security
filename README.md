@@ -39,6 +39,9 @@ On a domain controller, as a domain admin:
 - Opens the window. `-Console` opens the console menu instead. In PowerShell 7 the window has the
   Windows 11 look, light or dark as Windows is set (Settings > Window > Window look: Windows 11 or
   Classic); Windows PowerShell 5.1 keeps the classic light look. Colours are Nutmeg's, from the logo.
+- The layout is yours: the menu button (top left) hides the side panels, the edges between areas can
+  be dragged, the options fold into one line after Run, and Output opens as its own pane. It is kept
+  for next time; right-click the menu button to reset it.
 - Runs in PowerShell 7 whenever it is installed: started in Windows PowerShell 5.1, it moves to 7
   without asking. Not installed: it offers to install the current LTS release (Microsoft's signed
   MSI, with Microsoft Update on), or carries on in 5.1.

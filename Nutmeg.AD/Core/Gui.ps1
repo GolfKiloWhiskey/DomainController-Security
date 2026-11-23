@@ -60,7 +60,9 @@ $script:NmGuiMainControls = @('VersionText', 'DomainButton', 'DomainLabel', 'Dom
     'RunButton', 'GuidedButton', 'PreviewBox', 'ResultTitle', 'DetailsButton', 'SummaryButton', 'ExportTxtButton', 'ExportCsvButton',
     'AllColumnsBox', 'FilterBox', 'ResultsGrid', 'CardScroll', 'CardHost', 'ViewToggle', 'ClearButton', 'LogBox', 'StatusText', 'ProgressPanel', 'ProgressText', 'ProgressBar',
     'SearchHint', 'FilterHint', 'ResultBar', 'EmptyText', 'OutputExpander', 'SelectionBar', 'SelectionText', 'SelectAllButton', 'SelectNoneButton', 'SelectionActions',
-    'StepBorder', 'StepTitle', 'StepSummary', 'StepPanel')
+    'StepBorder', 'StepTitle', 'StepSummary', 'StepPanel',
+    'MenuButton', 'MenuGlyph', 'ResetLayoutItem', 'SidebarCol', 'ToolsCol', 'SidebarSplit', 'ToolsSplit', 'PageGrid', 'TopRow', 'OutputRow',
+    'OptionsSummary', 'OptionsSummaryText', 'EditOptionsButton', 'OptionsSplit', 'OutputSplit')
 
 # ---------------------------------------------------------------------------
 # Output and prompt redirection (inert unless the window is open)
@@ -1130,7 +1132,8 @@ $script:NmGuiTheme = @'
         <Setter.Value>
           <ControlTemplate TargetType="ComboBox">
             <Grid>
-              <ToggleButton Focusable="False" ClickMode="Press" IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+              <ToggleButton Focusable="False" ClickMode="Press" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" Padding="0" BorderThickness="0" Background="Transparent"
+                            IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                 <ToggleButton.Template>
                   <ControlTemplate TargetType="ToggleButton">
                     <Border x:Name="Bd" Background="#FFFFFF" BorderBrush="#C9CED6" BorderThickness="1" CornerRadius="8">
@@ -2918,6 +2921,12 @@ $script:NmGuiMainXaml = @'
 
     <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="0,0,0,1" Padding="16,10">
       <DockPanel LastChildFill="False">
+        <Button x:Name="MenuButton" DockPanel.Dock="Left" Padding="9,6" Margin="0,0,12,0" VerticalAlignment="Center" ToolTip="Show or hide the side panels (right-click: reset the layout)">
+          <TextBlock x:Name="MenuGlyph" FontFamily="Segoe MDL2 Assets" FontSize="16" VerticalAlignment="Center"/>
+          <Button.ContextMenu>
+            <ContextMenu><MenuItem x:Name="ResetLayoutItem" Header="Reset the layout"/></ContextMenu>
+          </Button.ContextMenu>
+        </Button>
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,16,0">
           <Border Width="32" Height="32" CornerRadius="8" Background="#0E6B66" Margin="0,0,10,0">
             <TextBlock Text="N" Foreground="#FFFFFE" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
@@ -2945,7 +2954,11 @@ $script:NmGuiMainXaml = @'
     </Border>
 
     <Grid Grid.Row="1">
-      <Grid.ColumnDefinitions><ColumnDefinition Width="260"/><ColumnDefinition Width="340"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="SidebarCol" Width="260" MinWidth="0" MaxWidth="480"/><ColumnDefinition Width="Auto"/>
+        <ColumnDefinition x:Name="ToolsCol" Width="340" MinWidth="0" MaxWidth="640"/><ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*" MinWidth="480"/>
+      </Grid.ColumnDefinitions>
 
       <DockPanel Grid.Column="0" Background="#14181F">
         <StackPanel DockPanel.Dock="Bottom" Margin="10">
@@ -2957,15 +2970,23 @@ $script:NmGuiMainXaml = @'
         </ScrollViewer>
       </DockPanel>
 
-      <DockPanel Grid.Column="1" Background="#FFFFFF">
+      <GridSplitter Grid.Column="1" x:Name="SidebarSplit" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                    Background="#14181F" Cursor="SizeWE" ToolTip="Drag to resize; drag to the edge to close"/>
+      <DockPanel Grid.Column="2" Background="#FFFFFF">
         <TextBlock x:Name="ToolListCenter" DockPanel.Dock="Top" FontSize="12" Foreground="#5B6370" Margin="16,16,16,0"/>
         <TextBlock x:Name="ToolListTitle" DockPanel.Dock="Top" FontSize="16" FontWeight="Bold" Margin="16,2,16,8"/>
         <ListBox x:Name="ToolList" BorderThickness="0" Margin="8,0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch"
                  ItemContainerStyle="{StaticResource ToolItem}"/>
       </DockPanel>
 
-      <Grid Grid.Column="2" Margin="20,16,20,12">
-        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <GridSplitter Grid.Column="3" x:Name="ToolsSplit" Width="5" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                    Background="#E2E5EA" Cursor="SizeWE" ToolTip="Drag to resize; drag to the edge to close"/>
+
+      <Grid Grid.Column="4" x:Name="PageGrid" Margin="20,16,20,12">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition x:Name="TopRow" Height="Auto" MinHeight="40"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="*" MinHeight="150"/><RowDefinition Height="Auto"/><RowDefinition x:Name="OutputRow" Height="Auto"/>
+        </Grid.RowDefinitions>
         <StackPanel Grid.Row="0">
           <StackPanel Orientation="Horizontal">
             <TextBlock x:Name="ToolTitle" FontSize="22" FontWeight="Bold" Text="Pick a tool"/>
@@ -2975,17 +2996,29 @@ $script:NmGuiMainXaml = @'
           </StackPanel>
           <TextBlock x:Name="ToolMeta" Foreground="#5B6370" TextWrapping="Wrap" Margin="0,4,0,0" Text="Choose an area on the left, then a tool."/>
         </StackPanel>
-        <Border Grid.Row="1" x:Name="OptionsBorder" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,12,0,0" Visibility="Collapsed">
-          <ScrollViewer x:Name="OptionsScroll" MaxHeight="230" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <WrapPanel x:Name="OptionsPanel"/>
-          </ScrollViewer>
-        </Border>
-        <StackPanel Grid.Row="2" x:Name="ActionRow" Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
-          <Button x:Name="RunButton" Content="Run" MinWidth="110" Style="{StaticResource PrimaryButton}"/>
-          <Button x:Name="GuidedButton" Content="Guided..." ToolTip="Answer the tool's own questions, then run"/>
-          <CheckBox x:Name="PreviewBox" Content="Preview changes only (WhatIf)" VerticalAlignment="Center" Margin="8,0,0,0"/>
-        </StackPanel>
-        <StackPanel Grid.Row="3">
+        <DockPanel Grid.Row="1" LastChildFill="True">
+          <StackPanel DockPanel.Dock="Bottom" x:Name="ActionRow" Orientation="Horizontal" Margin="0,12,0,0" Visibility="Collapsed">
+            <Button x:Name="RunButton" Content="Run" MinWidth="110" Style="{StaticResource PrimaryButton}"/>
+            <Button x:Name="GuidedButton" Content="Guided..." ToolTip="Answer the tool's own questions, then run"/>
+            <CheckBox x:Name="PreviewBox" Content="Preview changes only (WhatIf)" VerticalAlignment="Center" Margin="8,0,0,0"/>
+          </StackPanel>
+          <Border DockPanel.Dock="Top" x:Name="OptionsSummary" Background="#F6F7F9" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="14,6" Margin="0,12,0,0" Visibility="Collapsed">
+            <DockPanel LastChildFill="True">
+              <Button x:Name="EditOptionsButton" DockPanel.Dock="Right" Content="Edit options" Margin="8,0,0,0" ToolTip="Show the options again"/>
+              <TextBlock x:Name="OptionsSummaryText" Foreground="#3D4450" VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </DockPanel>
+          </Border>
+          <Border x:Name="OptionsBorder" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,12,0,0" Visibility="Collapsed">
+            <ScrollViewer x:Name="OptionsScroll" MaxHeight="230" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+              <WrapPanel x:Name="OptionsPanel"/>
+            </ScrollViewer>
+          </Border>
+        </DockPanel>
+        <GridSplitter Grid.Row="2" x:Name="OptionsSplit" Height="8" HorizontalAlignment="Stretch" VerticalAlignment="Center" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                      Background="#00FFFFFF" Cursor="SizeNS" ToolTip="Drag to give the options or the results more room"/>
+        <Grid Grid.Row="3">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel Grid.Row="0">
         <Border x:Name="StepBorder" Visibility="Collapsed" Background="#FFFFFF" BorderBrush="#E2E5EA" BorderThickness="1" CornerRadius="10" Padding="16,12" Margin="0,16,0,0">
           <StackPanel>
             <DockPanel LastChildFill="True" Margin="0,0,0,8">
@@ -3020,15 +3053,18 @@ $script:NmGuiMainXaml = @'
           </DockPanel>
         </Border>
         </StackPanel>
-        <TextBlock Grid.Row="4" x:Name="EmptyText" Foreground="#5B6370" FontSize="14" Margin="0,24,0,0" TextWrapping="Wrap" VerticalAlignment="Top"/>
-        <DataGrid Grid.Row="4" x:Name="ResultsGrid" Visibility="Collapsed" IsReadOnly="True" AutoGenerateColumns="True" CanUserAddRows="False" SelectionMode="Extended" SelectionUnit="FullRow" ClipboardCopyMode="IncludeHeader"
+        <TextBlock Grid.Row="1" x:Name="EmptyText" Foreground="#5B6370" FontSize="14" Margin="0,24,0,0" TextWrapping="Wrap" VerticalAlignment="Top"/>
+        <DataGrid Grid.Row="1" x:Name="ResultsGrid" Visibility="Collapsed" IsReadOnly="True" AutoGenerateColumns="True" CanUserAddRows="False" SelectionMode="Extended" SelectionUnit="FullRow" ClipboardCopyMode="IncludeHeader"
                   Background="#FFFFFF" BorderBrush="#E2E5EA" RowBackground="#FFFFFF" AlternatingRowBackground="#FAFBFC" GridLinesVisibility="Horizontal"
                   HorizontalGridLinesBrush="#EEF0F3" HeadersVisibility="Column" ColumnHeaderHeight="32" MinRowHeight="28"/>
-        <ScrollViewer Grid.Row="4" x:Name="CardScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
+        <ScrollViewer Grid.Row="1" x:Name="CardScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
           <ContentControl x:Name="CardHost" Focusable="False"/>
         </ScrollViewer>
-        <Expander Grid.Row="5" x:Name="OutputExpander" Header="Output" Margin="0,8,0,0">
-          <TextBox x:Name="LogBox" Height="160" VerticalContentAlignment="Stretch" IsReadOnly="True" FontFamily="Consolas" FontSize="11" Background="#F6F7F9" BorderBrush="#E2E5EA"
+        </Grid>
+        <GridSplitter Grid.Row="4" x:Name="OutputSplit" Height="8" HorizontalAlignment="Stretch" VerticalAlignment="Center" ResizeDirection="Rows" ResizeBehavior="PreviousAndNext"
+                      Background="#00FFFFFF" Cursor="SizeNS" Visibility="Collapsed" ToolTip="Drag to give the output or the results more room"/>
+        <Expander Grid.Row="5" x:Name="OutputExpander" Header="Output" Margin="0,4,0,0">
+          <TextBox x:Name="LogBox" MinHeight="60" VerticalContentAlignment="Stretch" IsReadOnly="True" FontFamily="Consolas" FontSize="11" Background="#F6F7F9" BorderBrush="#E2E5EA"
                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" TextWrapping="Wrap"/>
         </Expander>
       </Grid>
@@ -3320,6 +3356,7 @@ function Build-NmGuiOptionForm {
     $script:NmGui.WideBoxes = New-Object System.Collections.Generic.List[object]
     $script:NmGui.Spec = @(Get-NmGuiParamSpec -Tool $script:NmGui.Tool)
     $c.OptionsBorder.Visibility = $(if ($script:NmGui.Spec.Count) { 'Visible' } else { 'Collapsed' })
+    if ($c.OptionsSummary) { $c.OptionsSummary.Visibility = 'Collapsed'; $c.TopRow.Height = [System.Windows.GridLength]::Auto }
     foreach ($f in $script:NmGui.Spec) {
         $box = New-Object System.Windows.Controls.StackPanel
         $box.Width = 230; $box.Margin = '0,0,16,10'
@@ -3360,6 +3397,155 @@ function Build-NmGuiOptionForm {
         [void]$c.OptionsPanel.Children.Add($box)
     }
     Update-NmGuiOptionsSize
+}
+
+# ---------------------------------------------------------------------------
+# Layout (issue #34): side panels that slide shut, drag handles, options that fold after Run,
+# Output as its own pane. What can be tested without WPF is in the model functions below; the
+# layout is kept per person in Window.json beside Settings.json.
+# ---------------------------------------------------------------------------
+$script:NmGuiLayoutTestFile = $null
+$script:NmGuiLayout = $null
+
+function Get-NmGuiLayoutDefault {
+    @{ SidebarWidth = 260; ToolsWidth = 340; PanelsHidden = $false; OutputOpen = $false; OutputHeight = 220 }
+}
+
+function ConvertTo-NmGuiLayout {
+    # A saved layout made safe: every value present and inside its limits, whatever the file held.
+    param($Data)
+    $d = Get-NmGuiLayoutDefault
+    if ($null -eq $Data) { return $d }
+    $num = {
+        param($name, [int]$min, [int]$max)
+        $p = $Data.PSObject.Properties[$name]
+        if (-not $p) { return $d[$name] }
+        $n = 0.0
+        if (-not [double]::TryParse("$($p.Value)", [ref]$n)) { return $d[$name] }
+        return [int][Math]::Min($max, [Math]::Max($min, [Math]::Round($n)))
+    }
+    $flag = { param($name) $p = $Data.PSObject.Properties[$name]; if ($p) { "$($p.Value)" -eq 'True' } else { $d[$name] } }
+    return @{
+        SidebarWidth = (& $num 'SidebarWidth' 0 480)
+        ToolsWidth   = (& $num 'ToolsWidth' 0 640)
+        PanelsHidden = [bool](& $flag 'PanelsHidden')
+        OutputOpen   = [bool](& $flag 'OutputOpen')
+        OutputHeight = (& $num 'OutputHeight' 80 900)
+    }
+}
+
+function Get-NmGuiLayoutPath {
+    if ($script:NmGuiLayoutTestFile) { return $script:NmGuiLayoutTestFile }
+    return (Join-Path (Split-Path -Parent (Get-NmSettingsPath)) 'Window.json')
+}
+
+function Read-NmGuiLayout {
+    # The person's saved layout, or the default when there is none (or it would not read).
+    $p = Get-NmGuiLayoutPath
+    if (-not (Test-Path -LiteralPath $p)) { return (Get-NmGuiLayoutDefault) }
+    try { return (ConvertTo-NmGuiLayout -Data (Get-Content -LiteralPath $p -Raw -ErrorAction Stop | ConvertFrom-Json)) }
+    catch { Write-NmLog "The window layout could not be read ($p): $($_.Exception.Message). The default is used." -Level WARN -NoConsole; return (Get-NmGuiLayoutDefault) }
+}
+
+function Save-NmGuiLayout {
+    param([Parameter(Mandatory)][hashtable]$Layout)
+    $p = Get-NmGuiLayoutPath
+    try {
+        $dir = Split-Path -Parent $p
+        if (-not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }
+        [pscustomobject](ConvertTo-NmGuiLayout -Data ([pscustomobject]$Layout)) | ConvertTo-Json | Set-Content -LiteralPath $p -Encoding UTF8 -ErrorAction Stop
+    } catch { Write-NmLog "The window layout could not be saved ($p): $($_.Exception.Message)" -Level WARN -NoConsole }
+}
+
+function Switch-NmGuiPanelState {
+    # The menu button (no WPF): hide both side panels, or bring them back at their last widths.
+    # A panel dragged shut (0) comes back at its default width.
+    param([Parameter(Mandatory)][hashtable]$Layout)
+    $l = $Layout.Clone()
+    $d = Get-NmGuiLayoutDefault
+    if ($l.PanelsHidden) {
+        $l.PanelsHidden = $false
+        if ($l.SidebarWidth -lt 60) { $l.SidebarWidth = $d.SidebarWidth }
+        if ($l.ToolsWidth -lt 60) { $l.ToolsWidth = $d.ToolsWidth }
+    } else { $l.PanelsHidden = $true }
+    return $l
+}
+
+function Get-NmGuiOptionsSummary {
+    # The one line the options fold into after Run (no WPF): what is set, in the form's words.
+    param([object[]]$Spec = @(), [hashtable]$Values = @{})
+    $parts = foreach ($f in $Spec) {
+        if (-not $Values.ContainsKey($f.Name)) { continue }
+        $v = $Values[$f.Name]
+        switch ($f.Kind) {
+            'Switch'   { if ($v -eq $true) { $f.Label } }
+            'PickMany' {
+                $items = @(@($v) | Where-Object { "$_".Trim() })
+                if ($items.Count -eq 1) { "$($f.Label): $($items[0])" }
+                elseif ($items.Count -gt 1) { "$($f.Label): $($items[0]) and $($items.Count - 1) more" }
+            }
+            default    { if ("$(@($v)[0])".Trim()) { "$($f.Label): $("$(@($v)[0])".Trim())" } }
+        }
+    }
+    $parts = @($parts | Where-Object { $_ })
+    if (-not $parts.Count) { return 'Default options' }
+    return ($parts -join '   |   ')
+}
+
+function Set-NmGuiOptionsFolded {
+    # Fold the options into their summary line (after a Run), or open them again (Edit options, a new tool).
+    param([bool]$Folded)
+    $c = $script:NmGui.Controls
+    if (-not $c -or -not $c.OptionsSummary) { return }
+    $has = @($script:NmGui.Spec).Count -gt 0 -and -not $script:NmGui.BuildMode
+    if ($Folded -and $has) {
+        $c.OptionsSummaryText.Text = Get-NmGuiOptionsSummary -Spec $script:NmGui.Spec -Values (Get-NmGuiFormValue)
+        $c.OptionsBorder.Visibility = 'Collapsed'; $c.OptionsSummary.Visibility = 'Visible'
+    } else {
+        $c.OptionsSummary.Visibility = 'Collapsed'
+        $c.OptionsBorder.Visibility = $(if ($has) { 'Visible' } else { 'Collapsed' })
+    }
+    # The top area fits its content again (a drag handle may have fixed its height).
+    $c.TopRow.Height = [System.Windows.GridLength]::Auto
+}
+
+function Set-NmGuiPanels {
+    # The side columns and their handles, from the layout.
+    $c = $script:NmGui.Controls
+    $l = $script:NmGui.Layout
+    if (-not $c -or -not $c.SidebarCol -or -not $l) { return }
+    $show = -not $l.PanelsHidden
+    $c.SidebarCol.Width = New-Object System.Windows.GridLength $(if ($show) { $l.SidebarWidth } else { 0 })
+    $c.ToolsCol.Width = New-Object System.Windows.GridLength $(if ($show) { $l.ToolsWidth } else { 0 })
+    foreach ($s in $c.SidebarSplit, $c.ToolsSplit) { $s.Visibility = $(if ($show) { 'Visible' } else { 'Collapsed' }) }
+    $c.MenuButton.ToolTip = $(if ($show) { 'Hide the side panels (right-click: reset the layout)' } else { 'Show the areas and tools (right-click: reset the layout)' })
+}
+
+function Update-NmGuiOutputPane {
+    # Output open: its own pane under a drag handle; closed: one line at the bottom.
+    $c = $script:NmGui.Controls
+    $l = $script:NmGui.Layout
+    if (-not $c -or -not $c.OutputRow -or -not $l) { return }
+    if ($c.OutputExpander.IsExpanded) {
+        $c.OutputRow.Height = New-Object System.Windows.GridLength $l.OutputHeight
+        $c.OutputSplit.Visibility = 'Visible'
+    } else {
+        $c.OutputRow.Height = [System.Windows.GridLength]::Auto
+        $c.OutputSplit.Visibility = 'Collapsed'
+    }
+}
+
+function Save-NmGuiWindowLayout {
+    # On close: the widths and heights as they are now.
+    $c = $script:NmGui.Controls
+    $l = $script:NmGui.Layout
+    if (-not $c -or -not $c.SidebarCol -or -not $l) { return }
+    try {
+        if (-not $l.PanelsHidden) { $l.SidebarWidth = [int]$c.SidebarCol.ActualWidth; $l.ToolsWidth = [int]$c.ToolsCol.ActualWidth }
+        $l.OutputOpen = [bool]$c.OutputExpander.IsExpanded
+        if ($l.OutputOpen -and $c.OutputRow.ActualHeight -gt 0) { $l.OutputHeight = [int]$c.OutputRow.ActualHeight }
+        Save-NmGuiLayout -Layout $l
+    } catch { $null = $_ }
 }
 
 function Get-NmGuiOptionsMaxHeight {
@@ -3792,6 +3978,8 @@ function Invoke-NmGuiRun {
         Update-NmGuiLog
         Set-NmGuiResult -Rows $rows -Title ("{0} result(s)  |  ran {1:HH:mm}  |  {2:N1} s" -f $rows.Count, (Get-Date), $sw.Elapsed.TotalSeconds)
         $c.StatusText.Text = "$($t.Name): $($rows.Count) result(s)."
+        # The results get the room: the options fold into one line (Edit options opens them).
+        Set-NmGuiOptionsFolded -Folded $true
     }
     # Messages the tool wrote but never asked about (for example "No results"): show them once.
     if ($script:NmGui.LastLeftover -and $script:NmGui.Rows.Count -eq 0) {
@@ -3905,6 +4093,8 @@ function Start-NmToolkitGui {
         } catch { $null = $_ }
         $c = @{}
         foreach ($n in $script:NmGuiMainControls) { $c[$n] = $w.FindName($n) }
+        # A ContextMenu is not in the window's visual tree; if FindName misses its item, take it from the menu.
+        if (-not $c.ResetLayoutItem -and $c.MenuButton -and $c.MenuButton.ContextMenu) { $c.ResetLayoutItem = $c.MenuButton.ContextMenu.Items[0] }
         $script:NmGui.Controls = $c
         $c.VersionText.Text = "v$script:ModuleVersion"
 
@@ -3976,6 +4166,7 @@ function Start-NmToolkitGui {
             $script:NmGui.Controls.ChangeTag.Visibility = 'Collapsed'
             $script:NmGui.Controls.ToolMeta.Text = 'The last 200 tool runs, newest first.'
             $script:NmGui.Controls.OptionsBorder.Visibility = 'Collapsed'
+            $script:NmGui.Controls.OptionsSummary.Visibility = 'Collapsed'
             $script:NmGui.Controls.ActionRow.Visibility = 'Collapsed'
             $rows = @(Get-NmRunHistory -Last 200 | Sort-Object Timestamp -Descending)
             Set-NmGuiResult -Rows $rows -Title "$($rows.Count) run(s)"
@@ -3989,6 +4180,35 @@ function Start-NmToolkitGui {
 
         # The options area grows with the window (a pick list needs room); wide fields follow its width.
         $w.Add_SizeChanged({ Update-NmGuiOptionsSize })
+        # The layout (issue #34): side panels, drag handles, Output pane; kept per person in Window.json.
+        $c.MenuGlyph.Text = [string][char]0xE700
+        $script:NmGui.Layout = Read-NmGuiLayout
+        Set-NmGuiPanels
+        $c.OutputExpander.IsExpanded = [bool]$script:NmGui.Layout.OutputOpen
+        Update-NmGuiOutputPane
+        $c.MenuButton.Add_Click({
+            $l = $script:NmGui.Layout
+            $cc = $script:NmGui.Controls
+            # Widths as dragged, so they come back as they were.
+            if (-not $l.PanelsHidden) { $l.SidebarWidth = [int]$cc.SidebarCol.ActualWidth; $l.ToolsWidth = [int]$cc.ToolsCol.ActualWidth }
+            $script:NmGui.Layout = Switch-NmGuiPanelState -Layout $l
+            Set-NmGuiPanels
+        })
+        $c.ResetLayoutItem.Add_Click({
+            $script:NmGui.Layout = Get-NmGuiLayoutDefault
+            $script:NmGui.Controls.OutputExpander.IsExpanded = $false
+            Set-NmGuiPanels; Update-NmGuiOutputPane
+            $script:NmGui.Controls.TopRow.Height = [System.Windows.GridLength]::Auto
+            $script:NmGui.Controls.StatusText.Text = 'The layout is back to the default.'
+        })
+        $c.OutputExpander.Add_Expanded({ Update-NmGuiOutputPane })
+        $c.OutputExpander.Add_Collapsed({
+            $cc = $script:NmGui.Controls
+            if ($cc.OutputRow.ActualHeight -gt 60) { $script:NmGui.Layout.OutputHeight = [int]$cc.OutputRow.ActualHeight }
+            Update-NmGuiOutputPane
+        })
+        $c.EditOptionsButton.Add_Click({ Set-NmGuiOptionsFolded -Folded $false })
+        $w.Add_Closing({ Save-NmGuiWindowLayout })
         $w.Add_ContentRendered({
             if ($script:NmGui.Started) { return }
             $script:NmGui.Started = $true
