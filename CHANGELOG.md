@@ -6,6 +6,33 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.19 - 11/23/2026
+
+**Two labels on every GPO card, and View GPO inside the app** (issue #36, second part; Cliff: keep
+a green label for matched, as well as the links).
+
+- **Each card now has two labels:**
+  - **its settings:** **Matches** (green), **Doesn't match** (red), or Failed (red). I chose red rather
+    than grey for "doesn't match", because the GPO has drifted from the standard and that should
+    stand out;
+  - **where it applies:** **Linked** (green), **Not linked** (amber) or **Not applied** (red).
+
+  The card's coloured edge takes the worse of the two.
+- **The tags filter on the settings again** (All, Matches, Doesn't match), as first asked. Where it
+  applies is the second label on each card. The console line now reads "Compared 9 GPOs: 7 match,
+  2 don't match; 3 not linked."
+- **View GPO opens inside the app:** the GPO's links and status at the top, then a tab per part
+  ("Computer: Security", "Computer: Advanced Audit Configuration", "User: Registry", ...).
+  - Each setting appears in GPMC's own words (for example "User Account Control: Run all
+    administrators in Admin Approval Mode = Enabled"), with template fields, audit values, service
+    start modes, user right members and registry preferences.
+  - The tables sort, copy and export like other results, and follow the Windows 11 look and dark mode.
+- **GPMC report** is now its own button: GPMC's full HTML report, opened in the browser, for
+  anything the in-app view does not show.
+- Not run on Windows yet: tested against stand-ins (279 tests). The in-app view was tested against
+  a sample GPMC report; real reports from the VM may show parts it words less well. Screenshots will
+  tell.
+
 ## 0.7.18 - 11/23/2026
 
 **Compare shows where each GPO applies, counts GPOs, and opens a GPO from its card** (issue #36,

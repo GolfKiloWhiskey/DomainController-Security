@@ -512,8 +512,8 @@ function Save-NmGpoHtmlReport {
     return $Path
 }
 
-function Invoke-NmGpoCardView {
-    # Card button "View GPO": GPMC's full report of the GPO, saved in the reports folder and opened.
+function Invoke-NmGpoCardReport {
+    # Card button "GPMC report": GPMC's own full HTML report of the GPO, saved in the reports folder and opened.
     [CmdletBinding()]
     param($Row)
     if (-not $Row -or -not "$($Row.GpoId)") { Write-NmLog 'This card has no GPO to show.' -Level WARN; return }
@@ -524,4 +524,130 @@ function Invoke-NmGpoCardView {
     $p = Save-NmGpoHtmlReport -Id "$($Row.GpoId)" -Path $file
     Write-NmLog "GPO report for $($Row.Gpo): $p" -Level INFO
     Open-NmReport -Path $p
+}
+
+# ---------------------------------------------------------------------------
+# The GPO in the app (View GPO): its XML report as one table per part (Computer: Security, ...)
+# ---------------------------------------------------------------------------
+$script:NmGpoViewSkip = @('Explain', 'Supported', 'SecurityDescriptor', 'SubcategoryGuid', 'PolicyTarget', 'GPOSettingOrder', 'Filters', 'Comment')
+$script:NmAuditValueText = @{ '0' = 'No Auditing'; '1' = 'Success'; '2' = 'Failure'; '3' = 'Success and Failure' }
+
+function Get-NmXmlChild {
+    # The child elements of an XML node with a local name (any namespace).
+    param($Node, [string]$Name)
+    @($Node.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $_.LocalName -eq $Name })
+}
+
+function Get-NmXmlChildText {
+    param($Node, [string]$Name)
+    $c = @(Get-NmXmlChild -Node $Node -Name $Name)
+    if ($c.Count) { return "$($c[0].InnerText)".Trim() }
+    return ''
+}
+
+function ConvertTo-NmGpoViewRow {
+    <#
+    .SYNOPSIS
+        One setting element of a GPO report as Setting and Value, whatever its extension: security
+        options (shown as GPMC words), Administrative Templates (category, state, and their own
+        fields), audit, services, user rights (members), registry preferences (key, value, action).
+    #>
+    param([Parameter(Mandatory)]$Node)
+    $ln = $Node.LocalName
+    # Registry preferences: every Properties under the item.
+    $props = @($Node.SelectNodes('.//*[local-name()="Properties"]') | Where-Object { $_.Attributes['key'] })
+    if ($props.Count) {
+        foreach ($p in $props) {
+            $act = @{ C = 'Create'; R = 'Replace'; U = 'Update'; D = 'Delete' }["$($p.GetAttribute('action'))"]
+            [pscustomobject]@{ Setting = "$($p.GetAttribute('hive'))\$($p.GetAttribute('key'))\$($p.GetAttribute('name'))"; Value = "$($p.GetAttribute('type')) = $($p.GetAttribute('value'))$(if ($act) { " ($act)" })" }
+        }
+        return
+    }
+    $disp = @(Get-NmXmlChild -Node $Node -Name 'Display')[0]
+    $title = ''
+    foreach ($n in 'Name', 'SubcategoryName', 'KeyName') {
+        if ($n -eq 'Name' -and $disp) { $t = Get-NmXmlChildText -Node $disp -Name 'Name'; if ($t) { $title = $t; break } }
+        $t = Get-NmXmlChildText -Node $Node -Name $n
+        if ($t) { $title = $t; break }
+    }
+    if (-not $title) { $title = $ln }
+    $cat = Get-NmXmlChildText -Node $Node -Name 'Category'
+    if ($cat) { $title = "${cat}: $title" }
+    $vals = New-Object System.Collections.Generic.List[string]
+    $state = Get-NmXmlChildText -Node $Node -Name 'State'
+    if ($state) { $vals.Add($state) }
+    if ($disp) {
+        foreach ($d in 'DisplayString', 'DisplayBoolean', 'DisplayNumber') { $t = Get-NmXmlChildText -Node $disp -Name $d; if ($t) { $vals.Add($(if ($d -eq 'DisplayBoolean') { if ($t -eq 'true') { 'Enabled' } else { 'Disabled' } } else { $t })) } }
+        $f = @(Get-NmXmlChild -Node $disp -Name 'DisplayFields')
+        foreach ($x in @(if ($f.Count) { $f[0].ChildNodes })) { if ($x.NodeType -eq 'Element') { $vals.Add("$(Get-NmXmlChildText -Node $x -Name 'Name') = $(Get-NmXmlChildText -Node $x -Name 'Value')") } }
+    } else {
+        foreach ($n in 'SettingString', 'SettingNumber', 'SettingBoolean') { $t = Get-NmXmlChildText -Node $Node -Name $n; if ($t) { $vals.Add($t) } }
+    }
+    $mode = Get-NmXmlChildText -Node $Node -Name 'StartupMode'
+    if ($mode) { $vals.Add($mode) }
+    $audit = Get-NmXmlChildText -Node $Node -Name 'SettingValue'
+    if ($audit) { $vals.Add($(if ($script:NmAuditValueText.ContainsKey($audit)) { $script:NmAuditValueText[$audit] } else { $audit })) }
+    $members = @(foreach ($m in @(Get-NmXmlChild -Node $Node -Name 'Member')) { Get-NmXmlChildText -Node $m -Name 'Name' })
+    if ($members.Count) { $vals.Add(($members | Where-Object { $_ }) -join ', ') }
+    # Administrative Templates: the policy's own fields (text, numbers, lists, tick boxes).
+    foreach ($k in 'EditText', 'Numeric', 'DropDownList', 'CheckBox', 'ListBox') {
+        foreach ($e in @(Get-NmXmlChild -Node $Node -Name $k)) {
+            $nm = Get-NmXmlChildText -Node $e -Name 'Name'
+            $v = Get-NmXmlChildText -Node $e -Name 'Value'
+            if (-not $v) { $v = Get-NmXmlChildText -Node $e -Name 'State' }
+            if (-not $v) { $sel = @(Get-NmXmlChild -Node $e -Name 'Value'); $v = "$(if ($sel.Count) { $sel[0].InnerText })".Trim() }
+            if ($nm) { $vals.Add("$nm = $v") }
+        }
+    }
+    [pscustomobject]@{ Setting = $title; Value = $(if ($vals.Count) { $vals -join '; ' } else { '(set)' }) }
+}
+
+function ConvertTo-NmGpoViewModel {
+    <#
+    .SYNOPSIS
+        A GPO's XML report as what View GPO shows: Heading, Summary (status, links, comment) and
+        Sections, one per side and extension ("Computer: Security"), each with Setting/Value rows.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Xml, [string]$Domain = (Get-NmSession).Domain)
+    $x = [xml]$Xml
+    $g = $x.GPO
+    $rep = ConvertFrom-NmGpoReportXml -Xml $Xml -Domain $Domain
+    $sections = New-Object System.Collections.Generic.List[object]
+    foreach ($side in 'Computer', 'User') {
+        $part = @(Get-NmXmlChild -Node $g -Name $side)[0]
+        if (-not $part) { continue }
+        foreach ($ed in @(Get-NmXmlChild -Node $part -Name 'ExtensionData')) {
+            $ename = Get-NmXmlChildText -Node $ed -Name 'Name'
+            $ext = @(Get-NmXmlChild -Node $ed -Name 'Extension')[0]
+            if (-not $ext) { continue }
+            $rows = @(foreach ($n in @($ext.ChildNodes | Where-Object { $_.NodeType -eq 'Element' -and $script:NmGpoViewSkip -notcontains $_.LocalName })) { ConvertTo-NmGpoViewRow -Node $n })
+            if ($rows.Count) { $sections.Add([pscustomobject]@{ Title = "${side}: $ename"; Rows = $rows }) }
+        }
+    }
+    $status = "Computer settings $(if ($rep.ComputerEnabled) { 'enabled' } else { 'DISABLED' }); user settings $(if ($rep.UserEnabled) { 'enabled' } else { 'DISABLED' })"
+    $comment = "$($g.Description)".Trim()
+    [pscustomobject]@{
+        Heading  = "$($g.Name)"
+        Summary  = (@("Links: $(Format-NmGpoLinks -Links $rep.Links)", $status, $(if ($comment) { "Comment: $comment" })) | Where-Object { $_ }) -join "`r`n"
+        Sections = $sections.ToArray()
+    }
+}
+
+function Show-NmGpoViewer {
+    # The model in the app's viewer: a tab per section, each a table to sort, copy and export.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Model)
+    $caps = @(foreach ($s in $Model.Sections) { [pscustomobject]@{ Kind = 'Table'; Title = $s.Title; Columns = @('Setting', 'Value'); Rows = @($s.Rows) } })
+    if (-not $caps.Count) { $caps = @([pscustomobject]@{ Kind = 'Table'; Title = 'Settings'; Columns = @('Setting', 'Value'); Rows = @([pscustomobject]@{ Setting = '(none)'; Value = 'This GPO has no settings.' }) }) }
+    [void](Show-NmGuiDialog -Title "View GPO: $($Model.Heading)" -Heading $Model.Heading -Text $Model.Summary -NoInput -Captures $caps)
+}
+
+function Invoke-NmGpoCardView {
+    # Card button "View GPO": the GPO's settings in the app, a tab per part (GPMC report has everything).
+    [CmdletBinding()]
+    param($Row)
+    if (-not $Row -or -not "$($Row.GpoId)") { Write-NmLog 'This card has no GPO to show.' -Level WARN; return }
+    $m = ConvertTo-NmGpoViewModel -Xml (Get-NmGpoReportXml -Id "$($Row.GpoId)")
+    Show-NmGpoViewer -Model $m
 }

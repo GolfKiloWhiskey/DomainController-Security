@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.3
+    Version: 0.7.4
 
 .SYNOPSIS
     Compares GPOs with their baselines: missing, different and extra settings, and parameters not filled in.
@@ -28,6 +28,8 @@
     Compare-NmGpoBaseline -Gpo 'Security - Enforce UAC (old)' -Baseline security-enforce-uac
 
 .VERSIONING
+    0.7.4 - Two labels per GPO: its settings (Matches, Doesn't match, Failed: the tags filter on these) and where it applies
+            (Linked, Not linked, Not applied); View GPO in the app, GPMC report for GPMC's own.
     0.7.3 - Where each GPO applies (links, enabled, enforced; not linked or not applied flagged); the window counts GPOs and
             filters them by state (Matches, Doesn't match, Not linked, ...); Edit GPO and View GPO on each card.
     0.7.2 - The window: one card per GPO (what needs attention first, a line per setting); GPOs and the
@@ -41,7 +43,7 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'One GPO or all of them against their baseline: missing, different and extra settings'
-    Version  = '0.7.3'
+    Version  = '0.7.4'
     Kind     = 'Report'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
@@ -51,12 +53,15 @@ $NmTool = @{
     Columns  = @('Gpo', 'Setting', 'Expected', 'Actual', 'Result')
     # The window: a card per GPO, its settings under Different, Missing, ... Matches, one line each.
     CardGroup = @('Gpo', 'Result', 'Line')
-    # The headline and the tags count GPOs, by each GPO's overall state; each card can open its GPO.
+    # The headline and the tags count GPOs by their settings (Matches, Doesn't match); each card also
+    # says where the GPO applies, and can open its GPO.
     CardNoun  = 'GPO'
     CardFacet = 'GpoState'
+    CardBadge = 'LinkState'
     CardActions = @(
         @{ Label = 'Edit GPO'; Action = 'Invoke-NmGpoCardEdit'; ToolTip = 'Open this GPO in the Group Policy Management Editor (on the DC in use)' }
-        @{ Label = 'View GPO'; Action = 'Invoke-NmGpoCardView'; ToolTip = 'GPMC''s full report of this GPO, saved and opened' }
+        @{ Label = 'View GPO'; Action = 'Invoke-NmGpoCardView'; ToolTip = 'This GPO''s settings, here: a tab per part' }
+        @{ Label = 'GPMC report'; Action = 'Invoke-NmGpoCardReport'; ToolTip = 'GPMC''s own full report of this GPO, saved and opened in the browser' }
     )
     Pickers  = @{
         Gpo      = @{ Items = 'Get-NmGpoComparePickItem'; NeedsDomain = $true; Note = 'Tick GPOs, or tick All below for every GPO built from a baseline.' }
@@ -155,8 +160,9 @@ function Compare-NmGpoBaseline {
                else { @(foreach ($n in $Gpo) { $g = @($gpos | Where-Object { $_.DisplayName -eq $n })[0]; if ($g) { $g } else { [pscustomobject]@{ DisplayName = $n; Id = ''; Description = ''; Missing = $true } } }) }
     $rows = New-Object System.Collections.Generic.List[object]
     $states = New-Object System.Collections.Generic.List[string]
+    $linkStates = New-Object System.Collections.Generic.List[string]
     $fail = { param($g, $why) $rows.Add([pscustomobject]@{ Gpo = "$($g.DisplayName)"; Baseline = ''; Setting = '(the GPO)'; SettingId = ''; Kind = ''; Expected = ''; Actual = ''; Result = "Failed: $why"; Detail = ''; Line = "Failed: $why"
-        Links = ''; GpoState = 'Failed'; GpoId = "$($g.Id)"; GpoPath = "$(if ($g.PSObject.Properties['Path']) { $g.Path })" }) }
+        Links = ''; GpoState = 'Failed'; LinkState = ''; GpoId = "$($g.Id)"; GpoPath = "$(if ($g.PSObject.Properties['Path']) { $g.Path })" }) }
     $n = 0
     foreach ($g in $targets) {
         $n++
@@ -173,7 +179,7 @@ function Compare-NmGpoBaseline {
         try {
             $found = @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)
             $where = Get-NmGpoWhereRow -Gpo $g -Baseline $b
-            $state = Get-NmGpoOverallState -Rows $found -WhereResult $where.Result
+            $state = Get-NmGpoOverallState -Rows $found
             # Where it applies first, then what needs attention, then what matches (each in the baseline's order).
             $ordered = @($where) + @(foreach ($res in 'Note', 'Not filled', 'Different', 'Missing', 'Extra', 'Matches') { @($found | Where-Object { $_.Result -eq $res }) })
             foreach ($r in $ordered) {
@@ -181,15 +187,16 @@ function Compare-NmGpoBaseline {
                 $r | Add-Member -NotePropertyName Line -NotePropertyValue (Get-NmGpoCompareLine -Row $r) -Force
                 $r | Add-Member -NotePropertyName Links -NotePropertyValue $where.Actual -Force
                 $r | Add-Member -NotePropertyName GpoState -NotePropertyValue $state -Force
+                $r | Add-Member -NotePropertyName LinkState -NotePropertyValue $where.Result -Force
                 $r | Add-Member -NotePropertyName GpoId -NotePropertyValue "$($g.Id)" -Force
                 $r | Add-Member -NotePropertyName GpoPath -NotePropertyValue "$($g.Path)" -Force
                 $rows.Add($r)
             }
-            $states.Add($state)
+            $states.Add($state); $linkStates.Add("$($where.Result)")
         } catch { & $fail $g "could not be read: $($_.Exception.Message)"; $states.Add('Failed') }
     }
     Write-Progress -Activity 'Comparing GPOs' -Completed
-    if ($states.Count) { Write-NmLog (Get-NmGpoStateSummary -States $states.ToArray()) -Level INFO }
+    if ($states.Count) { Write-NmLog (Get-NmGpoStateSummary -States $states.ToArray() -LinkStates $linkStates.ToArray()) -Level INFO }
     return $rows.ToArray()
 }
 
@@ -214,26 +221,30 @@ function Get-NmGpoWhereRow {
 }
 
 function Get-NmGpoOverallState {
-    # One word for a GPO, for its card's tag and the filters: Failed, Doesn't match, Not applied,
-    # Not linked or Matches (the first that is true).
-    param([object[]]$Rows = @(), [string]$WhereResult = '')
+    # A GPO's settings in one word, for its card's first label and the tags: Failed, Doesn't match or
+    # Matches. Where it applies is its second label (LinkState), apart from this.
+    param([object[]]$Rows = @())
     $r = @($Rows | ForEach-Object { "$($_.Result)" })
     if (@($r | Where-Object { $_ -like 'Failed*' }).Count) { return 'Failed' }
     if (@($r | Where-Object { $_ -in 'Different', 'Missing', 'Not filled' }).Count) { return "Doesn't match" }
-    if ($WhereResult -eq 'Not applied') { return 'Not applied' }
-    if ($WhereResult -eq 'Not linked') { return 'Not linked' }
     return 'Matches'
 }
 
 function Get-NmGpoStateSummary {
-    # "Compared 9 GPOs: 7 match, 1 not linked, 1 doesn't match."
-    param([string[]]$States = @())
+    # "Compared 9 GPOs: 7 match, 2 don't match; 3 not linked, 1 not applied."
+    param([string[]]$States = @(), [string[]]$LinkStates = @())
     $n = $States.Count
-    $parts = foreach ($s in "Matches", "Doesn't match", 'Not linked', 'Not applied', 'Failed') {
+    $parts = foreach ($s in 'Matches', "Doesn't match", 'Failed') {
         $c = @($States | Where-Object { $_ -eq $s }).Count
-        if ($c) { "$c $(switch ($s) { 'Matches' { 'match' } default { $s.ToLower() } })" }
+        if ($c) { "$c $(switch ($s) { 'Matches' { 'match' } "Doesn't match" { $(if ($c -eq 1) { "doesn't match" } else { "don't match" }) } default { 'failed' } })" }
     }
-    return "Compared $n GPO$(if ($n -ne 1) { 's' }): $(@($parts) -join ', ')."
+    $links = foreach ($s in 'Not linked', 'Not applied') {
+        $c = @($LinkStates | Where-Object { $_ -eq $s }).Count
+        if ($c) { "$c $($s.ToLower())" }
+    }
+    $t = "Compared $n GPO$(if ($n -ne 1) { 's' }): $(@($parts) -join ', ')"
+    if (@($links).Count) { $t += "; $(@($links) -join ', ')" }
+    return "$t."
 }
 
 function Get-NmGpoCompareLine {

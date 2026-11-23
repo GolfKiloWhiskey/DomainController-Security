@@ -162,6 +162,7 @@ $global:NmTestModuleG = $mod
     function script:Clear-NmScreen { }
     function script:Start-NmGpoEditor { param([string]$Path) $global:Opened.Add("edit $Path"); "LDAP://DC01.clientx.local/$Path" }
     function script:Open-NmReport { param($Path) $global:Opened.Add("open $(Split-Path -Leaf $Path)") }
+    function script:Show-NmGpoViewer { param($Model) $global:Opened.Add("view $($Model.Heading)"); $global:LastView = $Model }
 } $testRoot
 
 function global:Reset-Gpo {
@@ -817,8 +818,10 @@ Test-That 'Where a GPO applies: links shown (disabled, enforced); not linked or 
     Assert-Equal 'Not applied' $where['Security - LDAPS Hardening (DC''s)'].Result 'LDAPS: computer side off'
     Assert-Equal 'Not linked|(not linked)' "$($where['Security - Screen Timeout'].Result)|$($where['Security - Screen Timeout'].Actual)" 'Screen Timeout: nowhere'
     Assert-Equal 'Domain root (enforced); Devices/Workstations (disabled)' (@($rows | Where-Object { $_.Gpo -eq 'Security - Enforce UAC' -and $_.Kind -ne 'Links' })[0].Links) 'Links on every row'
-    $state = @{}; foreach ($r in $rows) { $state[$r.Gpo] = $r.GpoState }
-    Assert-Equal 'Matches|Not linked|Not applied|Not linked' (@('Security - Enforce UAC', 'Security - NTLM Hardening', 'Security - LDAPS Hardening (DC''s)', 'Security - Screen Timeout' | ForEach-Object { $state[$_] }) -join '|') 'overall states'
+    $state = @{}; $link = @{}; foreach ($r in $rows) { $state[$r.Gpo] = $r.GpoState; $link[$r.Gpo] = $r.LinkState }
+    $names = @('Security - Enforce UAC', 'Security - NTLM Hardening', 'Security - LDAPS Hardening (DC''s)', 'Security - Screen Timeout')
+    Assert-Equal 'Matches|Matches|Matches|Matches' (@($names | ForEach-Object { $state[$_] }) -join '|') 'settings state: all match'
+    Assert-Equal 'Linked|Not linked|Not applied|Not linked' (@($names | ForEach-Object { $link[$_] }) -join '|') 'where it applies, apart'
     Assert-Equal 'Medium' (Get-NmGuiStatusLevel -Column Result -Value 'Not linked') 'amber'
     Assert-Equal 'High' (Get-NmGuiStatusLevel -Column Result -Value 'Not applied') 'red'
     Assert-Equal 'High' (Get-NmGuiStatusLevel -Column GpoState -Value "Doesn't match") 'red'
@@ -847,7 +850,8 @@ Test-That 'Window headline counts GPOs; the tags count GPOs by state (All first)
     $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet
     Assert-Equal 'GpoState|3' "$($m.FacetColumn)|$($m.AllCards)" 'facet column, all'
     $counts = @{}; foreach ($f in $m.Facets) { $counts[$f.Value] = $f.Count }
-    Assert-Equal "1|1|1" "$($counts['Matches'])|$($counts["Doesn't match"])|$($counts['Not linked'])" 'counts per GPO, not per setting'
+    Assert-Equal "2|1" "$($counts['Matches'])|$($counts["Doesn't match"])" 'counts per GPO, by their settings'
+    if ($counts.ContainsKey('Not linked')) { throw 'where it applies is a label, not a tag' }
     $f = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet -Facet "Doesn't match"
     Assert-Equal 'Security - NTLM Hardening' (($f.Items | ForEach-Object Title) -join ',') 'filtered to the card'
     if (@($f.Items[0].Fields).Count -lt 2) { throw 'the whole card should show (Linked and Different), not only some rows' }
@@ -859,13 +863,72 @@ Test-That 'Card buttons: Edit GPO opens Microsoft''s editor on the DC in use; Vi
     New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
     $rows = @(Compare-NmGpoBaseline -All)
     $t = Get-NmTool -Id gpo-compare
-    Assert-Equal 'Edit GPO|View GPO' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
-    Assert-Equal 'Edit GPO|View GPO' (((Get-NmTool -Id gpo-build).CardActions | ForEach-Object Label) -join '|') 'build buttons'
+    Assert-Equal 'Edit GPO|View GPO|GPMC report' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
+    Assert-Equal 'Edit GPO|View GPO|GPMC report' (((Get-NmTool -Id gpo-build).CardActions | ForEach-Object Label) -join '|') 'build buttons'
     Invoke-NmGpoCardEdit -Row $rows[0]
     Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'editor'
+    Invoke-NmGpoCardReport -Row $rows[0]
+    if ($global:Opened[1] -notlike 'open GPO_Security - NTLM Hardening_*.html') { throw "report: $($global:Opened[1])" }
     Invoke-NmGpoCardView -Row $rows[0]
-    if ($global:Opened[1] -notlike 'open GPO_Security - NTLM Hardening_*.html') { throw "view: $($global:Opened[1])" }
-    Assert-Equal 'Compared 3 GPOs: 1 match, 1 doesn''t match, 1 not linked.' (Get-NmGpoStateSummary -States @('Matches', 'Not linked', "Doesn't match")) 'console totals'
+    if ($global:Opened[2] -ne 'view Security - NTLM Hardening') { throw "view: $($global:Opened[2])" }
+    Assert-Equal 'Compared 4 GPOs: 2 match, 1 doesn''t match, 1 failed; 1 not linked.' (Get-NmGpoStateSummary -States @('Matches', 'Matches', "Doesn't match", 'Failed') -LinkStates @('Linked', 'Not linked', 'Linked')) 'console totals'
+    Assert-Equal 'Compared 2 GPOs: 2 don''t match.' (Get-NmGpoStateSummary -States @("Doesn't match", "Doesn't match") -LinkStates @('Linked', 'Linked')) 'plural'
+    $true
+}
+
+Test-That 'Window cards for gpo-compare carry two labels: the settings (green Matches, red Doesn''t match) and where it applies; the edge takes the worse' {
+    Answer 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-kerberos-encryption | Out-Null
+    $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $true })
+    $rows = @(Compare-NmGpoBaseline -All)
+    $t = Get-NmTool -Id gpo-compare
+    $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet -CardBadge $t.CardBadge
+    $ntlm = @($m.Items | Where-Object Title -eq 'Security - NTLM Hardening')[0]
+    $kerb = @($m.Items | Where-Object Title -eq 'Security - Kerberos Encryption')[0]
+    Assert-Equal 'Matches|OK|Linked|OK|OK' "$($ntlm.Status)|$($ntlm.StatusLevel)|$($ntlm.Badge)|$($ntlm.BadgeLevel)|$($ntlm.Level)" 'linked and matching'
+    Assert-Equal 'Matches|OK|Not linked|Medium|Medium' "$($kerb.Status)|$($kerb.StatusLevel)|$($kerb.Badge)|$($kerb.BadgeLevel)|$($kerb.Level)" 'matching but not linked'
+    $true
+}
+
+Test-That 'View GPO: the GPO''s report as a tab per part, in GPMC''s words (security options, templates with their fields, audit, services, rights, preferences)' {
+    $xml = @'
+<?xml version="1.0" encoding="utf-16"?>
+<GPO xmlns="http://www.microsoft.com/GroupPolicy/Settings" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Name>Security - Test</Name>
+  <Computer><Enabled>true</Enabled>
+    <ExtensionData><Extension xmlns:q1="http://www.microsoft.com/GroupPolicy/Settings/Security" xsi:type="q1:SecuritySettings">
+      <q1:SecurityOptions><q1:KeyName>MACHINE\Software\X\EnableLUA</q1:KeyName><q1:SettingNumber>1</q1:SettingNumber>
+        <q1:Display><q1:Name>User Account Control: Run all administrators in Admin Approval Mode</q1:Name><q1:DisplayBoolean>true</q1:DisplayBoolean></q1:Display></q1:SecurityOptions>
+      <q1:SystemServices><q1:Name>Spooler</q1:Name><q1:StartupMode>Disabled</q1:StartupMode><q1:SecurityDescriptor>x</q1:SecurityDescriptor></q1:SystemServices>
+      <q1:UserRightsAssignment><q1:Name>SeRemoteInteractiveLogonRight</q1:Name><q1:Member><Name xmlns="http://www.microsoft.com/GroupPolicy/Types">BUILTIN\Administrators</Name></q1:Member><q1:Member><Name xmlns="http://www.microsoft.com/GroupPolicy/Types">CLIENTX\RDP Admins</Name></q1:Member></q1:UserRightsAssignment>
+    </Extension><Name>Security</Name></ExtensionData>
+    <ExtensionData><Extension xmlns:q2="http://www.microsoft.com/GroupPolicy/Settings/Auditing" xsi:type="q2:AuditSettings">
+      <q2:AuditSetting><q2:PolicyTarget>System</q2:PolicyTarget><q2:SubcategoryName>Audit Logon</q2:SubcategoryName><q2:SubcategoryGuid>{0cce9215}</q2:SubcategoryGuid><q2:SettingValue>3</q2:SettingValue></q2:AuditSetting>
+    </Extension><Name>Advanced Audit Configuration</Name></ExtensionData>
+    <ExtensionData><Extension xmlns:q3="http://www.microsoft.com/GroupPolicy/Settings/Windows/Registry" xsi:type="q3:RegistrySettings">
+      <q3:RegistrySettings clsid="{A3CCFC41}"><q3:Registry clsid="{9CD4B2F4}" name="Start"><q3:Properties action="U" hive="HKEY_LOCAL_MACHINE" key="SYSTEM\CurrentControlSet\Services\tzautoupdate" name="Start" type="REG_DWORD" value="00000003"/></q3:Registry></q3:RegistrySettings>
+    </Extension><Name>Windows Registry</Name></ExtensionData>
+  </Computer>
+  <User><Enabled>false</Enabled>
+    <ExtensionData><Extension xmlns:q4="http://www.microsoft.com/GroupPolicy/Settings/Registry" xsi:type="q4:RegistrySettings">
+      <q4:Policy><q4:Name>Screen saver timeout</q4:Name><q4:State>Enabled</q4:State><q4:Explain>long text</q4:Explain><q4:Category>Control Panel/Personalization</q4:Category>
+        <q4:Numeric><q4:Name>Seconds:</q4:Name><q4:State>Enabled</q4:State><q4:Value>900</q4:Value></q4:Numeric></q4:Policy>
+    </Extension><Name>Registry</Name></ExtensionData>
+  </User>
+  <LinksTo><SOMName>Domain Controllers</SOMName><SOMPath>clientx.local/Domain Controllers</SOMPath><Enabled>true</Enabled><NoOverride>false</NoOverride></LinksTo>
+</GPO>
+'@
+    $m = ConvertTo-NmGpoViewModel -Xml $xml -Domain 'clientx.local'
+    Assert-Equal 'Security - Test' $m.Heading 'heading'
+    if ($m.Summary -notlike 'Links: Domain Controllers*user settings DISABLED*') { throw "summary: $($m.Summary)" }
+    Assert-Equal 'Computer: Security|Computer: Advanced Audit Configuration|Computer: Windows Registry|User: Registry' (($m.Sections | ForEach-Object Title) -join '|') 'sections'
+    $sec = $m.Sections[0].Rows
+    Assert-Equal 'User Account Control: Run all administrators in Admin Approval Mode = Enabled' "$($sec[0].Setting) = $($sec[0].Value)" 'security option in GPMC words'
+    Assert-Equal 'Spooler = Disabled' "$($sec[1].Setting) = $($sec[1].Value)" 'service, no descriptor'
+    Assert-Equal 'SeRemoteInteractiveLogonRight = BUILTIN\Administrators, CLIENTX\RDP Admins' "$($sec[2].Setting) = $($sec[2].Value)" 'user right'
+    Assert-Equal 'Audit Logon = Success and Failure' "$($m.Sections[1].Rows[0].Setting) = $($m.Sections[1].Rows[0].Value)" 'audit'
+    Assert-Equal 'HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\tzautoupdate\Start = REG_DWORD = 00000003 (Update)' "$($m.Sections[2].Rows[0].Setting) = $($m.Sections[2].Rows[0].Value)" 'preference'
+    Assert-Equal 'Control Panel/Personalization: Screen saver timeout = Enabled; Seconds: = 900' "$($m.Sections[3].Rows[0].Setting) = $($m.Sections[3].Rows[0].Value)" 'template with its field'
     $true
 }
 

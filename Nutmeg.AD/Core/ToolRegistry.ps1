@@ -189,6 +189,7 @@ function Register-NmTool {
         CardFacet      = "$($Definition.CardFacet)"     # grouped cards: the tags count cards by this column
         CardNoun       = "$($Definition.CardNoun)"      # grouped cards: the headline counts cards ("9 GPOs")
         CardActions    = $cardActions.ToArray()
+        CardBadge      = "$($Definition.CardBadge)"     # grouped cards: a second label from a column constant per card
         BeforeRun      = $Definition.BeforeRun
         BulkAction     = $Definition.BulkAction
         BulkActions    = @($Definition.BulkActions | Where-Object { "$_".Trim() } | ForEach-Object { "$_" })
