@@ -6,6 +6,32 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.15 - 11/23/2026
+
+**The window gets the Windows 11 look, dark mode and Nutmeg's colours** (issue #33; Cliff: stay
+on WPF, follow Windows, add dark mode, use the logo's colours, Windows 11 only in PowerShell 7).
+
+- **New setting, Settings > Window > Window look:**
+  - **Windows 11** (the default): the Windows 11 controls, light or dark as Windows is set. It needs
+    PowerShell 7, which the toolkit uses whenever it is installed;
+  - **Classic**: today's look, always light.
+
+  Windows PowerShell 5.1 (the New Forest Build) is always Classic. The look is chosen when the window
+  opens.
+- **Nutmeg's colours instead of teal**, read from the logo:
+  - the red, `#CF2027`, for Run, the selected item, ticks and focus;
+  - the logo's near-black for the left-hand sidebar.
+
+  Status tags keep their own colours: failure red is a darker red on a pink tag, so it doesn't look
+  like a button.
+- **Dark mode:** every surface, line and text colour has a dark value, and the tags (failed,
+  warning, done) have dark versions that stay readable.
+- **Fixed: tick lists now take the full width** of the options area (0.7.14 meant them to, but an
+  error was hidden). The test fails without the fix.
+- **Not run on Windows yet:** tested against stand-ins (267 tests). The look itself can only be seen
+  on the VM. Please check light and dark (Windows Settings > Personalization > Colors > app mode),
+  the Classic setting, and a dialog or two.
+
 ## 0.7.14 - 11/22/2026
 
 **The tick lists get room** (Cliff, from QA: the baseline list was squeezed into a small box with

@@ -418,7 +418,7 @@ Test-That 'Settings save, apply to the config, and refuse values out of range' {
 }
 
 Test-That 'Only the AD toolkit settings exist' {
-    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount,BuildTimeZone,BuildLastDns,ResultsView'
+    (@($script:NmSettingDefs.Key) -join ',') -eq 'ExportRoot,LogRetentionDays,BulkConfirmCount,BuildTimeZone,BuildLastDns,WindowLook,ResultsView'
 }
 
 # ---------------------------------------------------------------------------

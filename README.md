@@ -36,7 +36,9 @@ On a domain controller, as a domain admin:
   opens the build; a DC or domain member opens the toolkit. `-NewForest` or `-Toolkit` says which.
 - When the build finishes it offers to open the toolkit (Yes by default): the build closes and the
   toolkit opens, in PowerShell 7 when it is installed.
-- Opens the window. `-Console` opens the console menu instead.
+- Opens the window. `-Console` opens the console menu instead. In PowerShell 7 the window has the
+  Windows 11 look, light or dark as Windows is set (Settings > Window > Window look: Windows 11 or
+  Classic); Windows PowerShell 5.1 keeps the classic light look. Colours are Nutmeg's, from the logo.
 - Runs in PowerShell 7 whenever it is installed: started in Windows PowerShell 5.1, it moves to 7
   without asking. Not installed: it offers to install the current LTS release (Microsoft's signed
   MSI, with Microsoft Update on), or carries on in 5.1.

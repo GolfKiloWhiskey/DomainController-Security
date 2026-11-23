@@ -705,6 +705,101 @@ function Read-NmGuiHost {
 }
 
 # ---------------------------------------------------------------------------
+# The look (no WPF: testable anywhere). Colours are written once, as the light palette's hex values,
+# in the XAML and the code; Resolve-NmGuiColor maps each to the brand (Nutmeg red from the logo, in
+# place of the old teal) and, in dark mode, to its dark value. Unlisted colours pass through.
+# Text that stays light on dark or red backgrounds is written #FFFFFE / #C9CED7, so it is never
+# mistaken for a white background (#FFFFFF) and darkened.
+# ---------------------------------------------------------------------------
+$script:NmGuiBrand = [ordered]@{
+    # The old teal family -> Nutmeg red (#CF2027, logo) and its tints: light, then dark.
+    '#0E6B66' = @('#CF2027', '#D93A40')   # accent: Run button, selected item, focus
+    '#0A4F4B' = @('#A3191F', '#F0787C')   # accent text
+    '#3FB8AF' = @('#E8555B', '#E8555B')   # module dot on the dark sidebar
+    '#E3F1EF' = @('#FBEAEB', '#3A2224')   # accent tint (selected row)
+    '#B9DCD8' = @('#F2B9BC', '#6E2D31')   # accent tint border
+    '#EEF6F4' = @('#FDF2F2', '#2C2122')   # selection bar
+    '#CFE6E0' = @('#F5CFD1', '#5A2A2D')
+    '#1F5F55' = @('#8E1A1F', '#F4A6A9')
+    '#1F5F5B' = @('#8E1A1F', '#F4A6A9')
+    '#CDE9E5' = @('#F8D9DA', '#4A2629')
+    '#CDE7E4' = @('#F8D9DA', '#F8D9DA')   # count on the selected sidebar item
+    # The sidebar: near-black from the logo (#050708), the same in both modes.
+    '#14181F' = @('#141618', '#141618')
+    '#1F252E' = @('#1E2124', '#1E2124')
+    '#262C36' = @('#282B2F', '#282B2F')
+}
+$script:NmGuiDark = @{
+    # Surfaces and lines
+    '#FFFFFF' = '#202020'; '#F6F7F9' = '#1A1A1A'; '#FAFBFC' = '#242424'; '#F1F3F6' = '#2A2A2A'; '#EEF0F3' = '#2E2E2E'
+    '#E2E5EA' = '#3A3A3A'; '#D5D9E0' = '#454545'; '#C9CED6' = '#505050'; '#B9C0CA' = '#5A5A5A'; '#9AA1AC' = '#8A8A8A'
+    # Text
+    '#16191F' = '#F3F3F3'; '#2B313B' = '#E1E3E6'; '#3D4450' = '#D2D5DA'; '#5B6370' = '#B4B8BE'; '#8A919C' = '#9A9A9A'; '#475467' = '#B0B8C4'
+    # Status: red, amber, green, blue (text and tint)
+    '#B42318' = '#FF8A80'; '#A0281C' = '#FF8A80'; '#FEE4E2' = '#3B1D1C'; '#FDECEA' = '#3B1D1C'
+    '#8A4B00' = '#F5B94D'; '#B54708' = '#F5B94D'; '#6B4E16' = '#E6C77A'; '#FFF1DC' = '#3A2C12'; '#FEF0C7' = '#3A2C12'; '#FFF4E0' = '#3A2C12'; '#F4EBD0' = '#3A3220'
+    '#067647' = '#6CCB8A'; '#1F6B35' = '#6CCB8A'; '#DCFAE6' = '#183A26'; '#E6F4EA' = '#183A26'
+    '#1D4ED8' = '#8AB4FF'; '#E0EAFF' = '#1E2A44'; '#2B4C8C' = '#9DB8F0'
+}
+$script:NmGuiLookState = $null
+
+function Get-NmGuiLook {
+    <#
+    .SYNOPSIS
+        The window's look from the setting and this session (no WPF): Look ('Windows 11' or 'Classic'),
+        Mode ('Light' or 'Dark') and Reason. Windows 11 needs PowerShell 7 on .NET 9 or later and follows
+        Windows' light or dark app mode. Classic is always light.
+    #>
+    param([string]$Setting = 'Windows 11', [int]$PsMajor = $PSVersionTable.PSVersion.Major, [int]$NetMajor = [Environment]::Version.Major, $AppsUseLightTheme = 1)
+    if ($Setting -ne 'Windows 11') { return [pscustomobject]@{ Look = 'Classic'; Mode = 'Light'; Reason = 'Classic is set (Settings > Window).' } }
+    if ($PsMajor -lt 7) { return [pscustomobject]@{ Look = 'Classic'; Mode = 'Light'; Reason = 'Windows PowerShell 5.1 has no Windows 11 theme: Classic.' } }
+    if ($NetMajor -lt 9) { return [pscustomobject]@{ Look = 'Classic'; Mode = 'Light'; Reason = ".NET $NetMajor has no Windows 11 theme (it needs .NET 9 or later): Classic." } }
+    $dark = ($null -ne $AppsUseLightTheme -and "$AppsUseLightTheme" -eq '0')
+    return [pscustomobject]@{ Look = 'Windows 11'; Mode = $(if ($dark) { 'Dark' } else { 'Light' }); Reason = "Windows 11, $(if ($dark) { 'dark' } else { 'light' }) as Windows is set." }
+}
+
+function Get-NmWindowsAppsUseLightTheme {
+    # Windows' app mode: 1 light, 0 dark (HKCU ...\Themes\Personalize, AppsUseLightTheme); light when unknown.
+    if (-not $script:NmOnWindows) { return 1 }
+    try { return (Get-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -ErrorAction Stop).AppsUseLightTheme }
+    catch { return 1 }
+}
+
+function Initialize-NmGuiLook {
+    # Decided once when the window opens; its dialogs follow it.
+    $setting = 'Windows 11'
+    try { $setting = "$(Get-NmSetting -Key WindowLook)" } catch { $null = $_ }
+    $script:NmGuiLookState = Get-NmGuiLook -Setting $setting -AppsUseLightTheme (Get-NmWindowsAppsUseLightTheme)
+    Write-NmLog "Window look: $($script:NmGuiLookState.Reason)" -Level INFO -NoConsole
+    return $script:NmGuiLookState
+}
+
+function Get-NmGuiLookState {
+    if (-not $script:NmGuiLookState) { return [pscustomobject]@{ Look = 'Classic'; Mode = 'Light'; Reason = '' } }
+    return $script:NmGuiLookState
+}
+
+function Resolve-NmGuiColor {
+    # A colour as written in the code, for the current look: the brand in place of teal, then the dark value in dark mode.
+    param([string]$Hex, [string]$Mode = '')
+    if (-not $Mode) { $Mode = (Get-NmGuiLookState).Mode }
+    $h = "$Hex".Trim().ToUpper()
+    if ($h -notmatch '^#[0-9A-F]{6}$') { return $Hex }
+    $dark = ($Mode -eq 'Dark')
+    if ($script:NmGuiBrand.Contains($h)) { return $script:NmGuiBrand[$h][[int]$dark] }
+    if ($dark -and $script:NmGuiDark.ContainsKey($h)) { return $script:NmGuiDark[$h] }
+    return $h
+}
+
+function Convert-NmGuiXamlColor {
+    # Every #RRGGBB in a XAML text, for the current look (Resolve-NmGuiColor). #AARRGGBB is left alone.
+    param([string]$Xaml, [string]$Mode = '')
+    if (-not $Mode) { $Mode = (Get-NmGuiLookState).Mode }
+    $m = $Mode
+    return [regex]::Replace($Xaml, '#[0-9A-Fa-f]{6}(?![0-9A-Fa-f])', { param($x) Resolve-NmGuiColor -Hex $x.Value -Mode $m })
+}
+
+# ---------------------------------------------------------------------------
 # Options form model (no WPF: testable anywhere)
 # ---------------------------------------------------------------------------
 
@@ -918,9 +1013,25 @@ function Get-NmGuiRowFilter {
 # ---------------------------------------------------------------------------
 
 function New-NmGuiXaml {
+    # Every window and dialog: its colours in the light or dark palette, then the Windows 11 theme
+    # when that look is on (Set-NmGuiWindowLook).
     param([string]$Xaml)
-    $reader = New-Object System.Xml.XmlNodeReader ([xml]$Xaml)
-    return [Windows.Markup.XamlReader]::Load($reader)
+    $reader = New-Object System.Xml.XmlNodeReader ([xml](Convert-NmGuiXamlColor -Xaml $Xaml))
+    $o = [Windows.Markup.XamlReader]::Load($reader)
+    if ($o -is [System.Windows.Window]) { Set-NmGuiWindowLook -Window $o }
+    return $o
+}
+
+function Set-NmGuiWindowLook {
+    # The Windows 11 (Fluent) theme on a window, light or dark: .NET 9 and later only (PowerShell 7).
+    # Classic, or anything that fails here, leaves the window as it is.
+    param([Parameter(Mandatory)]$Window)
+    $look = Get-NmGuiLookState
+    if ($look.Look -ne 'Windows 11') { return }
+    try {
+        $tm = [type]'System.Windows.ThemeMode'
+        $Window.ThemeMode = $tm::($look.Mode)
+    } catch { Write-NmLog "The Windows 11 look could not be applied: $($_.Exception.Message)" -Level WARN -NoConsole }
 }
 
 # ---------------------------------------------------------------------------
@@ -953,7 +1064,7 @@ $script:NmGuiTheme = @'
       </Setter>
     </Style>
     <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-      <Setter Property="Background" Value="#0E6B66"/><Setter Property="BorderBrush" Value="#0E6B66"/><Setter Property="Foreground" Value="#FFFFFF"/><Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Background" Value="#0E6B66"/><Setter Property="BorderBrush" Value="#0E6B66"/><Setter Property="Foreground" Value="#FFFFFE"/><Setter Property="FontWeight" Value="SemiBold"/>
     </Style>
     <Style TargetType="TextBox">
       <Setter Property="MinHeight" Value="36"/><Setter Property="Padding" Value="8,4"/><Setter Property="VerticalContentAlignment" Value="Center"/>
@@ -980,7 +1091,7 @@ $script:NmGuiTheme = @'
           <ControlTemplate TargetType="CheckBox">
             <StackPanel Orientation="Horizontal" Background="Transparent">
               <Border x:Name="Box" Width="18" Height="18" CornerRadius="5" BorderBrush="#9AA1AC" BorderThickness="1.5" Background="#FFFFFF" VerticalAlignment="Center">
-                <Path x:Name="Tick" Data="M3.5,9 L7.5,13 L14.5,5" Stroke="#FFFFFF" StrokeThickness="2" Visibility="Collapsed"/>
+                <Path x:Name="Tick" Data="M3.5,9 L7.5,13 L14.5,5" Stroke="#FFFFFE" StrokeThickness="2" Visibility="Collapsed"/>
               </Border>
               <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
             </StackPanel>
@@ -1050,7 +1161,7 @@ $script:NmGuiTheme = @'
       </Setter>
     </Style>
     <Style TargetType="ToolTip">
-      <Setter Property="Background" Value="#1F252E"/><Setter Property="Foreground" Value="#FFFFFF"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="8,5"/>
+      <Setter Property="Background" Value="#1F252E"/><Setter Property="Foreground" Value="#FFFFFE"/><Setter Property="BorderThickness" Value="0"/><Setter Property="Padding" Value="8,5"/>
     </Style>
     <Style x:Key="ChoiceRow" TargetType="Button">
       <Setter Property="Background" Value="#FFFFFF"/><Setter Property="BorderBrush" Value="#E2E5EA"/><Setter Property="Margin" Value="0,0,0,6"/><Setter Property="Padding" Value="10,8"/>
@@ -1520,7 +1631,11 @@ function Get-NmGuiNoteLine {
 }
 
 # --- WPF builders (Windows only) ---------------------------------------------
-function Get-NmGuiBrush { param([string]$Hex) return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex) }
+function Get-NmGuiBrush {
+    # A brush for a colour, in the window's light or dark palette (Resolve-NmGuiColor).
+    param([string]$Hex)
+    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString((Resolve-NmGuiColor -Hex $Hex))
+}
 
 function Get-NmGuiWrapStyle {
     # Grid cells that wrap long text instead of cutting it off.
@@ -1903,9 +2018,8 @@ function New-NmGuiViewGrid {
     $dg = New-Object System.Windows.Controls.DataGrid
     $dg.IsReadOnly = $true; $dg.AutoGenerateColumns = $true; $dg.CanUserAddRows = $false; $dg.SelectionMode = 'Extended'; $dg.SelectionUnit = 'FullRow'
     $dg.ClipboardCopyMode = 'IncludeHeader'; $dg.HeadersVisibility = 'Column'; $dg.GridLinesVisibility = 'Horizontal'
-    $conv = New-Object System.Windows.Media.BrushConverter
-    $dg.Background = $conv.ConvertFromString('#FFFFFF'); $dg.BorderBrush = $conv.ConvertFromString('#E2E5EA'); $dg.RowBackground = $conv.ConvertFromString('#FFFFFF')
-    $dg.AlternatingRowBackground = $conv.ConvertFromString('#FAFBFC'); $dg.HorizontalGridLinesBrush = $conv.ConvertFromString('#EEF0F3')
+    $dg.Background = (Get-NmGuiBrush '#FFFFFF'); $dg.BorderBrush = (Get-NmGuiBrush '#E2E5EA'); $dg.RowBackground = (Get-NmGuiBrush '#FFFFFF')
+    $dg.AlternatingRowBackground = (Get-NmGuiBrush '#FAFBFC'); $dg.HorizontalGridLinesBrush = (Get-NmGuiBrush '#EEF0F3')
     $dg.ColumnHeaderHeight = 32; $dg.MinRowHeight = 28
     $dg.Add_AutoGeneratingColumn({ param($s, $e) Set-NmGuiWrapColumn -Column $e.Column })
     $table = ConvertTo-NmGuiTable -Rows $Capture.Rows -Columns $Capture.Columns
@@ -1953,7 +2067,7 @@ function Show-NmGuiViewer {
         $tb = New-Object System.Windows.Controls.TextBox
         $tb.IsReadOnly = $true; $tb.FontFamily = New-Object System.Windows.Media.FontFamily 'Consolas'; $tb.FontSize = 12; $tb.Padding = '10,8'
         $tb.VerticalContentAlignment = 'Stretch'; $tb.VerticalScrollBarVisibility = 'Auto'; $tb.HorizontalScrollBarVisibility = 'Auto'; $tb.TextWrapping = 'NoWrap'
-        $tb.Background = (New-Object System.Windows.Media.BrushConverter).ConvertFromString('#F6F7F9')
+        $tb.Background = (Get-NmGuiBrush '#F6F7F9')
         $tb.Text = "$Text".TrimEnd()
         $views.Add([pscustomobject]@{ Kind = 'Text'; Header = $(if ($views.Count) { 'Text' } else { 'Output' }); Grid = $tb; Table = $null; Capture = $null; Text = "$Text".TrimEnd() })
     }
@@ -2512,7 +2626,6 @@ function Show-NmGuiCheckList {
 function New-NmGuiChoiceRow {
     # One clickable row: icon (or initials), name, detail, "Can change" tag, and the key on the right.
     param([Parameter(Mandatory)]$Choice)
-    $conv = New-Object System.Windows.Media.BrushConverter
     $b = New-Object System.Windows.Controls.Button
     $b.Style = $script:NmGuiDialogStyleRow
     $g = New-Object System.Windows.Controls.Grid
@@ -2522,9 +2635,9 @@ function New-NmGuiChoiceRow {
         [void]$g.ColumnDefinitions.Add($cd)
     }
     $box = New-Object System.Windows.Controls.Border
-    $box.Width = 34; $box.Height = 34; $box.CornerRadius = 8; $box.Background = $conv.ConvertFromString('#F1F3F6'); $box.Margin = '0,0,12,0'
+    $box.Width = 34; $box.Height = 34; $box.CornerRadius = 8; $box.Background = (Get-NmGuiBrush '#F1F3F6'); $box.Margin = '0,0,12,0'
     $glyph = New-Object System.Windows.Controls.TextBlock
-    $glyph.HorizontalAlignment = 'Center'; $glyph.VerticalAlignment = 'Center'; $glyph.Foreground = $conv.ConvertFromString('#5B6370')
+    $glyph.HorizontalAlignment = 'Center'; $glyph.VerticalAlignment = 'Center'; $glyph.Foreground = (Get-NmGuiBrush '#5B6370')
     if ($Choice.Initials) { $glyph.Text = $Choice.Initials; $glyph.FontSize = 12; $glyph.FontWeight = 'SemiBold' }
     else { $glyph.Text = $Choice.Icon; $glyph.FontSize = 16; $glyph.FontFamily = New-Object System.Windows.Media.FontFamily 'Segoe Fluent Icons, Segoe MDL2 Assets' }
     $box.Child = $glyph
@@ -2539,7 +2652,7 @@ function New-NmGuiChoiceRow {
     [void]$head.Children.Add($name)
     if ($Choice.Tag) {
         $pill = New-Object System.Windows.Controls.Border
-        $pill.Background = $conv.ConvertFromString('#FFF1DC'); $pill.CornerRadius = 6; $pill.Padding = '6,1'; $pill.Margin = '8,0,0,0'; $pill.VerticalAlignment = 'Center'
+        $pill.Background = (Get-NmGuiBrush '#FFF1DC'); $pill.CornerRadius = 6; $pill.Padding = '6,1'; $pill.Margin = '8,0,0,0'; $pill.VerticalAlignment = 'Center'
         $pill.Child = (New-NmGuiTextBlock -Text $Choice.Tag -Size 11 -Weight 'SemiBold' -Color '#8A4B00')
         [void]$head.Children.Add($pill)
     }
@@ -2672,7 +2785,6 @@ function Show-NmGuiQuestion {
     $panel = $d.FindName('ChoicePanel'); $ok = $d.FindName('OkButton'); $cancel = $d.FindName('CancelButton')
     $hint = $d.FindName('HintText'); $footer = $d.FindName('FooterPanel'); $in = $d.FindName('InputBox')
     $state = @{ Answer = $null; Rows = @(); Index = -1; Typed = '' }
-    $conv = New-Object System.Windows.Media.BrushConverter
 
     # No console text: a section label, notes as coloured lines, plain text wrapped, tables as tables.
     Set-NmGuiDialogBody -Dialog $d -Model $Model -Captures $Captures
@@ -2711,8 +2823,8 @@ function Show-NmGuiQuestion {
             $r = $state.Rows[$n]
             $on = $n -eq $i
             $r.Button.Tag = $(if ($on) { 'on' } else { $null })
-            $r.Box.Background = $conv.ConvertFromString($(if ($on) { '#CDE9E5' } else { '#F1F3F6' }))
-            $r.Glyph.Foreground = $conv.ConvertFromString($(if ($on) { '#0A4F4B' } else { '#5B6370' }))
+            $r.Box.Background = (Get-NmGuiBrush $(if ($on) { '#CDE9E5' } else { '#F1F3F6' }))
+            $r.Glyph.Foreground = (Get-NmGuiBrush $(if ($on) { '#0A4F4B' } else { '#5B6370' }))
         }
         $state.Index = $i
         if ($i -ge 0) { $state.Rows[$i].Button.BringIntoView() }
@@ -2808,7 +2920,7 @@ $script:NmGuiMainXaml = @'
       <DockPanel LastChildFill="False">
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,16,0">
           <Border Width="32" Height="32" CornerRadius="8" Background="#0E6B66" Margin="0,0,10,0">
-            <TextBlock Text="N" Foreground="#FFFFFF" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            <TextBlock Text="N" Foreground="#FFFFFE" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center"/>
           </Border>
           <StackPanel VerticalAlignment="Center">
             <TextBlock Text="Nutmeg AD Toolkit" FontWeight="Bold" FontSize="15"/>
@@ -2837,7 +2949,7 @@ $script:NmGuiMainXaml = @'
 
       <DockPanel Grid.Column="0" Background="#14181F">
         <StackPanel DockPanel.Dock="Bottom" Margin="10">
-          <Button x:Name="HistoryButton" Content="Run history" Background="#1F252E" Foreground="#C9CED6" BorderBrush="#262C36" Margin="0,0,0,8" HorizontalContentAlignment="Left"/>
+          <Button x:Name="HistoryButton" Content="Run history" Background="#1F252E" Foreground="#C9CED7" BorderBrush="#262C36" Margin="0,0,0,8" HorizontalContentAlignment="Left"/>
         </StackPanel>
         <TextBlock DockPanel.Dock="Top" Text="AREAS" Foreground="#8A919C" FontSize="11" FontWeight="SemiBold" Margin="18,16,0,8"/>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -2940,7 +3052,7 @@ function New-NmGuiTextBlock {
     param([string]$Text, [double]$Size = 13, [string]$Weight = 'Normal', [string]$Color = '#16191F', [switch]$Wrap)
     $t = New-Object System.Windows.Controls.TextBlock
     $t.Text = $Text; $t.FontSize = $Size; $t.FontWeight = $Weight
-    $t.Foreground = (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Color)
+    $t.Foreground = (Get-NmGuiBrush $Color)
     if ($Wrap) { $t.TextWrapping = 'Wrap' }
     return $t
 }
@@ -2964,9 +3076,8 @@ function Update-NmGuiBanner {
         $up = [bool]$s.Services[$svc]
         $b = New-Object System.Windows.Controls.Border
         $b.CornerRadius = 12; $b.Padding = '10,3'; $b.Margin = '0,0,6,0'; $b.BorderThickness = 1
-        $conv = New-Object System.Windows.Media.BrushConverter
-        $b.Background = $conv.ConvertFromString($(if ($up) { '#E3F1EF' } else { '#FFFFFF' }))
-        $b.BorderBrush = $conv.ConvertFromString($(if ($up) { '#B9DCD8' } else { '#E2E5EA' }))
+            $b.Background = (Get-NmGuiBrush $(if ($up) { '#E3F1EF' } else { '#FFFFFF' }))
+        $b.BorderBrush = (Get-NmGuiBrush $(if ($up) { '#B9DCD8' } else { '#E2E5EA' }))
         $b.Child = New-NmGuiTextBlock -Text "$(if ($up) { [char]0x25CF } else { [char]0x25CB }) $(Get-NmGuiServiceLabel $svc)" -Size 12 -Weight $(if ($up) { 'SemiBold' } else { 'Normal' }) -Color $(if ($up) { '#0A4F4B' } else { '#5B6370' })
         $b.ToolTip = "$(Get-NmGuiServiceLabel $svc) module $(if ($up) { 'loaded' } else { 'not loaded yet (loads when a tool needs it)' })"
         [void]$c.ServicePanel.Children.Add($b)
@@ -3057,7 +3168,6 @@ function Update-NmGuiCenters {
     $c = $script:NmGui.Controls
     if (-not $c.CenterPanel) { return }
     $c.CenterPanel.Children.Clear()
-    $conv = New-Object System.Windows.Media.BrushConverter
     $style = $script:NmGui.Window.FindResource('SideButton')
     foreach ($row in @(Get-NmGuiSidebarModel)) {
         $b = New-Object System.Windows.Controls.Button
@@ -3074,10 +3184,10 @@ function Update-NmGuiCenters {
             $dot = New-Object System.Windows.Shapes.Ellipse
             $dot.Width = 8; $dot.Height = 8; $dot.Margin = '8,0,0,0'; $dot.StrokeThickness = 1.5; $dot.VerticalAlignment = 'Center'
             switch ($row.State) {
-                'All'       { $dot.Fill = $conv.ConvertFromString('#3FB8AF'); $dot.Stroke = $conv.ConvertFromString('#3FB8AF') }
-                'Some'      { $dot.Fill = $conv.ConvertFromString('#1F5F5B'); $dot.Stroke = $conv.ConvertFromString('#3FB8AF') }
-                'NotNeeded' { $dot.Fill = $conv.ConvertFromString('#3FB8AF'); $dot.Stroke = $conv.ConvertFromString('#3FB8AF') }
-                default     { $dot.Fill = [System.Windows.Media.Brushes]::Transparent; $dot.Stroke = $conv.ConvertFromString('#8A919C') }
+                'All'       { $dot.Fill = (Get-NmGuiBrush '#3FB8AF'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
+                'Some'      { $dot.Fill = (Get-NmGuiBrush '#5A1418'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
+                'NotNeeded' { $dot.Fill = (Get-NmGuiBrush '#3FB8AF'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
+                default     { $dot.Fill = [System.Windows.Media.Brushes]::Transparent; $dot.Stroke = (Get-NmGuiBrush '#8A919C') }
             }
             [System.Windows.Controls.DockPanel]::SetDock($dot, 'Right')
             [void]$dp.Children.Add($dot)
@@ -3092,7 +3202,7 @@ function Update-NmGuiCenters {
         } else {
             $b.Padding = '34,7,10,7'
             if ($row.Selected) { $b.Tag = 'on' }
-            [void]$dp.Children.Add((New-NmGuiTextBlock -Text $row.Name -Size 13 -Color $(if ($row.Selected) { '#FFFFFF' } else { '#C9CED6' })))
+            [void]$dp.Children.Add((New-NmGuiTextBlock -Text $row.Name -Size 13 -Color $(if ($row.Selected) { '#FFFFFE' } else { '#C9CED7' })))
             $b.Uid = "S|$($row.Center)|$($row.Section)"
         }
         $b.Content = $dp
@@ -3272,7 +3382,8 @@ function Update-NmGuiOptionsSize {
     try {
         $c.OptionsScroll.MaxHeight = Get-NmGuiOptionsMaxHeight -WindowHeight $script:NmGui.Window.ActualHeight
         $wide = [Math]::Max(420, $c.OptionsBorder.ActualWidth - 50)
-        foreach ($b in @($script:NmGui.WideBoxes)) { $b.Width = $wide }
+        # .ToArray(): @() on a List[object] throws 'Argument types do not match' (and the catch hid it).
+        foreach ($b in $script:NmGui.WideBoxes.ToArray()) { $b.Width = $wide }
     } catch { $null = $_ }
 }
 
@@ -3772,6 +3883,7 @@ function Start-NmToolkitGui {
     Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
     Write-NmLog "Nutmeg AD Toolkit $script:ModuleVersion window started$(if ($NewForest) { ' (New Forest Build)' }). Log: $(Get-NmLogPath)" -Level INFO -NoConsole
+    $null = Initialize-NmGuiLook
     $script:NmGui.BuildMode = [bool]$NewForest
     $null = Remove-NmOldLog
     $script:NmGui.CardMode = ("$(Get-NmSetting -Key ResultsView)" -ne 'Table')
