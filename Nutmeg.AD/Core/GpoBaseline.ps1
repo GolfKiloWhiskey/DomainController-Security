@@ -405,3 +405,123 @@ function Compare-NmGpoWithBaseline {
     }
     return $rows.ToArray()
 }
+
+# ---------------------------------------------------------------------------
+# Where a GPO applies (issue #36): its links and status, from its XML report
+# ---------------------------------------------------------------------------
+function Get-NmGpoReportXml {
+    # The GPO's report as XML text (Get-GPOReport; a wrapper so the tests can stand in for it).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Id)
+    $gp = Get-NmGPParams
+    return "$(Get-GPOReport -Guid $Id -ReportType Xml @gp -ErrorAction Stop)"
+}
+
+function ConvertFrom-NmGpoReportXml {
+    <#
+    .SYNOPSIS
+        From a GPO's XML report: Links (Path as shown, Enabled, Enforced), ComputerEnabled, UserEnabled.
+        A link's path is shown without the domain ("Domain Controllers"; the root as "Domain root").
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Xml, [string]$Domain = (Get-NmSession).Domain)
+    $x = [xml]$Xml
+    $g = $x.GPO
+    $links = @(foreach ($l in @($g.LinksTo | Where-Object { $_ })) {
+        $path = "$($l.SOMPath)"
+        if ($Domain -and $path -eq $Domain) { $path = 'Domain root' }
+        elseif ($Domain -and $path.StartsWith("$Domain/")) { $path = $path.Substring($Domain.Length + 1) }
+        [pscustomobject]@{ Path = $path; Enabled = ("$($l.Enabled)" -eq 'true'); Enforced = ("$($l.NoOverride)" -eq 'true') }
+    })
+    [pscustomobject]@{
+        Links           = $links
+        ComputerEnabled = ("$($g.Computer.Enabled)" -ne 'false')
+        UserEnabled     = ("$($g.User.Enabled)" -ne 'false')
+    }
+}
+
+function Format-NmGpoLinks {
+    # "Domain Controllers; Devices/Member Servers (disabled); Domain root (enforced)", or "(not linked)".
+    param([object[]]$Links = @())
+    $l = @($Links | Where-Object { $_ })
+    if (-not $l.Count) { return '(not linked)' }
+    return (($l | ForEach-Object {
+        $flags = @($(if (-not $_.Enabled) { 'disabled' }), $(if ($_.Enforced) { 'enforced' })) | Where-Object { $_ }
+        "$($_.Path)$(if ($flags) { " ($($flags -join ', '))" })"
+    }) -join '; ')
+}
+
+function Get-NmGpoApplyState {
+    <#
+    .SYNOPSIS
+        Does a GPO apply anywhere, for the settings its baseline has? Result and Detail:
+        - Not applied (red): linked, but the side the baseline uses (computer or user) is disabled;
+        - Not linked (amber): linked nowhere, or every link disabled (may be on purpose: just built);
+        - Linked (green).
+        Linked somewhere other than the suggested links is only noted: links are chosen per client.
+    #>
+    [CmdletBinding()]
+    param($Report, [string[]]$Sides = @('Computer'), [string[]]$Suggested = @())
+    $links = @($Report.Links | Where-Object { $_ })
+    $on = @($links | Where-Object { $_.Enabled })
+    $off = @()
+    if ($Sides -contains 'Computer' -and -not $Report.ComputerEnabled) { $off += 'computer' }
+    if ($Sides -contains 'User' -and -not $Report.UserEnabled) { $off += 'user' }
+    if ($on.Count -and $off.Count) {
+        return [pscustomobject]@{ Result = 'Not applied'; Detail = "Its $($off -join ' and ') settings are disabled on the GPO, so the baseline's $($off -join ' and ') settings never apply." }
+    }
+    if (-not $links.Count) { return [pscustomobject]@{ Result = 'Not linked'; Detail = 'Linked nowhere: it applies to nothing yet.' } }
+    if (-not $on.Count) { return [pscustomobject]@{ Result = 'Not linked'; Detail = 'Every link is disabled: it applies to nothing.' } }
+    $note = ''
+    $sugg = @($Suggested | Where-Object { $_ })
+    if ($sugg.Count) {
+        $missing = @($sugg | Where-Object { $s = $_; -not @($on | Where-Object { $_.Path -eq $s }).Count })
+        if ($missing.Count) { $note = "Suggested links not used: $($missing -join ', ') (links are chosen per client)." }
+    }
+    return [pscustomobject]@{ Result = 'Linked'; Detail = $note }
+}
+
+# ---------------------------------------------------------------------------
+# A GPO opened from a card: Microsoft's editor, or GPMC's full report
+# ---------------------------------------------------------------------------
+function Start-NmGpoEditor {
+    # The Group Policy Management Editor on one GPO, on the session's DC (a wrapper for the tests).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Path)
+    $s = Get-NmSession
+    $target = if ($s.Server) { "LDAP://$($s.Server)/$Path" } else { "LDAP://$Path" }
+    Start-Process -FilePath 'gpme.msc' -ArgumentList "/gpobject:`"$target`""
+    return $target
+}
+
+function Invoke-NmGpoCardEdit {
+    # Card button "Edit GPO": opens the GPO in Microsoft's editor. The toolkit itself changes nothing.
+    [CmdletBinding()]
+    param($Row)
+    if (-not $Row -or -not "$($Row.GpoPath)") { Write-NmLog 'This card has no GPO to open.' -Level WARN; return }
+    $t = Start-NmGpoEditor -Path "$($Row.GpoPath)"
+    Write-NmLog "Opened $($Row.Gpo) in the Group Policy Management Editor ($t). Compare again after editing." -Level INFO
+}
+
+function Save-NmGpoHtmlReport {
+    # GPMC's own HTML report of a GPO, saved to a file (a wrapper for the tests).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][string]$Path)
+    $gp = Get-NmGPParams
+    Get-GPOReport -Guid $Id -ReportType Html -Path $Path @gp -ErrorAction Stop | Out-Null
+    return $Path
+}
+
+function Invoke-NmGpoCardView {
+    # Card button "View GPO": GPMC's full report of the GPO, saved in the reports folder and opened.
+    [CmdletBinding()]
+    param($Row)
+    if (-not $Row -or -not "$($Row.GpoId)") { Write-NmLog 'This card has no GPO to show.' -Level WARN; return }
+    $safe = ("$($Row.Gpo)" -replace '[^A-Za-z0-9 ._()-]', '_').Trim()
+    $folder = Get-NmReportFolder
+    if (-not (Test-Path -LiteralPath $folder)) { New-Item -Path $folder -ItemType Directory -Force | Out-Null }
+    $file = Join-Path $folder ("GPO_{0}_{1:yyyyMMdd-HHmmss}.html" -f $safe, (Get-Date))
+    $p = Save-NmGpoHtmlReport -Id "$($Row.GpoId)" -Path $file
+    Write-NmLog "GPO report for $($Row.Gpo): $p" -Level INFO
+    Open-NmReport -Path $p
+}

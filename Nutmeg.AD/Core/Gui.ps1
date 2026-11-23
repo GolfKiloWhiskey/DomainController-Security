@@ -1394,9 +1394,9 @@ function Get-NmGuiStatusLevel {
     param([string]$Column, [string]$Value)
     $v = "$Value".Trim()
     if ($Column -eq 'Severity' -and $script:NmGuiSeverityColors.ContainsKey($v)) { return $v }
-    if ($v -match '^(?i)(failed|failure|error|denied|blocked|refused|not found|missing|not ready|different|not filled)') { return 'High' }
-    if ($v -match '^(?i)(extra)$') { return 'Medium' }
-    if ($v -match '^(?i)(matches)$') { return 'OK' }
+    if ($v -match '^(?i)(failed|failure|error|denied|blocked|refused|not found|missing|not ready|different|not filled|not applied|doesn''t match)') { return 'High' }
+    if ($v -match '^(?i)(extra|not linked)$') { return 'Medium' }
+    if ($v -match '^(?i)(matches|linked)$') { return 'OK' }
     if ($v -match '^(?i)(whatif|cancel|skipped|not changed|already|unchanged|none|n/a)') { return 'Info' }
     if ($v -match '^(?i)(warn|partial|suspicious|expir|interrupt|pending|disabled)') { return 'Medium' }
     if ($v -match '^(?i)(granted|added|removed|set\b|success|succeeded|ok\b|done|created|updated|enabled|deleted|changed|sent|saved|yes\b|active|works|connected|complete|passed)') { return 'OK' }
@@ -1443,12 +1443,21 @@ function Get-NmGuiCardModel {
         -GroupBy (the tool's CardGroup) makes one card per value of its first column instead, with the
         rows listed inside under the values of its second column ("Safe (3)", "Blocked (1)").
     #>
-    param([AllowEmptyCollection()][object[]]$Rows = @(), [string[]]$Columns = @(), [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [string[]]$GroupBy = @())
+    param([AllowEmptyCollection()][object[]]$Rows = @(), [string[]]$Columns = @(), [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [string[]]$GroupBy = @(), [string]$CardFacet = '')
     $all = @($Rows | Where-Object { $_ })
     $cols = if (@($Columns).Count) { @($Columns) } elseif ($all.Count) { @($all[0].PSObject.Properties.Name | Where-Object { $_ -ne '#' }) } else { @() }
     $fc = Get-NmGuiFacetColumn -Rows $all -Columns $cols
     $facets = @()
-    if ($fc) {
+    $gcol = "$(@($GroupBy)[0])"
+    $byCard = $CardFacet -and $gcol -and $all.Count -and @($all[0].PSObject.Properties.Name) -contains $CardFacet -and @($all[0].PSObject.Properties.Name) -contains $gcol
+    if ($byCard) {
+        # The tags count cards (gpo-compare: GPOs), by a column that is the same on every row of a card.
+        $fc = $CardFacet
+        $firsts = @($all | Group-Object { ConvertTo-NmGuiFieldText $_.$gcol } | ForEach-Object { $_.Group[0] })
+        $groups = @($firsts | Group-Object { Get-NmGuiFacetValue -Column $fc -Value $_.$fc } | Sort-Object Count -Descending)
+        $facets = @($groups | ForEach-Object { [pscustomobject]@{ Value = $_.Name; Count = $_.Count; Level = (Get-NmGuiStatusLevel -Column $fc -Value $_.Name) } })
+    }
+    elseif ($fc) {
         $groups = @($all | Group-Object { Get-NmGuiFacetValue -Column $fc -Value $_.$fc })
         if ($fc -eq 'Severity' -and $script:NmIrSeverities) { $groups = @($groups | Sort-Object { $i = [array]::IndexOf($script:NmIrSeverities, $_.Name); if ($i -lt 0) { 99 } else { $i } }) }
         else { $groups = @($groups | Sort-Object Count -Descending) }
@@ -1576,6 +1585,7 @@ function Get-NmGuiGroupedCardModel {
         FacetColumn = $FacetColumn
         Facets      = @($Facets)
         Facet       = $Facet
+        AllCards    = @($All | ForEach-Object { ConvertTo-NmGuiFieldText $_.$groupCol } | Sort-Object -Unique).Count
         Shown       = @($ShownIdx).Count
         Total       = @($All).Count
         Items       = @($items)
@@ -1858,7 +1868,7 @@ function Set-NmGuiFacet {
 function New-NmGuiResultCard {
     # One result row as a card: status label, title, the shown columns, More for the other fields,
     # and Open for the tool's own row screen when it has one.
-    param($Item, [switch]$CanOpen, [switch]$Selectable)
+    param($Item, [switch]$CanOpen, [switch]$Selectable, [object[]]$Actions = @())
     $outer = New-Object System.Windows.Controls.Border
     $outer.Background = Get-NmGuiBrush '#FFFFFF'; $outer.BorderBrush = Get-NmGuiBrush '#E2E5EA'; $outer.BorderThickness = 1; $outer.CornerRadius = 10; $outer.Margin = '0,0,0,10'
     $grid = New-Object System.Windows.Controls.Grid
@@ -1878,6 +1888,15 @@ function New-NmGuiResultCard {
     $copyText = ((@($Item.Title, $(if ($Item.Status) { $Item.Status })) + @(@($Item.Fields) + @($Item.More) | ForEach-Object { "$($_.Name): $($_.Value)" })) | Where-Object { $_ }) -join "`r`n"
     $copy = New-NmGuiCopyButton -Text $copyText
     [System.Windows.Controls.DockPanel]::SetDock($copy, 'Right'); [void]$top.Children.Add($copy)
+    # The tool's card buttons (gpo-compare: Edit GPO, View GPO). Plain handlers: they read the Tag only.
+    foreach ($a in @($Actions)) {
+        $ab = New-Object System.Windows.Controls.Button
+        $ab.Content = $a.Label; $ab.Tag = [pscustomobject]@{ Index = [int]$Item.Index; Action = $a.Action; Label = $a.Label }
+        $ab.MinHeight = 28; $ab.Padding = '10,2'; $ab.Margin = '8,0,0,0'; $ab.FontSize = 12
+        if ($a.ToolTip) { $ab.ToolTip = $a.ToolTip }
+        $ab.Add_Click({ param($s, $e) Invoke-NmGuiCardAction -Index $s.Tag.Index -Action $s.Tag.Action -Label $s.Tag.Label })
+        [System.Windows.Controls.DockPanel]::SetDock($ab, 'Right'); [void]$top.Children.Add($ab)
+    }
     if ($CanOpen) {
         $open = New-Object System.Windows.Controls.Button
         $open.Content = 'Open'; $open.Tag = $Item.Index; $open.MinHeight = 28; $open.Padding = '10,2'; $open.Margin = '8,0,0,0'; $open.FontSize = 12
@@ -1921,6 +1940,37 @@ function New-NmGuiResultCard {
     return $outer
 }
 
+function Get-NmGuiPlural {
+    # "GPO" -> "GPOs" for any count but 1.
+    param([string]$Noun, [int]$Count)
+    if ($Count -eq 1) { return $Noun }
+    return "${Noun}s"
+}
+
+function Get-NmGuiResultTitle {
+    # The line above the results (no WPF): "9 GPOs  |  ran 23:30  |  0.4 s" for a tool that counts
+    # cards (CardNoun), "43 result(s)  |  ..." for the rest.
+    param($Tool, [object[]]$Rows = @(), [datetime]$At = (Get-Date), [double]$Seconds = 0)
+    $rows = @($Rows | Where-Object { $_ })
+    $what = "$($rows.Count) result(s)"
+    $g = "$(@($Tool.CardGroup)[0])"
+    if ($Tool -and $Tool.CardNoun -and $g -and $rows.Count -and @($rows[0].PSObject.Properties.Name) -contains $g) {
+        $n = @($rows | ForEach-Object { ConvertTo-NmGuiFieldText $_.$g } | Sort-Object -Unique).Count
+        $what = "$n $(Get-NmGuiPlural -Noun $Tool.CardNoun -Count $n)"
+    }
+    return ('{0}  |  ran {1:HH:mm}  |  {2:N1} s' -f $what, $At, $Seconds)
+}
+
+function Invoke-NmGuiCardAction {
+    # A card's button: the tool's function with the card's (first) row, as an action (dialogs, errors shown).
+    param([int]$Index, [string]$Action, [string]$Label)
+    $rows = @($script:NmGui.Rows)
+    if ($Index -lt 0 -or $Index -ge $rows.Count) { return }
+    $row = $rows[$Index]
+    Invoke-NmGuiAction -Busy "$Label..." -Action { & $Action $row }
+    if ($script:NmGui.LastLeftover) { [void](Show-NmGuiDialog -Title $Label -Text $script:NmGui.LastLeftover -NoInput -Captures $script:NmGui.LastCaptures) }
+}
+
 function Get-NmGuiCardCountText {
     # The line above the cards: "Showing 12 of 40." when filtered; for grouped cards also how many
     # rows the cards hold ("127 rows in 40 cards, one per Mailbox.").
@@ -1941,8 +1991,9 @@ function New-NmGuiCardView {
         Any tool's results as cards: the tags to filter by (Result, Status and so on), a card per
         row (the first 100, with Show more), and a line saying how many are shown.
     #>
-    param([object[]]$Rows, [string[]]$Columns, [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [switch]$CanOpen, [string[]]$GroupBy = @(), [switch]$Selectable)
-    $m = Get-NmGuiCardModel -Rows $Rows -Columns $Columns -Filter $Filter -Facet $Facet -Limit $Limit -GroupBy $GroupBy
+    param([object[]]$Rows, [string[]]$Columns, [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [switch]$CanOpen, [string[]]$GroupBy = @(), [switch]$Selectable,
+          [string]$CardFacet = '', [object[]]$Actions = @(), [string]$Noun = '')
+    $m = Get-NmGuiCardModel -Rows $Rows -Columns $Columns -Filter $Filter -Facet $Facet -Limit $Limit -GroupBy $GroupBy -CardFacet $CardFacet
     $script:NmGui.ShownIndex = @($m.ShownIndex)
     $root = New-Object System.Windows.Controls.StackPanel
     $root.Margin = '0,0,8,0'
@@ -1950,13 +2001,15 @@ function New-NmGuiCardView {
         $chips = New-Object System.Windows.Controls.WrapPanel
         $chips.Margin = '0,0,0,8'
         [void]$chips.Children.Add((New-NmGuiText -Text "$($m.FacetColumn):" -Size 12 -Color '#5B6370' -Margin '0,5,10,0'))
+        # Cards counted by a column of their own (gpo-compare): "All 9" first, picked when nothing is.
+        if ($CardFacet -and $m.FacetColumn -eq $CardFacet) { [void]$chips.Children.Add((New-NmGuiFacetChip -Text "All $($m.AllCards)$(if ($Noun) { " $(Get-NmGuiPlural -Noun $Noun -Count $m.AllCards)" })" -Level 'Info' -Value '' -Picked:(-not $m.Facet))) }
         foreach ($f in $m.Facets) { [void]$chips.Children.Add((New-NmGuiFacetChip -Text "$($f.Count) $($f.Value)" -Level $f.Level -Value $f.Value -Picked:($m.Facet -eq $f.Value))) }
         [void]$root.Children.Add($chips)
     }
     $countText = Get-NmGuiCardCountText -Model $m
     if ($countText) { [void]$root.Children.Add((New-NmGuiText -Text $countText -Size 12 -Color '#5B6370' -Margin '2,0,0,10')) }
     $tickable = $Selectable -and -not $m.GroupBy
-    foreach ($it in $m.Items) { [void]$root.Children.Add((New-NmGuiResultCard -Item $it -CanOpen:$CanOpen -Selectable:$tickable)) }
+    foreach ($it in $m.Items) { [void]$root.Children.Add((New-NmGuiResultCard -Item $it -CanOpen:$CanOpen -Selectable:$tickable -Actions $Actions)) }
     if (-not @($m.Items).Count) { [void]$root.Children.Add((New-NmGuiText -Text 'Nothing matches.' -Color '#5B6370' -Margin '4')) }
     if ($m.Remaining -gt 0) {
         $b = New-Object System.Windows.Controls.Button
@@ -3894,7 +3947,8 @@ function Update-NmGuiCardView {
         } else {
             $cols = @(Get-NmGuiColumn -Rows $script:NmGui.Rows -Tool $t -All:([bool]$c.AllColumnsBox.IsChecked))
             $grp = @(if ($t -and $t.CardGroup) { $t.CardGroup })
-            $c.CardHost.Content = New-NmGuiCardView -Rows $script:NmGui.Rows -Columns $cols -Filter $f -Facet $script:NmGui.Facet -Limit ([int]$script:NmGui.CardLimit) -CanOpen:([bool]($t -and $t.DeepDive)) -GroupBy $grp -Selectable:([bool]($t -and $t.BulkAction))
+            $c.CardHost.Content = New-NmGuiCardView -Rows $script:NmGui.Rows -Columns $cols -Filter $f -Facet $script:NmGui.Facet -Limit ([int]$script:NmGui.CardLimit) -CanOpen:([bool]($t -and $t.DeepDive)) -GroupBy $grp -Selectable:([bool]($t -and $t.BulkAction)) `
+                -CardFacet $(if ($t) { "$($t.CardFacet)" } else { '' }) -Actions @(if ($t) { $t.CardActions }) -Noun $(if ($t) { "$($t.CardNoun)" } else { '' })
         }
         $c.CardScroll.Visibility = 'Visible'; $c.ResultsGrid.Visibility = 'Collapsed'
         $c.ViewToggle.Content = 'Table view'; $c.DetailsButton.IsEnabled = $false
@@ -3979,7 +4033,7 @@ function Invoke-NmGuiRun {
         Write-NmRunHistory -ToolId $t.Id -ToolVersion $t.Version -Kind $t.Kind -Mode $mode -ItemCount $rows.Count
         [void]$script:NmGui.Transcript.Append((Get-NmGuiRunLine -Tool $t -Count $rows.Count -Seconds $sw.Elapsed.TotalSeconds) + "`r`n")
         Update-NmGuiLog
-        Set-NmGuiResult -Rows $rows -Title ("{0} result(s)  |  ran {1:HH:mm}  |  {2:N1} s" -f $rows.Count, (Get-Date), $sw.Elapsed.TotalSeconds)
+        Set-NmGuiResult -Rows $rows -Title (Get-NmGuiResultTitle -Tool $t -Rows $rows -Seconds $sw.Elapsed.TotalSeconds)
         $c.StatusText.Text = "$($t.Name): $($rows.Count) result(s)."
         # The results get the room: the options fold into one line (Edit options opens them).
         Set-NmGuiOptionsFolded -Folded $true

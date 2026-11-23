@@ -133,6 +133,13 @@ function Register-NmTool {
             return
         }
     }
+    # CardActions: buttons on each card, @(@{ Label; Action = '<function taking the card's first row>'; ToolTip }).
+    $cardActions = New-Object System.Collections.Generic.List[object]
+    foreach ($a in @($Definition.CardActions | Where-Object { $_ })) {
+        if ($a -isnot [hashtable] -or -not "$($a.Label)".Trim() -or -not $a.Action) { & $fail 'Each CardActions entry needs Label and Action.'; return }
+        if (-not (Get-Command -Name $a.Action -CommandType Function -ErrorAction SilentlyContinue)) { & $fail "CardActions: function '$($a.Action)' is not defined."; return }
+        $cardActions.Add([pscustomobject]@{ Label = "$($a.Label)"; Action = "$($a.Action)"; ToolTip = "$($a.ToolTip)" })
+    }
     foreach ($hook in 'Prompt', 'Summary', 'BeforeRun') {
         if ($Definition[$hook] -and -not (Get-Command -Name $Definition[$hook] -CommandType Function -ErrorAction SilentlyContinue)) {
             & $fail "$hook function '$($Definition[$hook])' is not defined in the file."
@@ -179,6 +186,9 @@ function Register-NmTool {
         View           = $(if ($Definition.View) { "$($Definition.View)" } else { 'Table' })
         CardGroup      = $cardGroup
         Pickers        = $pickers
+        CardFacet      = "$($Definition.CardFacet)"     # grouped cards: the tags count cards by this column
+        CardNoun       = "$($Definition.CardNoun)"      # grouped cards: the headline counts cards ("9 GPOs")
+        CardActions    = $cardActions.ToArray()
         BeforeRun      = $Definition.BeforeRun
         BulkAction     = $Definition.BulkAction
         BulkActions    = @($Definition.BulkActions | Where-Object { "$_".Trim() } | ForEach-Object { "$_" })

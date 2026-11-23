@@ -72,6 +72,11 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
     chosen from a list instead of typed: ticks for `[string[]]` (with search, Select all / none and a
     count), a drop-down for `[string]`. The function returns items with Key (what the tool gets),
     Label, Detail (a grey line), Badge and Disabled. `NeedsDomain` waits for "Load the list".
+  - `CardNoun = 'GPO'` and `CardFacet = '<column>'` (grouped cards): the headline counts cards ("9 GPOs")
+    and the tags count cards by a column that is the same on every row of a card, with "All n" first;
+    a tag filters whole cards (gpo-compare: `GpoState`).
+  - `CardActions = @(@{ Label; Action = '<function>'; ToolTip })`: buttons on every card; the function
+    gets the card's first row (gpo-compare and gpo-build: Edit GPO, View GPO).
   - `BeforeRun = '<function>'`: takes the form's arguments when Run is pressed, asks what the form
     cannot hold (dialogs), and returns the full arguments, or `$null` to run nothing (gpo-build: each
     ticked baseline's values and GPO name).

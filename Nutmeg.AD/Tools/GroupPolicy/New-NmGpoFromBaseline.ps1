@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.2
+    Version: 0.7.3
 
 .SYNOPSIS
     Builds new GPOs from the baselines in Nutmeg.AD\Baselines, setting by setting.
@@ -33,6 +33,7 @@
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening
 
 .VERSIONING
+    0.7.3 - Edit GPO and View GPO on each built GPO's card.
     0.7.2 - The window: baselines picked from a list (name, what it does, what it asks, suggested links); each
             baseline's values and GPO name asked when Run is pressed (BeforeRun). A failed row names the baseline.
     0.7.1 - First version: the easy kinds (Administrative Templates, registry preferences, security
@@ -45,7 +46,7 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'Pick baselines, answer their parameters, and build each as a new GPO (not linked)'
-    Version  = '0.7.2'
+    Version  = '0.7.3'
     Kind     = 'ReportAndChange'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
@@ -54,6 +55,10 @@ $NmTool = @{
     # The window: baselines are ticked in a list; their values and GPO names are asked on Run.
     Pickers  = @{ Baseline = @{ Items = 'Get-NmGpoBuildPickItem'; Note = 'Tick the baselines to build. Each becomes a new, unlinked GPO; its values and name are asked when you press Run.' } }
     BeforeRun = 'Complete-NmGpoBuildArgs'
+    CardActions = @(
+        @{ Label = 'Edit GPO'; Action = 'Invoke-NmGpoCardEdit'; ToolTip = 'Open this GPO in the Group Policy Management Editor (on the DC in use)' }
+        @{ Label = 'View GPO'; Action = 'Invoke-NmGpoCardView'; ToolTip = 'GPMC''s full report of this GPO, saved and opened' }
+    )
     DeepDive = 'Show-NmGpoBuildDetail'
     Columns  = @('Gpo', 'Baseline', 'Settings', 'Result', 'SuggestedLinks')
 }
@@ -178,7 +183,7 @@ function New-NmGpoFromBaseline {
         $n++
         Write-Progress -Activity 'Building GPOs' -Status "[$n/$($Baseline.Count)] $id" -PercentComplete ([int](100 * ($n - 1) / $Baseline.Count))
         $b = @(Get-NmBaseline -Id $id)[0]
-        $row = [pscustomobject]@{ Gpo = $id; Baseline = $id; Version = ''; Settings = ''; Result = ''; SuggestedLinks = ''; GpoId = ''; Details = @() }
+        $row = [pscustomobject]@{ Gpo = $id; Baseline = $id; Version = ''; Settings = ''; Result = ''; SuggestedLinks = ''; GpoId = ''; GpoPath = ''; Details = @() }
         $out.Add($row)
         if (-not $b) { $row.Result = "Failed: no valid baseline '$id'"; continue }
         $row.Baseline = $b.Name
@@ -216,6 +221,7 @@ function New-NmGpoFromBaseline {
             continue
         }
         $row.GpoId = "$($gpo.Id)"
+        $row.GpoPath = "$($gpo.Path)"
         Write-NmLog "Created GPO '$name' ($($gpo.Id))." -Level SUCCESS
         $written = @(Invoke-NmBaselineWrite -Gpo $gpo -Baseline $b -Values $resolved.Values)
         $row.Details = $written
