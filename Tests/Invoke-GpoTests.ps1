@@ -128,6 +128,45 @@ function global:Get-GPOReport {
     $comp = if ($global:FakeComputerOff[$g.DisplayName]) { 'false' } else { 'true' }
     "<?xml version=`"1.0`" encoding=`"utf-16`"?><GPO xmlns=`"http://www.microsoft.com/GroupPolicy/Settings`"><Name>$($g.DisplayName)</Name><Computer><Enabled>$comp</Enabled></Computer><User><Enabled>true</Enabled></User>$($links -join '')</GPO>"
 }
+$global:Backups = New-Object System.Collections.Generic.List[string]
+$global:Restores = New-Object System.Collections.Generic.List[string]
+$global:FailBackup = $false
+function global:Backup-GPO {
+    param($Guid, [string]$Path, $Domain, $Server, $ErrorAction)
+    $g = Find-FakeGpo -Guid "$Guid"
+    if (-not (Test-Path -LiteralPath $Path)) { throw "The backup directory '$Path' does not exist." }
+    if ($global:FailBackup) { throw 'Access is denied.' }
+    Set-Content -LiteralPath (Join-Path $Path 'gpreport.xml') -Value $g.DisplayName
+    $global:Backups.Add("$($g.DisplayName)")
+    [pscustomobject]@{ Id = [guid]::NewGuid(); GpoId = $g.Id; BackupDirectory = $Path }
+}
+function global:Restore-GPO {
+    param($BackupId, [string]$Path, $Domain, $Server, $ErrorAction)
+    if (-not (Test-Path -LiteralPath (Join-Path $Path 'gpreport.xml'))) { throw "No backup with ID $BackupId in '$Path'." }
+    $global:Restores.Add("$BackupId @$Server")
+}
+function global:Remove-GPRegistryValue {
+    param($Guid, [string]$Key, [string]$ValueName, $Domain, $Server, $ErrorAction)
+    $global:GpCalls.Add("Remove-GPRegistryValue $Key\$ValueName")
+    $g = Find-FakeGpo -Guid "$Guid"
+    $user = $Key -like 'HKCU\*'
+    $path = Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($user) { 'User' } else { 'Machine' })) 'Registry.pol'
+    $m = $global:NmTestModuleG
+    $entries = @(& $m { param($p) if (Test-Path $p) { ConvertFrom-NmRegistryPol -Bytes ([IO.File]::ReadAllBytes($p)) } } $path)
+    $keep = @($entries | Where-Object { -not ($_.Key -eq $Key.Substring(5) -and $_.ValueName -eq $ValueName) })
+    if ($keep.Count -eq $entries.Count) { throw "The registry value '$ValueName' was not found." }
+    [IO.File]::WriteAllBytes($path, (& $m { param($e) ConvertTo-NmRegistryPol -Entries $e } $keep))
+    Add-FakeGpoVersion -Gpo $g -By $(if ($user) { 65536 } else { 1 }) -Ext ''
+}
+function global:Remove-GPPrefRegistryValue {
+    param($Guid, [string]$Context, [string]$Key, [string]$ValueName, $Domain, $Server, $ErrorAction)
+    $global:GpCalls.Add("Remove-GPPrefRegistryValue $Context $Key\$ValueName")
+    $g = Find-FakeGpo -Guid "$Guid"
+    $file = Join-Path (Join-Path (Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($Context -eq 'User') { 'User' } else { 'Machine' })) 'Preferences') 'Registry') 'Registry.xml'
+    if (-not (Test-Path $file)) { throw 'No registry preference item matches.' }
+    Set-Content -LiteralPath $file -Value '<?xml version="1.0" encoding="utf-8"?><RegistrySettings clsid="{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}"/>'
+    Add-FakeGpoVersion -Gpo $g -By 1 -Ext ''
+}
 function global:Get-ADObject {
     param($Identity, $Properties, $Server, $ErrorAction)
     if (-not $global:FakeGpoAd.ContainsKey("$Identity")) { throw "Cannot find an object with identity: '$Identity'." }
@@ -178,6 +217,8 @@ function global:Reset-Gpo {
     }
     $global:FakeGpos.Clear(); $global:FakeGpoAd.Clear(); $global:GpCalls.Clear(); $global:FailRegistryValue = ''
     $global:FakeLinks = @{}; $global:FakeComputerOff = @{}; $global:Opened.Clear()
+    $global:Backups.Clear(); $global:Restores.Clear(); $global:FailBackup = $false
+    & $global:NmTestModuleG { $bk = Get-NmGpoBackupRoot; if (Test-Path $bk) { Remove-Item -LiteralPath $bk -Recurse -Force } }
     if (Test-Path $global:FakeSysvol) { Remove-Item $global:FakeSysvol -Recurse -Force }
     New-Item -Path $global:FakeSysvol -ItemType Directory -Force | Out-Null
 }
@@ -638,6 +679,155 @@ Test-That 'Compare questions: every stamped GPO, then only what needs attention'
     $true
 }
 
+Write-Host 'gpo-align and gpo-restore' -ForegroundColor Cyan
+function global:Set-DriftedScreenTimeout {
+    # A Screen Timeout GPO at 600 s with one setting changed, one deleted and one extra value added.
+    & $global:NmTestModuleG {
+        Answer 'y'
+        New-NmGpoFromBaseline -Baseline security-screen-timeout -Values @{ TimeoutSeconds = 600 } | Out-Null
+        $id = $global:FakeGpos[0].Id
+        $key = 'HKCU\Software\Policies\Microsoft\Windows\Control Panel\Desktop'
+        Set-GPRegistryValue -Guid $id -Key $key -ValueName 'ScreenSaverIsSecure' -Type String -Value '0'
+        Remove-GPRegistryValue -Guid $id -Key $key -ValueName 'SCRNSAVE.EXE'
+        Set-GPRegistryValue -Guid $id -Key 'HKCU\Software\Policies\Client\Own' -ValueName 'Keep' -Type DWord -Value 1
+    }
+}
+
+Test-That 'Align plan: the baseline''s settings only; the GPO''s own value (600) kept; the extra setting kept' {
+    Set-DriftedScreenTimeout
+    $g = $global:FakeGpos[0]; $b = Get-NmBaseline -Id security-screen-timeout
+    $p = Get-NmGpoAlignPlan -Gpo $g -Baseline $b -Mode Align
+    Assert-Equal '600' $p.Values.TimeoutSeconds 'value kept'
+    Assert-Equal 'screensaver-file,screensaver-password' ((@($p.Changes | ForEach-Object SettingId) | Sort-Object) -join ',') 'what to write'
+    Assert-Equal 0 @($p.Removals).Count 'nothing removed'
+    Assert-Equal 1 $p.Kept 'extra kept'
+    $pw = @($p.Changes | Where-Object SettingId -eq 'screensaver-password')[0]
+    Assert-Equal 'String:0 -> String:1' "$($pw.From) -> $($pw.To)" 'from and to'
+    $true
+}
+
+Test-That 'Reset plan: the baseline exactly: the default (900) and the extra setting removed' {
+    Set-DriftedScreenTimeout
+    $p = Get-NmGpoAlignPlan -Gpo $global:FakeGpos[0] -Baseline (Get-NmBaseline -Id security-screen-timeout) -Mode Reset
+    Assert-Equal '900' $p.Values.TimeoutSeconds 'default'
+    Assert-Equal 'screensaver-file,screensaver-password,screensaver-timeout' ((@($p.Changes | ForEach-Object SettingId) | Sort-Object) -join ',') 'what to write'
+    Assert-Equal 'HKCU\Software\Policies\Client\Own\Keep' (@($p.Removals)[0].Setting) 'extra removed'
+    $true
+}
+
+Test-That 'Align: backed up first (backup.json), only the differing settings written, compared again (none left), run history' {
+    Set-DriftedScreenTimeout
+    $global:GpCalls.Clear()
+    Answer 'y'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - Screen Timeout')
+    Assert-Equal 'Aligned|2|0|none' "$($r[0].Result)|$($r[0].Changed)|$($r[0].Removed)|$($r[0].Remaining)" 'row'
+    Assert-Equal 'Security - Screen Timeout' $global:Backups[0] 'backed up'
+    $m = Get-Content (Join-Path $r[0].Backup 'backup.json') -Raw | ConvertFrom-Json
+    if ("$($m.Reason)" -notlike 'Before align with security-screen-timeout 0.7.1') { throw "reason: $($m.Reason)" }
+    $writes = @($global:GpCalls | Where-Object { $_ -like 'Set-GPRegistryValue*' })
+    Assert-Equal 2 $writes.Count 'only what differed'
+    $pol = @(Read-NmGpoRegistryPol -Id "$($global:FakeGpos[0].Id)" -Side User)
+    Assert-Equal '600' (@($pol | Where-Object ValueName -eq 'ScreenSaveTimeOut')[0].Value) 'value kept'
+    if (-not @($pol | Where-Object ValueName -eq 'Keep').Count) { throw 'the extra setting was removed' }
+    if (-not @(Get-NmRunHistory | Where-Object { $_.ToolId -eq 'gpo-align' -and $_.Notes -like '*2 written, 0 removed*' }).Count) { throw 'no run history' }
+    $true
+}
+
+Test-That 'Reset: security options, audit and the extras in GptTmpl.inf and audit.csv removed; version raised; nothing left to change' {
+    Answer 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-domain-auditing-dcs | Out-Null
+    $ntlm = $global:FakeGpos[0]; $aud = $global:FakeGpos[1]
+    $path = Get-NmGpoFilePath -Id "$($ntlm.Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('LmCompatibilityLevel=4,5', 'LmCompatibilityLevel=4,3').Replace('[Version]', "[System Access]`r`nEnableGuestAccount = 1`r`n[Version]")) -Encoding Unicode
+    Write-NmGpoAudit -Id "$($aud.Id)" -Settings @(@{ Subcategory = 'Process Creation'; Setting = 'Success' })
+    $v = $global:FakeGpoAd[$ntlm.Path].versionNumber
+    Answer 'y', 'y'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - NTLM Hardening', 'Security - Domain Auditing (DC''s)' -Mode Reset)
+    Assert-Equal 'Reset|1|1|none' "$($r[0].Result)|$($r[0].Changed)|$($r[0].Removed)|$($r[0].Remaining)" 'NTLM'
+    Assert-Equal 'Reset|0|1|none' "$($r[1].Result)|$($r[1].Changed)|$($r[1].Removed)|$($r[1].Remaining)" 'auditing'
+    $doc = Read-NmGpoGptTmpl -Id "$($ntlm.Id)"
+    if ($doc.Contains('System Access') -and $doc['System Access'].Contains('enableguestaccount')) { throw 'extra not removed' }
+    if ($global:FakeGpoAd[$ntlm.Path].versionNumber -le $v) { throw 'version not raised' }
+    Assert-Equal 23 @(Read-NmGpoAudit -Id "$($aud.Id)").Count 'audit back to the baseline'
+    $true
+}
+
+Test-That 'Align: -WhatIf, Cancel and a matching GPO change nothing and make no backup; a failed backup stops it' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac | Out-Null
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - Enforce UAC')
+    Assert-Equal 'Already matches' $r[0].Result 'matching'
+    $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('EnableLUA=4,1', 'EnableLUA=4,0')) -Encoding Unicode
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - Enforce UAC' -WhatIf)
+    Assert-Equal 'WhatIf: not changed|1' "$($r[0].Result)|$($r[0].Changed)" 'WhatIf'
+    Answer 'n'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - Enforce UAC')
+    Assert-Equal 'Cancelled' $r[0].Result 'cancel'
+    Assert-Equal 0 $global:Backups.Count 'no backup'
+    $global:FailBackup = $true
+    Answer 'y'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - Enforce UAC')
+    if ($r[0].Result -notlike 'Failed: not changed, the backup failed*') { throw "backup failure: $($r[0].Result)" }
+    if ((Read-NmGpoGptTmpl -Id "$($global:FakeGpos[0].Id)")['Registry Values']['machine\software\microsoft\windows\currentversion\policies\system\enablelua'] -notlike '*4,0') { throw 'changed without a backup' }
+    $true
+}
+
+Test-That 'Align: a GPO linked at the domain root or Domain Controllers needs the domain''s short name typed' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ldaps-hardening-dcs | Out-Null
+    $global:FakeLinks['Security - LDAPS Hardening (DC''s)'] = @(@{ Path = 'Domain Controllers'; Enabled = $true })
+    $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('LDAPServerIntegrity=4,2', 'LDAPServerIntegrity=4,1')) -Encoding Unicode
+    Answer 'y'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - LDAPS Hardening (DC''s)')
+    Assert-Equal 'Cancelled' $r[0].Result 'Y is not enough'
+    Answer 'clientx'
+    $r = @(Set-NmGpoToBaseline -Gpo 'Security - LDAPS Hardening (DC''s)')
+    Assert-Equal 'Aligned' $r[0].Result 'typed'
+    $true
+}
+
+Test-That 'Restore: lists the backups newest first; the current state is backed up, the domain name typed, Restore-GPO on the session DC' {
+    Set-DriftedScreenTimeout
+    Answer 'y'
+    $a = @(Set-NmGpoToBaseline -Gpo 'Security - Screen Timeout')
+    $list = @(Get-NmGpoBackup)
+    Assert-Equal 1 $list.Count 'one backup'
+    Assert-Equal 'Security - Screen Timeout' $list[0].Gpo 'listed'
+    $items = @(Get-NmGpoRestorePickItem)
+    if ($items[0].Detail -notlike 'Before align*') { throw "pick detail: $($items[0].Detail)" }
+    $r = @(Restore-NmGpoBackup -Backup $list[0].Name -WhatIf)
+    Assert-Equal 'WhatIf: not changed' $r[0].Result 'WhatIf'
+    Answer 'y'
+    $r = @(Restore-NmGpoBackup -Backup $list[0].Name)
+    Assert-Equal 'Cancelled' $r[0].Result 'Y is not enough: a restore replaces everything'
+    Answer 'clientx'
+    $r = @(Restore-NmGpoBackup -Backup $list[0].Name)
+    Assert-Equal 'Restored' $r[0].Result 'restored'
+    Assert-Equal "$($list[0].BackupId) @DC01.clientx.local" $global:Restores[0] 'Restore-GPO'
+    Assert-Equal 2 @(Get-NmGpoBackup).Count 'the state before the restore was backed up'
+    $r = @(Restore-NmGpoBackup -Backup 'no-such-backup')
+    Assert-Equal 'Failed: no such backup' $r[0].Result 'unknown'
+    $true
+}
+
+Test-That 'Window: Align with baseline shows only on GPOs that do not match; after it, Compare runs again' {
+    $t = Get-NmTool -Id gpo-compare
+    Assert-Equal 'Align with baseline|Edit GPO|View GPO|GPMC report' (($t.CardActions | ForEach-Object Label) -join '|') 'buttons'
+    Assert-Equal 'Edit GPO|View GPO|GPMC report' ((Get-NmGuiCardActionShown -Actions $t.CardActions -Row ([pscustomobject]@{ GpoState = 'Matches' }) | ForEach-Object Label) -join '|') 'matching: no Align'
+    Assert-Equal 4 @(Get-NmGuiCardActionShown -Actions $t.CardActions -Row ([pscustomobject]@{ GpoState = "Doesn't match" })).Count 'not matching: Align'
+    Set-DriftedScreenTimeout
+    $script:NmGui.RefreshAfterAction = $false
+    Answer '1', 'y'
+    Invoke-NmGpoCardAlign -Row ([pscustomobject]@{ Gpo = 'Security - Screen Timeout' }) 6>$null | Out-Null
+    if (-not $script:NmGui.RefreshAfterAction) { throw 'Compare would not run again' }
+    $script:NmGui.RefreshAfterAction = $false
+    $sec = @(@(Get-NmAdminCenter | Where-Object Id -eq gpo)[0].Sections | Where-Object Name -eq 'Baselines')[0]
+    Assert-Equal 'gpo-build,gpo-compare,gpo-align,gpo-restore' ((@($sec.Items | ForEach-Object { $_.Tool.Id })) -join ',') 'menu order: Build, Compare, Align, Restore'
+    $true
+}
+
 Write-Host 'The window' -ForegroundColor Cyan
 Test-That 'Window form: baselines and GPOs are pick lists, the compare baseline a drop-down; nothing typed' {
     $b = @(Get-NmGuiParamSpec -Tool (Get-NmTool -Id gpo-build))
@@ -863,7 +1053,7 @@ Test-That 'Card buttons: Edit GPO opens Microsoft''s editor on the DC in use; Vi
     New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
     $rows = @(Compare-NmGpoBaseline -All)
     $t = Get-NmTool -Id gpo-compare
-    Assert-Equal 'Edit GPO|View GPO|GPMC report' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
+    Assert-Equal 'Align with baseline|Edit GPO|View GPO|GPMC report' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
     Assert-Equal 'Edit GPO|View GPO|GPMC report' (((Get-NmTool -Id gpo-build).CardActions | ForEach-Object Label) -join '|') 'build buttons'
     Invoke-NmGpoCardEdit -Row $rows[0]
     Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'editor'

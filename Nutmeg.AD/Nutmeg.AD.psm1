@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.21
+    Version: 0.7.22
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.22 - gpo-align (Align or Reset a GPO to its baseline, backed up first) and gpo-restore; Align on Compare's cards for GPOs
+             that do not match; tool Order; card actions that hide or refresh. Issue #43.
     0.7.21 - Fixed: card buttons (Edit GPO, View GPO, GPMC report) failed with 'call depth overflow'; the bulk action got the
              wrong label for the same reason. Tests for both.
     0.7.20 - States are not the brand ($script:NmGuiStateColors): loaded modules and their dots green, running steps blue.
@@ -95,7 +97,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.21'
+$script:ModuleVersion = '0.7.22'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

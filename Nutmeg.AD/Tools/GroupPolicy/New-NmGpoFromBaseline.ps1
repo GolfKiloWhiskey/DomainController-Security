@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.4
+    Version: 0.7.5
 
 .SYNOPSIS
     Builds new GPOs from the baselines in Nutmeg.AD\Baselines, setting by setting.
@@ -33,6 +33,7 @@
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening
 
 .VERSIONING
+    0.7.5 - First in its section (Order): Build, Compare, Align, Restore.
     0.7.4 - View GPO in the app; GPMC report for GPMC's own.
     0.7.3 - Edit GPO and View GPO on each built GPO's card.
     0.7.2 - The window: baselines picked from a list (name, what it does, what it asks, suggested links); each
@@ -44,10 +45,11 @@
 $NmTool = @{
     Name     = 'Build GPOs from Baselines'
     Id       = 'gpo-build'
+    Order    = 1                            # Build, Compare, Align, Restore
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'Pick baselines, answer their parameters, and build each as a new GPO (not linked)'
-    Version  = '0.7.4'
+    Version  = '0.7.5'
     Kind     = 'ReportAndChange'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')

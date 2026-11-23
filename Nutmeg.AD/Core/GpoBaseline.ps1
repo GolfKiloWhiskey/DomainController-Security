@@ -49,7 +49,7 @@ function Invoke-NmBaselineWrite {
         The GPO from New-GPO / Get-GPO (its Id and Path are used).
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)]$Gpo, [Parameter(Mandatory)]$Baseline, [hashtable]$Values = @{})
+    param([Parameter(Mandatory)]$Gpo, [Parameter(Mandatory)]$Baseline, [hashtable]$Values = @{}, [string[]]$SettingId = @())
     $gp = Get-NmGPParams
     $id = "$($Gpo.Id)"
     $rows = New-Object System.Collections.Generic.List[object]
@@ -58,6 +58,8 @@ function Invoke-NmBaselineWrite {
     $audit = New-Object System.Collections.Generic.List[object]
     $auditSettings = New-Object System.Collections.Generic.List[object]
     $settings = @($Baseline.Settings)
+    # -SettingId: only these settings (gpo-align writes what differs, nothing else).
+    if (@($SettingId | Where-Object { $_ }).Count) { $settings = @($settings | Where-Object { $SettingId -contains "$($_.Id)" }) }
     $i = 0
     foreach ($raw in $settings) {
         $i++
@@ -186,11 +188,13 @@ function Get-NmGpoLiveItem {
         $hive = if ($side -eq 'User') { 'HKCU' } else { 'HKLM' }
         foreach ($e in @(Read-NmGpoRegistryPol -Id $Id -Side $side)) {
             $out.Add([pscustomobject]@{ Ident = "policy|$($side.ToLower())|$($e.Key.ToLower())|$($e.ValueName.ToLower())"; Kind = 'Policy'
-                Label = "$hive\$($e.Key)\$($e.ValueName)"; Value = (Get-NmRegItemValue -Type $e.Type -Value $e.Value); Members = $null })
+                Label = "$hive\$($e.Key)\$($e.ValueName)"; Value = (Get-NmRegItemValue -Type $e.Type -Value $e.Value); Members = $null
+                Raw = @{ Side = $side; Key = "$hive\$($e.Key)"; ValueName = $e.ValueName } })
         }
         foreach ($e in @(Read-NmGpoPrefRegistry -Id $Id -Side $side)) {
             $out.Add([pscustomobject]@{ Ident = "pref|$($side.ToLower())|$("$($e.Hive)\$($e.Key)".ToLower())|$($e.ValueName.ToLower())"; Kind = 'PrefRegistry'
-                Label = "$($e.Hive)\$($e.Key)\$($e.ValueName) ($($e.Action))"; Value = (Get-NmRegItemValue -Type $e.Type -Value $e.Value); Members = $null })
+                Label = "$($e.Hive)\$($e.Key)\$($e.ValueName) ($($e.Action))"; Value = (Get-NmRegItemValue -Type $e.Type -Value $e.Value); Members = $null
+                Raw = @{ Side = $side; Key = "$($e.Hive)\$($e.Key)"; ValueName = $e.ValueName } })
         }
     }
     $inf = Read-NmGpoGptTmpl -Id $Id
@@ -198,18 +202,21 @@ function Get-NmGpoLiveItem {
     $lhs = { param($line) if ($line -match '^\s*([^=]+?)\s*=') { $Matches[1] } else { $line } }
     if ($inf.Contains('Registry Values')) {
         foreach ($l in $inf['Registry Values'].Values) {
-            $out.Add([pscustomobject]@{ Ident = "secopt|$((& $lhs $l).ToLower())"; Kind = 'SecurityOption'; Label = (& $lhs $l); Value = (& $rhs $l); Members = $null })
+            $out.Add([pscustomobject]@{ Ident = "secopt|$((& $lhs $l).ToLower())"; Kind = 'SecurityOption'; Label = (& $lhs $l); Value = (& $rhs $l); Members = $null
+                Raw = @{ Section = 'Registry Values'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
     if ($inf.Contains('System Access')) {
         foreach ($l in $inf['System Access'].Values) {
-            $out.Add([pscustomobject]@{ Ident = "sysaccess|$((& $lhs $l).ToLower())"; Kind = 'SystemAccess'; Label = (& $lhs $l); Value = ((& $rhs $l).Trim('"')); Members = $null })
+            $out.Add([pscustomobject]@{ Ident = "sysaccess|$((& $lhs $l).ToLower())"; Kind = 'SystemAccess'; Label = (& $lhs $l); Value = ((& $rhs $l).Trim('"')); Members = $null
+                Raw = @{ Section = 'System Access'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
     if ($inf.Contains('Privilege Rights')) {
         foreach ($l in $inf['Privilege Rights'].Values) {
             $members = @((& $rhs $l) -split ',' | Where-Object { $_.Trim() } | ForEach-Object { ConvertTo-NmMemberKey -Member $_ })
-            $out.Add([pscustomobject]@{ Ident = "right|$((& $lhs $l).ToLower())"; Kind = 'UserRight'; Label = (& $lhs $l); Value = ''; Members = $members })
+            $out.Add([pscustomobject]@{ Ident = "right|$((& $lhs $l).ToLower())"; Kind = 'UserRight'; Label = (& $lhs $l); Value = ''; Members = $members
+                Raw = @{ Section = 'Privilege Rights'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
     if ($inf.Contains('Group Membership')) {
@@ -219,21 +226,23 @@ function Get-NmGpoLiveItem {
             $g = ConvertTo-NmMemberKey -Member $Matches[1]
             $which = $Matches[2].ToLower()
             $members = @((& $rhs $l) -split ',' | Where-Object { $_.Trim() } | ForEach-Object { ConvertTo-NmMemberKey -Member $_ })
-            $out.Add([pscustomobject]@{ Ident = "group|$($g.ToLower())|$which"; Kind = 'RestrictedGroup'; Label = "$(Get-NmAccountLabel -Sid $g) ($which)"; Value = ''; Members = $members })
+            $out.Add([pscustomobject]@{ Ident = "group|$($g.ToLower())|$which"; Kind = 'RestrictedGroup'; Label = "$(Get-NmAccountLabel -Sid $g) ($which)"; Value = ''; Members = $members
+                Raw = @{ Section = 'Group Membership'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
     if ($inf.Contains('Service General Setting')) {
         foreach ($l in $inf['Service General Setting'].Values) {
             if ($l -notmatch '^\s*"([^"]+)"\s*,\s*(\d+)') { continue }
             $mode = switch ([int]$Matches[2]) { 2 { 'Automatic' } 3 { 'Manual' } 4 { 'Disabled' } default { "$_" } }
-            $out.Add([pscustomobject]@{ Ident = "service|$($Matches[1].ToLower())"; Kind = 'Service'; Label = $Matches[1]; Value = $mode; Members = $null })
+            $out.Add([pscustomobject]@{ Ident = "service|$($Matches[1].ToLower())"; Kind = 'Service'; Label = $Matches[1]; Value = $mode; Members = $null
+                Raw = @{ Section = 'Service General Setting'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
     foreach ($a in @(Read-NmGpoAudit -Id $Id)) {
         $name = @($script:NmBaselineAuditValues.Keys | Where-Object { $script:NmBaselineAuditValues[$_] -eq $a.Value })[0]
         $label = Get-NmAuditSubcategoryName -Guid $a.Guid
         if (-not $label) { $label = $a.Subcategory }
-        $out.Add([pscustomobject]@{ Ident = "audit|$($a.Guid)"; Kind = 'Audit'; Label = $label; Value = "$name"; Members = $null })
+        $out.Add([pscustomobject]@{ Ident = "audit|$($a.Guid)"; Kind = 'Audit'; Label = $label; Value = "$name"; Members = $null; Raw = @{ Guid = $a.Guid } })
     }
     return $out.ToArray()
 }
@@ -401,7 +410,7 @@ function Compare-NmGpoWithBaseline {
         if ($used.ContainsKey($l.Ident)) { continue }
         $actText = if ($null -ne $l.Members) { Format-NmMemberList -Members $l.Members } else { $l.Value }
         $rows.Add([pscustomobject]@{ Gpo = $name; Baseline = $Baseline.Name; Setting = $l.Label; SettingId = ''; Kind = $l.Kind
-            Expected = '(not in the baseline)'; Actual = $actText; Result = 'Extra'; Detail = '' })
+            Expected = '(not in the baseline)'; Actual = $actText; Result = 'Extra'; Detail = ''; Ident = $l.Ident; Raw = $l.Raw })
     }
     return $rows.ToArray()
 }
@@ -650,4 +659,203 @@ function Invoke-NmGpoCardView {
     if (-not $Row -or -not "$($Row.GpoId)") { Write-NmLog 'This card has no GPO to show.' -Level WARN; return }
     $m = ConvertTo-NmGpoViewModel -Xml (Get-NmGpoReportXml -Id "$($Row.GpoId)")
     Show-NmGpoViewer -Model $m
+}
+
+
+# ---------------------------------------------------------------------------
+# Aligning a GPO with its baseline (issue #43): the plan, removing extras, backups
+# ---------------------------------------------------------------------------
+function Get-NmGpoParamValue {
+    # The parameter values a GPO already has, read from Compare's rows ("TimeoutSeconds = 600";
+    # members as "{RdpGroup} = name").
+    [CmdletBinding()]
+    param([object[]]$Rows = @())
+    $v = @{}
+    foreach ($r in @($Rows | Where-Object { $_.Result -eq 'Matches' -and "$($_.Detail)".Trim() })) {
+        foreach ($part in ("$($r.Detail)" -split '; ')) {
+            if ($part -match '^\{?([A-Za-z][A-Za-z0-9]*)\}? = (.*)$' -and -not $v.ContainsKey($Matches[1])) { $v[$Matches[1]] = $Matches[2].Trim() }
+        }
+    }
+    return $v
+}
+
+function Get-NmBaselineExpanded {
+    # A baseline with its placeholders filled in: compared with a GPO, every difference is something to write.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Baseline, [hashtable]$Values = @{})
+    [pscustomobject]@{
+        Id = $Baseline.Id; Name = $Baseline.Name; Version = $Baseline.Version; Parameters = @()
+        Settings = @(foreach ($s in @($Baseline.Settings)) { Expand-NmBaselineValue -Value $s -Values $Values })
+    }
+}
+
+function Get-NmGpoAlignPlan {
+    <#
+    .SYNOPSIS
+        What aligning a GPO with its baseline would change. Returns Mode, Values (the parameters used),
+        Problems, Changes (SettingId, Setting, From, To) and Removals (extras, Reset only).
+    .DESCRIPTION
+        - Align: the baseline's settings only. Values the GPO already has are kept (Compare reads them);
+          missing ones take their defaults. Extra settings stay.
+        - Reset: the GPO made the baseline exactly: every parameter at its default (unless -Values
+          gives one), and the extra settings removed.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Gpo, [Parameter(Mandatory)]$Baseline, [ValidateSet('Align', 'Reset')][string]$Mode = 'Align', [hashtable]$Values = @{})
+    $given = @{}
+    if ($Mode -eq 'Align') { $given = Get-NmGpoParamValue -Rows @(Compare-NmGpoWithBaseline -Gpo $Gpo -Baseline $Baseline) }
+    foreach ($k in $Values.Keys) { $given[$k] = $Values[$k] }
+    $resolved = Resolve-NmBaselineValues -Baseline $Baseline -Given $given
+    $plan = [pscustomobject]@{ Mode = $Mode; Values = $resolved.Values; Problems = @($resolved.Problems); Changes = @(); Removals = @(); Kept = 0 }
+    if ($plan.Problems.Count) { return $plan }
+    $target = Get-NmBaselineExpanded -Baseline $Baseline -Values $resolved.Values
+    $rows = @(Compare-NmGpoWithBaseline -Gpo $Gpo -Baseline $target)
+    $plan.Changes = @(foreach ($r in @($rows | Where-Object { $_.Result -in 'Different', 'Missing', 'Not filled' })) {
+        [pscustomobject]@{ SettingId = $r.SettingId; Setting = $r.Setting; Kind = $r.Kind; From = $r.Actual; To = $r.Expected }
+    })
+    $extras = @($rows | Where-Object { $_.Result -eq 'Extra' })
+    if ($Mode -eq 'Reset') {
+        $plan.Removals = @(foreach ($r in $extras) { [pscustomobject]@{ Setting = $r.Setting; Kind = $r.Kind; From = $r.Actual; Ident = $r.Ident; Raw = $r.Raw } })
+    } else { $plan.Kept = $extras.Count }
+    return $plan
+}
+
+function Remove-NmGptTmplLine {
+    # Takes lines out of the GPO's GptTmpl.inf (Section + LineKey each) and writes it back.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][object[]]$Lines)
+    $path = Get-NmGpoFilePath -Id $Id -File GptTmpl
+    $doc = ConvertFrom-NmInf -Text (Read-NmGpoText -Path $path)
+    foreach ($l in $Lines) { if ($doc.Contains($l.Section)) { $doc[$l.Section].Remove("$($l.LineKey)") } }
+    Write-NmGpoText -Path $path -Text (ConvertTo-NmInf -Doc $doc) -Encoding Unicode
+}
+
+function Remove-NmGpoAuditRow {
+    # Takes subcategories (by GUID) out of the GPO's audit.csv and writes it back.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][string[]]$Guid)
+    $path = Get-NmGpoFilePath -Id $Id -File Audit
+    $keep = @(ConvertFrom-NmAuditCsv -Text (Read-NmGpoText -Path $path) | Where-Object { $Guid -notcontains $_.Guid })
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append("$script:NmAuditCsvHeader`r`n")
+    foreach ($r in $keep) { [void]$sb.Append(",System,$($r.Subcategory),$($r.Guid),$($script:NmAuditInclusionText[[int]$r.Value]),,$($r.Value)`r`n") }
+    Write-NmGpoText -Path $path -Text $sb.ToString() -Encoding Ascii
+}
+
+function Remove-NmGpoExtra {
+    <#
+    .SYNOPSIS
+        Removes extra settings (Compare's Extra rows: Kind and Raw) from a GPO: templates and
+        preferences with the GroupPolicy cmdlets, the rest from its files, then raises its version.
+        Returns a row per setting (Removed, Failed: reason).
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Gpo, [object[]]$Items = @())
+    $gp = Get-NmGPParams
+    $id = "$($Gpo.Id)"
+    $out = New-Object System.Collections.Generic.List[object]
+    $inf = New-Object System.Collections.Generic.List[object]
+    $guids = New-Object System.Collections.Generic.List[string]
+    foreach ($it in $Items) {
+        $row = [pscustomobject]@{ Setting = $it.Setting; Kind = $it.Kind; Result = 'Removed' }
+        try {
+            switch ("$($it.Kind)") {
+                'Policy'       { Remove-GPRegistryValue -Guid $id -Key "$($it.Raw.Key)" -ValueName "$($it.Raw.ValueName)" @gp -ErrorAction Stop | Out-Null }
+                'PrefRegistry' { Remove-GPPrefRegistryValue -Guid $id -Context "$($it.Raw.Side)" -Key "$($it.Raw.Key)" -ValueName "$($it.Raw.ValueName)" @gp -ErrorAction Stop | Out-Null }
+                'Audit'        { $guids.Add("$($it.Raw.Guid)") }
+                default        { if (-not $it.Raw -or -not $it.Raw.Section) { throw 'not something the toolkit can remove' }; $inf.Add([pscustomobject]@{ Section = $it.Raw.Section; LineKey = $it.Raw.LineKey }) }
+            }
+        } catch { $row.Result = "Failed: $($_.Exception.Message)" }
+        $out.Add($row)
+    }
+    $files = $false
+    if ($inf.Count) { Remove-NmGptTmplLine -Id $id -Lines $inf.ToArray(); $files = $true }
+    if ($guids.Count) { Remove-NmGpoAuditRow -Id $id -Guid $guids.ToArray(); $files = $true }
+    if ($files) { $null = Update-NmGpoVersion -Id $id -Path "$($Gpo.Path)" }
+    return $out.ToArray()
+}
+
+function Get-NmGpoBackupRoot {
+    # Where GPO backups are kept: <DataRoot>\GpoBackups (C:\Temp\NutmegAD\GpoBackups).
+    return (Join-Path $script:NmConfig.DataRoot 'GpoBackups')
+}
+
+function Invoke-NmGpoBackupCmd {
+    # Backup-GPO into a folder; returns the backup's Id (a wrapper for the tests).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Id, [Parameter(Mandatory)][string]$Path)
+    $gp = Get-NmGPParams
+    $b = Backup-GPO -Guid $Id -Path $Path @gp -ErrorAction Stop
+    return "$($b.Id)"
+}
+
+function Save-NmGpoBackup {
+    <#
+    .SYNOPSIS
+        Backs up a GPO (Backup-GPO) into its own folder under GpoBackups, with backup.json saying what,
+        when and why, so Restore GPO from Backup can list it. Returns the folder.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Gpo, [string]$Reason = '')
+    $safe = ("$($Gpo.DisplayName)" -replace '[^A-Za-z0-9 ._()-]', '_').Trim()
+    # A folder of its own, even for two backups in the same second (a restore backs up first).
+    $base = Join-Path (Get-NmGpoBackupRoot) ("{0}_{1:yyyyMMdd-HHmmss}" -f $safe, (Get-Date))
+    $folder = $base
+    $n = 1
+    while (Test-Path -LiteralPath $folder) { $n++; $folder = "${base}_$n" }
+    New-Item -Path $folder -ItemType Directory -Force | Out-Null
+    $bid = Invoke-NmGpoBackupCmd -Id "$($Gpo.Id)" -Path $folder
+    [pscustomobject]@{ Gpo = "$($Gpo.DisplayName)"; GpoId = "$($Gpo.Id)"; BackupId = $bid; Time = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+        Reason = $Reason; Domain = "$((Get-NmSession).Domain)"; By = [Environment]::UserName } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'backup.json') -Encoding UTF8
+    Write-NmLog "Backed up GPO '$($Gpo.DisplayName)' to $folder." -Level INFO
+    return $folder
+}
+
+function Get-NmGpoBackup {
+    # The backups the toolkit made (newest first): Folder, Gpo, GpoId, BackupId, Time, Reason, Domain.
+    [CmdletBinding()]
+    param()
+    $root = Get-NmGpoBackupRoot
+    if (-not (Test-Path -LiteralPath $root)) { return @() }
+    @(foreach ($d in @(Get-ChildItem -LiteralPath $root -Directory)) {
+        $j = Join-Path $d.FullName 'backup.json'
+        if (-not (Test-Path -LiteralPath $j)) { continue }
+        try { $m = Get-Content -LiteralPath $j -Raw | ConvertFrom-Json } catch { continue }
+        [pscustomobject]@{ Folder = $d.FullName; Name = $d.Name; Gpo = "$($m.Gpo)"; GpoId = "$($m.GpoId)"; BackupId = "$($m.BackupId)"; Time = "$($m.Time)"; Reason = "$($m.Reason)"; Domain = "$($m.Domain)" }
+    }) | Sort-Object Time -Descending
+}
+
+function Invoke-NmGpoRestoreCmd {
+    # Restore-GPO from a backup folder (a wrapper for the tests).
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$BackupId, [Parameter(Mandatory)][string]$Path)
+    $gp = Get-NmGPParams
+    Restore-GPO -BackupId $BackupId -Path $Path @gp -ErrorAction Stop | Out-Null
+}
+
+# Compare's card button for a GPO that does not match (gpo-align's entry is called at run time).
+function Read-NmGpoAlignMode {
+    # Align or Reset, in words a technician can choose between. Returns the mode, or '' for Back.
+    [CmdletBinding()]
+    param([string]$Gpo = '')
+    $opts = @(
+        [pscustomobject]@{ Key = '1'; Label = 'Align the baseline''s settings only'; Detail = 'missing and different settings put right; your values and any extra settings kept' }
+        [pscustomobject]@{ Key = '2'; Label = 'Reset to the baseline exactly'; Detail = 'the baseline''s default values, and settings not in the baseline removed' }
+    )
+    $pick = Show-NmMenu -Title $(if ($Gpo) { "Align $Gpo with its baseline" } else { 'Align or reset?' }) -Back -Options $opts -Default '1'
+    switch ($pick) { '1' { return 'Align' } '2' { return 'Reset' } default { return '' } }
+}
+
+function Invoke-NmGpoCardAlign {
+    # Compare's card button: asks Align or Reset, then aligns this GPO (with its approval) and shows the
+    # result; Compare runs again afterwards so the card shows the new state.
+    [CmdletBinding()]
+    param($Row)
+    if (-not $Row -or -not "$($Row.Gpo)") { return }
+    $mode = Read-NmGpoAlignMode -Gpo "$($Row.Gpo)"
+    if (-not $mode) { return }
+    $r = @(Set-NmGpoToBaseline -Gpo @("$($Row.Gpo)") -Mode $mode)
+    $r | Format-Table Gpo, Mode, Changed, Removed, Remaining, Result -AutoSize -Wrap | Out-Host
+    foreach ($x in $r) { if (@($x.Details).Count) { $x.Details | Format-Table Action, Setting, From, To, Result -AutoSize -Wrap | Out-Host } }
+    if (@($r | Where-Object { $_.Result -in 'Aligned', 'Reset' -or $_.Result -like 'Failed: *setting*' }).Count -and $script:NmGui) { $script:NmGui.RefreshAfterAction = $true }
 }

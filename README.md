@@ -80,6 +80,8 @@ to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Wind
 | New forest build | First DC | New Forest Build (first DC): pre-flight, questions, static IP, name, AD DS, promotion, then on to the toolkit; phases 2 to 5 to come | `new-forest` | Change |
 | Group Policy | Baselines | Build GPOs from Baselines: pick baselines, answer their parameters, each becomes a new GPO (not linked; an existing GPO is never overwritten) | `gpo-build` | Report + Change |
 | Group Policy | Baselines | Compare GPOs with Baselines: missing, different, extra and not-filled settings, per GPO | `gpo-compare` | Report |
+| Group Policy | Baselines | Align GPOs with Baselines: put a GPO back to its baseline (only its settings, or reset exactly), backed up first; from Compare's cards too | `gpo-align` | Report + Change |
+| Group Policy | Baselines | Restore GPO from Backup: put a GPO back from a backup the toolkit made (its current state backed up first) | `gpo-restore` | Report + Change |
 | Reports | Reports | DC Report: a report per DC (HTML and PDF): roles, DNS order, replication, SYSVOL, health, dcdiag | `dc-report` | Report |
 | Toolkit | Diagnostics | Session and Prerequisite Check (PowerShell, elevation, DC, modules, domain, admin groups, folders) | `session-info` | Report |
 

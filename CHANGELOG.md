@@ -6,6 +6,45 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.22 - 11/23/2026
+
+**Align GPOs with their baselines, and restore them from a backup** (issue #43, Cliff's answers:
+Build / Compare / Align in the menu, extras stay unless you choose to reset, a backup every time and
+a way to restore).
+
+- **Align GPOs with Baselines** (`gpo-align`), Group Policy > Baselines, in two modes:
+  - **Align the baseline's settings only:**
+    - missing settings are written and different ones put back;
+    - the GPO's own values are kept (a screen timeout of 600 stays 600);
+    - settings that aren't in the baseline are left alone, since they may be there for a reason.
+  - **Reset to the baseline exactly:** the baseline's default values (600 goes back to 900), and
+    settings that aren't in the baseline are removed.
+
+  These are the two behaviours behind your question 4: run one with Preview (WhatIf) to see exactly
+  what each would do before deciding.
+- **Every alignment:**
+  - **backs up the GPO first** (Backup-GPO, into `C:\Temp\NutmegAD\GpoBackups`), and changes nothing
+    if the backup fails;
+  - asks once per GPO, listing every change as "from X to Y" and every removal. A GPO linked at the
+    domain root or Domain Controllers needs the domain's short name typed;
+  - shows the baseline's own warnings first ("Run ready first" for Kerberos, NTLM, LDAPS);
+  - compares the GPO again afterwards ("still differ: none");
+  - records every change in run history;
+  - never touches links, filtering, delegation or WMI filters.
+- **On Compare's cards:** a GPO that doesn't match gets **Align with baseline**. It asks Align or
+  Reset, shows the approval, then Compare runs again so the card shows the new state. GPOs that match
+  don't show the button.
+- **Restore GPO from Backup** (`gpo-restore`):
+  - lists the toolkit's backups, newest first, with why each was made ("Before align with
+    security-enforce-uac 0.7.1");
+  - restores the one you pick, after backing up the GPO as it is now, so a restore can be undone too;
+  - needs the domain's short name typed, because a restore replaces every setting.
+- **Menu order:** Build, Compare, Align, Restore.
+- **Found by the tests and fixed:** two backups of the same GPO in the same second shared a folder,
+  so the safety copy made before a restore would have overwritten the backup being restored.
+- Not run on Windows yet: tested against stand-ins (289 tests). Please try both modes on a GPO
+  changed by hand in GPMC (WhatIf first), then a restore.
+
 ## 0.7.21 - 11/23/2026
 
 **Fixed: Edit GPO, View GPO and GPMC report failed with "call depth overflow"** (Cliff, from the

@@ -138,7 +138,9 @@ function Register-NmTool {
     foreach ($a in @($Definition.CardActions | Where-Object { $_ })) {
         if ($a -isnot [hashtable] -or -not "$($a.Label)".Trim() -or -not $a.Action) { & $fail 'Each CardActions entry needs Label and Action.'; return }
         if (-not (Get-Command -Name $a.Action -CommandType Function -ErrorAction SilentlyContinue)) { & $fail "CardActions: function '$($a.Action)' is not defined."; return }
-        $cardActions.Add([pscustomobject]@{ Label = "$($a.Label)"; Action = "$($a.Action)"; ToolTip = "$($a.ToolTip)" })
+        $hide = $null
+        if ($a.Hide) { $hide = [pscustomobject]@{ Column = "$($a.Hide.Column)"; Values = @($a.Hide.Values | ForEach-Object { "$_" }) } }
+        $cardActions.Add([pscustomobject]@{ Label = "$($a.Label)"; Action = "$($a.Action)"; ToolTip = "$($a.ToolTip)"; Hide = $hide })
     }
     foreach ($hook in 'Prompt', 'Summary', 'BeforeRun') {
         if ($Definition[$hook] -and -not (Get-Command -Name $Definition[$hook] -CommandType Function -ErrorAction SilentlyContinue)) {
@@ -190,6 +192,7 @@ function Register-NmTool {
         CardNoun       = "$($Definition.CardNoun)"      # grouped cards: the headline counts cards ("9 GPOs")
         CardActions    = $cardActions.ToArray()
         CardBadge      = "$($Definition.CardBadge)"     # grouped cards: a second label from a column constant per card
+        Order          = $(if ($null -ne $Definition.Order -and "$($Definition.Order)" -match '^\d+$') { [int]$Definition.Order } else { 100 })   # place in its section (then by name)
         BeforeRun      = $Definition.BeforeRun
         BulkAction     = $Definition.BulkAction
         BulkActions    = @($Definition.BulkActions | Where-Object { "$_".Trim() } | ForEach-Object { "$_" })
@@ -272,7 +275,8 @@ function Get-NmAdminCenter {
                 }
                 [pscustomobject]@{ Tool = $t; IsHome = $isHome; Note = $note }
             }
-            $items = @($items | Sort-Object { $_.Tool.Name })
+            # Order first (gpo: Build, Compare, Align, Restore), then the name.
+            $items = @($items | Sort-Object { $_.Tool.Order }, { $_.Tool.Name })
             if ($items.Count) { [pscustomobject]@{ Name = $n; Items = $items } }
         }
 
