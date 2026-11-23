@@ -115,6 +115,19 @@ function global:Set-GPPrefRegistryValue {
     Set-Content -LiteralPath (Join-Path $folder 'Registry.xml') -Value $xml
     Add-FakeGpoVersion -Gpo $g -By 1 -Ext '{B087BE9D-ED37-454F-AF9C-04291E351182}{BEE07A6A-EC9F-4659-B8C9-0B1937907C83}'
 }
+$global:FakeLinks = @{}         # GPO name -> @(@{ Path; Enabled; Enforced }); none = not linked
+$global:FakeComputerOff = @{}   # GPO name -> $true when its computer settings are disabled
+$global:Opened = New-Object System.Collections.Generic.List[string]
+function global:Get-GPOReport {
+    param($Guid, [string]$ReportType, [string]$Path, $Domain, $Server, $ErrorAction)
+    $g = Find-FakeGpo -Guid "$Guid"
+    if ($ReportType -eq 'Html') { Set-Content -LiteralPath $Path -Value "<html>$($g.DisplayName)</html>"; return }
+    $links = foreach ($l in @($global:FakeLinks[$g.DisplayName])) { if ($l) {
+        $som = if ($l.Path -eq 'Domain root') { 'clientx.local' } else { "clientx.local/$($l.Path)" }
+        "<LinksTo><SOMName>x</SOMName><SOMPath>$som</SOMPath><Enabled>$("$([bool]$l.Enabled)".ToLower())</Enabled><NoOverride>$("$([bool]$l.Enforced)".ToLower())</NoOverride></LinksTo>" } }
+    $comp = if ($global:FakeComputerOff[$g.DisplayName]) { 'false' } else { 'true' }
+    "<?xml version=`"1.0`" encoding=`"utf-16`"?><GPO xmlns=`"http://www.microsoft.com/GroupPolicy/Settings`"><Name>$($g.DisplayName)</Name><Computer><Enabled>$comp</Enabled></Computer><User><Enabled>true</Enabled></User>$($links -join '')</GPO>"
+}
 function global:Get-ADObject {
     param($Identity, $Properties, $Server, $ErrorAction)
     if (-not $global:FakeGpoAd.ContainsKey("$Identity")) { throw "Cannot find an object with identity: '$Identity'." }
@@ -147,6 +160,8 @@ $global:NmTestModuleG = $mod
     function script:Get-NmGpoFolder { param([string]$Id) Get-FakeGpoFolder $Id }
     function script:Assert-NmConnection { param($Services) $true }
     function script:Clear-NmScreen { }
+    function script:Start-NmGpoEditor { param([string]$Path) $global:Opened.Add("edit $Path"); "LDAP://DC01.clientx.local/$Path" }
+    function script:Open-NmReport { param($Path) $global:Opened.Add("open $(Split-Path -Leaf $Path)") }
 } $testRoot
 
 function global:Reset-Gpo {
@@ -161,6 +176,7 @@ function global:Reset-Gpo {
         $script:NmSession.Services = @{ AD = $true; GPO = $true }
     }
     $global:FakeGpos.Clear(); $global:FakeGpoAd.Clear(); $global:GpCalls.Clear(); $global:FailRegistryValue = ''
+    $global:FakeLinks = @{}; $global:FakeComputerOff = @{}; $global:Opened.Clear()
     if (Test-Path $global:FakeSysvol) { Remove-Item $global:FakeSysvol -Recurse -Force }
     New-Item -Path $global:FakeSysvol -ItemType Directory -Force | Out-Null
 }
@@ -534,7 +550,7 @@ Write-Host 'gpo-compare' -ForegroundColor Cyan
 Test-That 'Compare: a GPO just built matches its baseline everywhere; the parameter value is shown' {
     Answer 'y', 'y', 'y', 'y'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-screen-timeout, network-time-synchronization, security-domain-auditing-dcs -Values @{ TimeoutSeconds = 600 } | Out-Null
-    $rows = @(Compare-NmGpoBaseline -All)
+    $rows = @(Compare-NmGpoBaseline -All | Where-Object Kind -ne 'Links')
     $notOk = @($rows | Where-Object { $_.Result -ne 'Matches' })
     if ($notOk.Count) { throw "not matching: $(($notOk | ForEach-Object { "$($_.Gpo): $($_.Setting) [$($_.Result)] exp '$($_.Expected)' got '$($_.Actual)'" }) -join ' / ')" }
     Assert-Equal (7 + 4 + 3 + 23) $rows.Count 'rows'
@@ -570,13 +586,13 @@ Test-That 'Compare: older baseline noted; unstamped GPO needs a baseline; -Basel
     Answer 'y'
     New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
     $global:FakeGpos[0].Description = 'Nutmeg baseline: security-ntlm-hardening 0.7.0'
-    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening')
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening' | Where-Object Kind -ne 'Links')
     Assert-Equal 'Note' $rows[0].Result 'note'
     Assert-Equal 'Matches' $rows[1].Result 'setting'
     $global:FakeGpos[0].Description = 'Made by hand'
     $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening')
     if ($rows[0].Result -notlike 'Failed: not built from a baseline*') { throw "unstamped: $($rows[0].Result)" }
-    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening' -Baseline security-ntlm-hardening)
+    $rows = @(Compare-NmGpoBaseline -Gpo 'Security - NTLM Hardening' -Baseline security-ntlm-hardening | Where-Object Kind -ne 'Links')
     Assert-Equal 'Matches' $rows[0].Result 'with -Baseline'
     $rows = @(Compare-NmGpoBaseline -Gpo 'Security - LDAPS Hardening (Devices)' -Baseline security-ldaps-hardening-devices)
     if ($rows[0].Result -notlike 'Failed: no GPO*') { throw "unknown GPO: $($rows[0].Result)" }
@@ -597,12 +613,12 @@ Test-That 'Compare: user rights and restricted groups - a {Param} member matches
 '@
     Answer 'y'
     New-NmGpoFromBaseline -Baseline test-rights | Out-Null
-    $rows = @(Compare-NmGpoBaseline -All)
+    $rows = @(Compare-NmGpoBaseline -All | Where-Object Kind -ne 'Links')
     Assert-Equal 'Matches|Matches' (($rows | ForEach-Object Result) -join '|') 'results'
     Assert-Equal '{RdpGroup} = S-1-5-21-1000-2000-3000-1105' $rows[0].Detail 'parameter member'
     $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
     Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('*S-1-5-32-544,', '*S-1-5-32-544,*S-1-5-21-1000-2000-3000-512,')) -Encoding Unicode
-    $rows = @(Compare-NmGpoBaseline -All)
+    $rows = @(Compare-NmGpoBaseline -All | Where-Object Kind -ne 'Links')
     Assert-Equal 'Different' $rows[0].Result 'extra member'
     if ($rows[0].Actual -notlike '*Domain Admins*') { throw "SIDs not shown by name: $($rows[0].Actual)" }
     $true
@@ -674,16 +690,18 @@ Test-That 'Window cards for gpo-compare: one card per GPO, its status the worst,
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening | Out-Null
     $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
     Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('EnableLUA=4,1', 'EnableLUA=4,0')) -Encoding Unicode
+    $global:FakeLinks['Security - Enforce UAC'] = @(@{ Path = 'Domain root'; Enabled = $true })
+    $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $true })
     $rows = @(Compare-NmGpoBaseline -All)
-    Assert-Equal 'Different' $rows[0].Result 'problems first'
-    Assert-Equal 'User Account Control: Run all administrators in Admin Approval Mode = Enabled: expected 4,1, found 4,0' $rows[0].Line 'line'
+    Assert-Equal 'Linked|Different' "$($rows[0].Result)|$($rows[1].Result)" 'where it applies, then problems'
+    Assert-Equal 'User Account Control: Run all administrators in Admin Approval Mode = Enabled: expected 4,1, found 4,0' $rows[1].Line 'line'
     $t = Get-NmTool -Id gpo-compare
-    $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup
+    $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet
     Assert-Equal 2 $m.Cards 'cards'
     $uac = @($m.Items | Where-Object Title -eq 'Security - Enforce UAC')[0]
-    Assert-Equal 'Different|High' "$($uac.Status)|$($uac.Level)" 'UAC card status'
-    Assert-Equal 'Different|Matches (6)' (($uac.Fields | ForEach-Object Name) -join '|') 'UAC fields'
-    if ($uac.Fields[0].Value -notlike '*expected 4,1, found 4,0') { throw "line: $($uac.Fields[0].Value)" }
+    Assert-Equal "Doesn't match|High" "$($uac.Status)|$($uac.Level)" 'UAC card status'
+    Assert-Equal 'Linked|Different|Matches (6)' (($uac.Fields | ForEach-Object Name) -join '|') 'UAC fields'
+    if ($uac.Fields[1].Value -notlike '*expected 4,1, found 4,0') { throw "line: $($uac.Fields[1].Value)" }
     $ntlm = @($m.Items | Where-Object Title -eq 'Security - NTLM Hardening')[0]
     Assert-Equal 'Matches|OK' "$($ntlm.Status)|$($ntlm.Level)" 'NTLM card status'
     $true
@@ -782,6 +800,72 @@ Test-That 'Window: options fold into one line after Run, in the form''s words' {
 
 Test-That 'Window: the drop-down''s inner toggle stretches (under the Windows 11 theme it shrank to its arrow on the left)' {
     if ($script:NmGuiTheme -notmatch '<ToggleButton Focusable="False" ClickMode="Press" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"') { throw 'the ComboBox toggle is not pinned to stretch' }
+    $true
+}
+
+Test-That 'Where a GPO applies: links shown (disabled, enforced); not linked or all links off is amber; linked with its side disabled is red' {
+    Answer 'y', 'y', 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening, security-ldaps-hardening-dcs, security-screen-timeout | Out-Null
+    $global:FakeLinks['Security - Enforce UAC'] = @(@{ Path = 'Domain root'; Enabled = $true; Enforced = $true }, @{ Path = 'Devices/Workstations'; Enabled = $false })
+    $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $false })
+    $global:FakeLinks['Security - LDAPS Hardening (DC''s)'] = @(@{ Path = 'Domain Controllers'; Enabled = $true })
+    $global:FakeComputerOff['Security - LDAPS Hardening (DC''s)'] = $true
+    $rows = @(Compare-NmGpoBaseline -All)
+    $where = @{}; foreach ($r in @($rows | Where-Object Kind -eq 'Links')) { $where[$r.Gpo] = $r }
+    Assert-Equal 'Linked|Domain root (enforced); Devices/Workstations (disabled)' "$($where['Security - Enforce UAC'].Result)|$($where['Security - Enforce UAC'].Actual)" 'UAC'
+    Assert-Equal 'Not linked|Every link is disabled: it applies to nothing.' "$($where['Security - NTLM Hardening'].Result)|$($where['Security - NTLM Hardening'].Detail)" 'NTLM'
+    Assert-Equal 'Not applied' $where['Security - LDAPS Hardening (DC''s)'].Result 'LDAPS: computer side off'
+    Assert-Equal 'Not linked|(not linked)' "$($where['Security - Screen Timeout'].Result)|$($where['Security - Screen Timeout'].Actual)" 'Screen Timeout: nowhere'
+    Assert-Equal 'Domain root (enforced); Devices/Workstations (disabled)' (@($rows | Where-Object { $_.Gpo -eq 'Security - Enforce UAC' -and $_.Kind -ne 'Links' })[0].Links) 'Links on every row'
+    $state = @{}; foreach ($r in $rows) { $state[$r.Gpo] = $r.GpoState }
+    Assert-Equal 'Matches|Not linked|Not applied|Not linked' (@('Security - Enforce UAC', 'Security - NTLM Hardening', 'Security - LDAPS Hardening (DC''s)', 'Security - Screen Timeout' | ForEach-Object { $state[$_] }) -join '|') 'overall states'
+    Assert-Equal 'Medium' (Get-NmGuiStatusLevel -Column Result -Value 'Not linked') 'amber'
+    Assert-Equal 'High' (Get-NmGuiStatusLevel -Column Result -Value 'Not applied') 'red'
+    Assert-Equal 'High' (Get-NmGuiStatusLevel -Column GpoState -Value "Doesn't match") 'red'
+    $true
+}
+
+Test-That 'Linked away from the suggested links is only noted (links are chosen per client)' {
+    $rep = [pscustomobject]@{ Links = @([pscustomobject]@{ Path = 'Devices'; Enabled = $true; Enforced = $false }); ComputerEnabled = $true; UserEnabled = $true }
+    $st = Get-NmGpoApplyState -Report $rep -Sides @('Computer') -Suggested @('Domain root')
+    Assert-Equal 'Linked' $st.Result 'still linked'
+    if ($st.Detail -notlike 'Suggested links not used: Domain root*') { throw "detail: $($st.Detail)" }
+    $true
+}
+
+Test-That 'Window headline counts GPOs; the tags count GPOs by state (All first) and filter whole cards' {
+    Answer 'y', 'y', 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening, security-kerberos-encryption | Out-Null
+    $global:FakeLinks['Security - Enforce UAC'] = @(@{ Path = 'Domain root'; Enabled = $true })
+    $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $true })
+    $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[1].Id)" -File GptTmpl
+    Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('LmCompatibilityLevel=4,5', 'LmCompatibilityLevel=4,3')) -Encoding Unicode
+    $rows = @(Compare-NmGpoBaseline -All)
+    $t = Get-NmTool -Id gpo-compare
+    Assert-Equal '3 GPOs  |  ran 23:30  |  0.4 s' (Get-NmGuiResultTitle -Tool $t -Rows $rows -At ([datetime]'2026-11-23 23:30') -Seconds 0.4) 'headline'
+    Assert-Equal '43 result(s)  |  ran 23:30  |  0.4 s' (Get-NmGuiResultTitle -Tool (Get-NmTool -Id gpo-build) -Rows (1..43 | ForEach-Object { [pscustomobject]@{ Gpo = "g$_" } }) -At ([datetime]'2026-11-23 23:30') -Seconds 0.4) 'other tools count rows'
+    $m = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet
+    Assert-Equal 'GpoState|3' "$($m.FacetColumn)|$($m.AllCards)" 'facet column, all'
+    $counts = @{}; foreach ($f in $m.Facets) { $counts[$f.Value] = $f.Count }
+    Assert-Equal "1|1|1" "$($counts['Matches'])|$($counts["Doesn't match"])|$($counts['Not linked'])" 'counts per GPO, not per setting'
+    $f = Get-NmGuiCardModel -Rows $rows -Columns $t.Columns -GroupBy $t.CardGroup -CardFacet $t.CardFacet -Facet "Doesn't match"
+    Assert-Equal 'Security - NTLM Hardening' (($f.Items | ForEach-Object Title) -join ',') 'filtered to the card'
+    if (@($f.Items[0].Fields).Count -lt 2) { throw 'the whole card should show (Linked and Different), not only some rows' }
+    $true
+}
+
+Test-That 'Card buttons: Edit GPO opens Microsoft''s editor on the DC in use; View GPO saves GPMC''s report and opens it; the console says the totals' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
+    $rows = @(Compare-NmGpoBaseline -All)
+    $t = Get-NmTool -Id gpo-compare
+    Assert-Equal 'Edit GPO|View GPO' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
+    Assert-Equal 'Edit GPO|View GPO' (((Get-NmTool -Id gpo-build).CardActions | ForEach-Object Label) -join '|') 'build buttons'
+    Invoke-NmGpoCardEdit -Row $rows[0]
+    Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'editor'
+    Invoke-NmGpoCardView -Row $rows[0]
+    if ($global:Opened[1] -notlike 'open GPO_Security - NTLM Hardening_*.html') { throw "view: $($global:Opened[1])" }
+    Assert-Equal 'Compared 3 GPOs: 1 match, 1 doesn''t match, 1 not linked.' (Get-NmGpoStateSummary -States @('Matches', 'Not linked', "Doesn't match")) 'console totals'
     $true
 }
 

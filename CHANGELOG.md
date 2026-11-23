@@ -6,6 +6,35 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.18 - 11/23/2026
+
+**Compare shows where each GPO applies, counts GPOs, and opens a GPO from its card** (issue #36,
+first part).
+
+- **Where it applies:** each GPO's card opens with its links ("Domain root (enforced);
+  Devices/Workstations (disabled)"), read from the GPO's own report.
+  - **Not linked** (amber): linked nowhere, or every link disabled. It does nothing, but right after
+    Build that's expected, until it's linked.
+  - **Not applied** (red): linked, but the GPO has its computer (or user) settings turned off while
+    the baseline uses them, so the baseline can never apply.
+  - Linked somewhere other than the suggested place is only a note: links are chosen per client.
+- **The card's tag is the GPO's overall state:** Doesn't match, Not applied, Not linked, Matches or
+  Failed.
+- **GPOs are counted, not settings:**
+  - the headline says "9 GPOs | ran 23:30 | 0.4 s";
+  - the tags read "All 9", "Matches 7", "Doesn't match 1", "Not linked 1";
+  - clicking a tag shows only those GPOs; clicking it again shows all;
+  - the console says "Compared 9 GPOs: 7 match, 1 doesn't match, 1 not linked." before the table.
+- **Edit GPO** (on every Compare card, and on each GPO Build created): opens the GPO in Microsoft's
+  Group Policy Management Editor, on the DC the toolkit is using. The toolkit itself changes
+  nothing; compare again after editing.
+- **View GPO:** saves GPMC's full report of the GPO in `C:\Temp\NutmegAD\Reports` and opens it. The
+  in-app pop-up of the configuration is the second part of #36.
+- **For later tools:** tools can count and filter their cards, and put buttons on them.
+- Not run on Windows yet: tested against stand-ins (276 tests). Please check on the VM: a GPO
+  linked, unlinked and with a link disabled; one with its computer settings disabled in GPMC; the
+  tags; Edit GPO and View GPO.
+
 ## 0.7.17 - 11/23/2026
 
 **Fixed: "The term 'Get-NmGuiBrush' is not recognized"** (Cliff, from the VM: Domain and DC, and

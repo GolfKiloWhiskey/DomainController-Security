@@ -54,6 +54,8 @@ $NmTool = @{
     # CardGroup = @('Gpo', 'Result', 'Line') # a card per Gpo, rows under each Result, shown as Line
     # Pickers   = @{ Name = @{ Items = 'Get-NmExamplePickItem'; Note = 'Tick the ones to use.' } }
     # BeforeRun = 'Complete-NmExampleArgs'   # asks what the form cannot hold when Run is pressed
+    # CardNoun  = 'GPO'; CardFacet = 'GpoState'  # grouped cards: count and filter cards, not rows
+    # CardActions = @(@{ Label = 'Open'; Action = 'Invoke-NmExampleOpen' })  # a button on each card
 }
 
 function Invoke-NmExampleTool {
