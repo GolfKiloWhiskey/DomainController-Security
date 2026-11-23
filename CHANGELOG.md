@@ -6,6 +6,37 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.16 - 11/23/2026
+
+**The window's layout: room for the results** (issues #33 and #34, Cliff: the options took most of
+the window, Output covered the results, nothing could be resized or put away).
+
+- **Menu button** (three lines, top left): hides the areas and tools columns, so the tool fills the
+  window. Click it again to bring them back. Searching still reaches every tool while they're hidden.
+- **Drag handles:**
+  - between the areas, tools and tool columns (drag a column to the edge to close it);
+  - between the options and the results;
+  - between the results and Output.
+
+  The results never shrink below a usable minimum.
+- **The options fold after Run** into one line, for example "Gpo: Security - Enforce UAC and 2 more
+  | Differences only", with **Edit options** to open them again. Picking another tool opens them too.
+- **Output opens as its own pane** under a drag handle, sharing the space instead of covering the
+  results.
+- **Kept for next time:** column widths, hidden panels and the Output pane are saved per person
+  (`Window.json` beside your settings). Right-click the menu button and choose **Reset the layout**
+  to go back to the default.
+- **Fixed: the Baseline drop-down** drew without its box under the Windows 11 look (the arrow sat on
+  the left over the text).
+- **Defaults I chose** for the open questions in #34:
+  - the menu button hides both columns together;
+  - the options fold automatically after Run;
+  - no mock-up first.
+
+  Say if you want any of them different.
+- Not run on Windows yet: tested against stand-ins (271 tests). Dragging, folding and the Output pane
+  can only be checked on the VM, in both looks and in Windows PowerShell 5.1 (the build window).
+
 ## 0.7.15 - 11/23/2026
 
 **The window gets the Windows 11 look, dark mode and Nutmeg's colours** (issue #33; Cliff: stay
