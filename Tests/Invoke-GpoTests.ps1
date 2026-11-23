@@ -947,6 +947,23 @@ Test-That 'States are never the brand colour: a loaded module, the module dots a
     $true
 }
 
+Test-That 'A card button runs its action once with the card''s row (it called itself until call depth overflow, 0.7.18-0.7.20)' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
+    $rows = @(Compare-NmGpoBaseline -All)
+    $old = @{ Rows = $script:NmGui.Rows; Controls = $script:NmGui.Controls; Active = $script:NmGui.Active }
+    try {
+        $script:NmGui.Rows = $rows; $script:NmGui.Active = $false
+        $script:NmGui.Controls = @{ StatusText = [pscustomobject]@{ Text = '' } }
+        foreach ($n in 'Set-NmGuiBusy', 'Clear-NmGuiProgress', 'Update-NmGuiBanner', 'Update-NmGuiLog') { Set-Item -Path "function:script:$n" -Value { } }
+        Invoke-NmGuiCardAction -Index 0 -Action 'Invoke-NmGpoCardEdit' -Label 'Edit GPO'
+        Assert-Equal 1 $global:Opened.Count 'ran once'
+        Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'with the card''s GPO'
+        if ($script:NmGui.Controls.StatusText.Text -like 'Failed*') { throw $script:NmGui.Controls.StatusText.Text }
+    } finally { $script:NmGui.Rows = $old.Rows; $script:NmGui.Controls = $old.Controls; $script:NmGui.Active = $old.Active }
+    $true
+}
+
 Test-That 'Compare with nothing picked says what to do' {
     try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
     $true

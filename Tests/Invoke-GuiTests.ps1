@@ -96,6 +96,23 @@ Write-Host '=============================================' -ForegroundColor Cyan
 
 $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
 
+Test-That 'No block given to Invoke-NmGuiAction uses its own names ($Action, $Busy, $left): the block would see Invoke-NmGuiAction''s (call depth overflow on card buttons, 0.7.18-0.7.20)' {
+    $own = @('Action', 'Busy', 'left')
+    $bad = New-Object System.Collections.Generic.List[string]
+    foreach ($f in @(Get-ChildItem -Path (Join-Path $script:NmModuleRoot 'Core'), (Join-Path $script:NmModuleRoot 'Tools') -Filter *.ps1 -Recurse -File)) {
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null)
+        foreach ($cmd in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-NmGuiAction' }, $true)) {
+            foreach ($sb in $cmd.CommandElements | Where-Object { $_ -is [System.Management.Automation.Language.ScriptBlockExpressionAst] }) {
+                foreach ($v in $sb.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] }, $true)) {
+                    if ($own -contains $v.VariablePath.UserPath) { $bad.Add("$($f.Name):$($v.Extent.StartLineNumber) `$$($v.VariablePath.UserPath)") }
+                }
+            }
+        }
+    }
+    if ($bad.Count) { throw "uses Invoke-NmGuiAction's own names: $($bad -join ', ')" }
+    $true
+}
+
 Test-That 'No closure calls a module function (GetNewClosure leaves the module: 0.7.15 broke every dialog with rows this way)' {
     $files = @(Get-ChildItem -Path (Join-Path $script:NmModuleRoot 'Core'), (Join-Path $script:NmModuleRoot 'Tools') -Filter *.ps1 -Recurse -File)
     $asts = @(foreach ($f in $files) { [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null) })

@@ -6,6 +6,20 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.21 - 11/23/2026
+
+**Fixed: Edit GPO, View GPO and GPMC report failed with "call depth overflow"** (Cliff, from the
+VM).
+
+- **Why:** the button handed its job to the window's "run this" helper under a name the helper also
+  uses for itself, so the helper kept calling itself instead of the job. All three buttons now work.
+- **Same cause elsewhere:** the bulk actions on ticked rows passed the tool the wrong thing instead
+  of the button's label. Fixed as well; no tool here uses bulk actions yet.
+- **Two new tests:** one runs a card button and checks it does its job once; the other scans the
+  code for this pattern. Both fail on 0.7.20.
+- **CLAUDE.md** gets the lesson, alongside the one from 0.7.17.
+- Not run on Windows yet: tested against stand-ins (281 tests).
+
 ## 0.7.20 - 11/23/2026
 
 **Fixed: loaded modules showed red** (Cliff, from the VM: "ActiveDirectory" in the header was red

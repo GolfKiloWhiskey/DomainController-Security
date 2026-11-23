@@ -144,6 +144,10 @@ Source material is in `Legacy/` and tracked in `Legacy/INDEX.md`.
 - PowerShell 7's `-Encoding UTF8` writes no BOM; CSV exports use `Get-NmCsvArgs`.
 - A dot-sourced tool silently replaces a core function of the same name; check with `Get-Command` first.
 - Test fakes must refuse what the real cmdlet refuses, or they hide real bugs.
+- A script block runs with the caller's variables in sight: a block passed to a function sees that
+  function's own parameters first. `Invoke-NmGuiAction -Action { & $Action }` called itself until
+  "call depth overflow". Copy values into names the function doesn't use (a GUI test checks).
+- `.GetNewClosure()` leaves the module: a closure cannot call the module's functions (a GUI test checks).
 - Tests never touch the technician's settings: each test file sets `$script:NmSettingsTestFile`.
 
 ## Tests and checks

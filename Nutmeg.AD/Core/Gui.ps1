@@ -1993,8 +1993,11 @@ function Invoke-NmGuiCardAction {
     param([int]$Index, [string]$Action, [string]$Label)
     $rows = @($script:NmGui.Rows)
     if ($Index -lt 0 -or $Index -ge $rows.Count) { return }
-    $row = $rows[$Index]
-    Invoke-NmGuiAction -Busy "$Label..." -Action { & $Action $row }
+    $cardRow = $rows[$Index]
+    $cardFn = $Action
+    # Not $Action inside the block: Invoke-NmGuiAction's own -Action (this block) would answer to that
+    # name, and the block would call itself until 'call depth overflow' (0.7.18 to 0.7.20).
+    Invoke-NmGuiAction -Busy "$Label..." -Action { & $cardFn $cardRow }
     if ($script:NmGui.LastLeftover) { [void](Show-NmGuiDialog -Title $Label -Text $script:NmGui.LastLeftover -NoInput -Captures $script:NmGui.LastCaptures) }
 }
 
@@ -3948,7 +3951,8 @@ function Invoke-NmGuiBulkAction {
     $rows = @($idx | Where-Object { $_ -lt @($script:NmGui.Rows).Count } | ForEach-Object { $script:NmGui.Rows[$_] })
     if (-not $rows.Count) { $script:NmGui.Controls.StatusText.Text = 'Select one or more rows first.'; return }
     $fn = (Get-Command -Name $t.BulkAction -CommandType Function).ScriptBlock
-    Invoke-NmGuiAction -Busy "$Action ($($rows.Count))..." -Action { $null = & $fn $Action $rows $script:NmGui.Rows }
+    $bulkLabel = $Action   # not $Action inside the block: there it is Invoke-NmGuiAction's own script block
+    Invoke-NmGuiAction -Busy "$bulkLabel ($($rows.Count))..." -Action { $null = & $fn $bulkLabel $rows $script:NmGui.Rows }
     if ($script:NmGui.LastLeftover) { [void](Show-NmGuiDialog -Title "$Action ($($rows.Count) selected)" -Text $script:NmGui.LastLeftover -NoInput -Captures $script:NmGui.LastCaptures) }
     # The action can change rows (Released): redraw, keeping the filter and tag; the selection clears.
     Set-NmGuiResult -Rows $script:NmGui.Rows -Title $script:NmGui.Controls.ResultTitle.Text -Keep

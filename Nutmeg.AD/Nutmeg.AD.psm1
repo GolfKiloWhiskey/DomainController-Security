@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.20
+    Version: 0.7.21
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.21 - Fixed: card buttons (Edit GPO, View GPO, GPMC report) failed with 'call depth overflow'; the bulk action got the
+             wrong label for the same reason. Tests for both.
     0.7.20 - States are not the brand ($script:NmGuiStateColors): loaded modules and their dots green, running steps blue.
     0.7.19 - Two labels per GPO card (settings; where it applies: CardBadge); View GPO in the app (ConvertTo-NmGpoViewModel),
              GPMC report beside it. Issue #36, second part.
@@ -93,7 +95,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.20'
+$script:ModuleVersion = '0.7.21'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
