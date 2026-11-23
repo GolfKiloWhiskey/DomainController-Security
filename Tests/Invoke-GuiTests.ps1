@@ -96,6 +96,26 @@ Write-Host '=============================================' -ForegroundColor Cyan
 
 $ns = 'http://schemas.microsoft.com/winfx/2006/xaml'
 
+Test-That 'No closure calls a module function (GetNewClosure leaves the module: 0.7.15 broke every dialog with rows this way)' {
+    $files = @(Get-ChildItem -Path (Join-Path $script:NmModuleRoot 'Core'), (Join-Path $script:NmModuleRoot 'Tools') -Filter *.ps1 -Recurse -File)
+    $asts = @(foreach ($f in $files) { [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$null) })
+    $ours = @{}
+    foreach ($a in $asts) { foreach ($fd in $a.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { $ours[$fd.Name] = $true } }
+    $bad = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $asts.Count; $i++) {
+        foreach ($cl in $asts[$i].FindAll({ param($n) $n -is [System.Management.Automation.Language.InvokeMemberExpressionAst] -and $n.Member.Value -eq 'GetNewClosure' }, $true)) {
+            $inside = @{}
+            foreach ($fd in $cl.Expression.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { $inside[$fd.Name] = $true }
+            foreach ($cmd in $cl.Expression.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+                $name = $cmd.GetCommandName()
+                if ($name -and $ours.ContainsKey($name) -and -not $inside.ContainsKey($name)) { $bad.Add("$($files[$i].Name):$($cmd.Extent.StartLineNumber) $name") }
+            }
+        }
+    }
+    if ($bad.Count) { throw "module functions called inside a closure: $($bad -join ', ')" }
+    $true
+}
+
 Test-That 'Start-NmToolkitGui is exported; the redirect helpers are not' {
     $names = @((Get-Module Nutmeg.AD).ExportedFunctions.Keys)
     ($names -contains 'Start-NmToolkitGui') -and ($names -notcontains 'Write-Host') -and ($names -notcontains 'Out-Host') -and ($names -notcontains 'Format-Table')
