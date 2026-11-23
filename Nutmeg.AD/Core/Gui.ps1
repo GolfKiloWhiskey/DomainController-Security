@@ -731,6 +731,14 @@ $script:NmGuiBrand = [ordered]@{
     '#1F252E' = @('#1E2124', '#1E2124')
     '#262C36' = @('#282B2F', '#282B2F')
 }
+# States are not the brand: loaded and done are green, running is blue, in both looks. The brand red
+# is only for actions and selection (a red "loaded" read as an error, Cliff, 0.7.19).
+$script:NmGuiStateColors = @{
+    LoadedBack = '#DCFAE6'; LoadedBorder = '#ABEFC6'; LoadedText = '#067647'   # a module chip that is loaded
+    Dot = '#47CD89'; DotSome = '#14532D'                                     # module dots on the dark sidebar
+    Running = '#1D4ED8'                                                      # a step that is running
+    Heading = '#3D4450'; Number = '#5B6370'                                  # step groups, plan numbers
+}
 $script:NmGuiDark = @{
     # Surfaces and lines
     '#FFFFFF' = '#202020'; '#F6F7F9' = '#1A1A1A'; '#FAFBFC' = '#242424'; '#F1F3F6' = '#2A2A2A'; '#EEF0F3' = '#2E2E2E'
@@ -740,7 +748,7 @@ $script:NmGuiDark = @{
     # Status: red, amber, green, blue (text and tint)
     '#B42318' = '#FF8A80'; '#A0281C' = '#FF8A80'; '#FEE4E2' = '#3B1D1C'; '#FDECEA' = '#3B1D1C'
     '#8A4B00' = '#F5B94D'; '#B54708' = '#F5B94D'; '#6B4E16' = '#E6C77A'; '#FFF1DC' = '#3A2C12'; '#FEF0C7' = '#3A2C12'; '#FFF4E0' = '#3A2C12'; '#F4EBD0' = '#3A3220'
-    '#067647' = '#6CCB8A'; '#1F6B35' = '#6CCB8A'; '#DCFAE6' = '#183A26'; '#E6F4EA' = '#183A26'
+    '#067647' = '#6CCB8A'; '#1F6B35' = '#6CCB8A'; '#DCFAE6' = '#183A26'; '#E6F4EA' = '#183A26'; '#ABEFC6' = '#1E5A36'
     '#1D4ED8' = '#8AB4FF'; '#E0EAFF' = '#1E2A44'; '#2B4C8C' = '#9DB8F0'
 }
 $script:NmGuiLookState = $null
@@ -2384,7 +2392,7 @@ function Show-NmGuiConfirm {
         $row.BorderBrush = Get-NmGuiBrush '#EEF0F3'; $row.BorderThickness = '0,0,0,1'; $row.Padding = '2,7'
         $dp = New-Object System.Windows.Controls.DockPanel
         # Numbered: these are what will happen, not what has happened.
-        $g = New-NmGuiTextBlock -Text "$n" -Size 12 -Weight 'SemiBold' -Color '#0E6B66'
+        $g = New-NmGuiTextBlock -Text "$n" -Size 12 -Weight 'SemiBold' -Color $script:NmGuiStateColors.Number
         $g.MinWidth = 22; $g.Margin = '0,1,8,0'; $g.VerticalAlignment = 'Top'
         [System.Windows.Controls.DockPanel]::SetDock($g, 'Left'); [void]$dp.Children.Add($g)
         [void]$dp.Children.Add((New-NmGuiTextBlock -Text $t -Size 13 -Wrap))
@@ -2433,10 +2441,10 @@ function Update-NmGuiSteps {
     $c.StepSummary.Text = "$($m.Summary)  |  $($m.State)"
     $c.StepPanel.Children.Clear()
     $glyph = @{ Done = 0xE73E; Failed = 0xE711; Running = 0xE895; Waiting = 0xE91F; Skipped = 0xE738 }
-    $color = @{ Done = '#1F6B35'; Failed = '#A0281C'; Running = '#0E6B66'; Waiting = '#8A919C'; Skipped = '#8A919C' }
+    $color = @{ Done = '#1F6B35'; Failed = '#A0281C'; Running = $script:NmGuiStateColors.Running; Waiting = '#8A919C'; Skipped = '#8A919C' }
     foreach ($r in $m.Rows) {
         if ($r.Kind -eq 'Group') {
-            $h = New-NmGuiTextBlock -Text "$($r.Label)".ToUpper() -Size 11 -Weight 'SemiBold' -Color '#0E6B66'
+            $h = New-NmGuiTextBlock -Text "$($r.Label)".ToUpper() -Size 11 -Weight 'SemiBold' -Color $script:NmGuiStateColors.Heading
             $h.Margin = '0,8,0,4'
             [void]$c.StepPanel.Children.Add($h)
             continue
@@ -3187,9 +3195,9 @@ function Update-NmGuiBanner {
         $up = [bool]$s.Services[$svc]
         $b = New-Object System.Windows.Controls.Border
         $b.CornerRadius = 12; $b.Padding = '10,3'; $b.Margin = '0,0,6,0'; $b.BorderThickness = 1
-            $b.Background = (Get-NmGuiBrush $(if ($up) { '#E3F1EF' } else { '#FFFFFF' }))
-        $b.BorderBrush = (Get-NmGuiBrush $(if ($up) { '#B9DCD8' } else { '#E2E5EA' }))
-        $b.Child = New-NmGuiTextBlock -Text "$(if ($up) { [char]0x25CF } else { [char]0x25CB }) $(Get-NmGuiServiceLabel $svc)" -Size 12 -Weight $(if ($up) { 'SemiBold' } else { 'Normal' }) -Color $(if ($up) { '#0A4F4B' } else { '#5B6370' })
+            $b.Background = (Get-NmGuiBrush $(if ($up) { $script:NmGuiStateColors.LoadedBack } else { '#FFFFFF' }))
+        $b.BorderBrush = (Get-NmGuiBrush $(if ($up) { $script:NmGuiStateColors.LoadedBorder } else { '#E2E5EA' }))
+        $b.Child = New-NmGuiTextBlock -Text "$(if ($up) { [char]0x25CF } else { [char]0x25CB }) $(Get-NmGuiServiceLabel $svc)" -Size 12 -Weight $(if ($up) { 'SemiBold' } else { 'Normal' }) -Color $(if ($up) { $script:NmGuiStateColors.LoadedText } else { '#5B6370' })
         $b.ToolTip = "$(Get-NmGuiServiceLabel $svc) module $(if ($up) { 'loaded' } else { 'not loaded yet (loads when a tool needs it)' })"
         [void]$c.ServicePanel.Children.Add($b)
     }
@@ -3295,9 +3303,9 @@ function Update-NmGuiCenters {
             $dot = New-Object System.Windows.Shapes.Ellipse
             $dot.Width = 8; $dot.Height = 8; $dot.Margin = '8,0,0,0'; $dot.StrokeThickness = 1.5; $dot.VerticalAlignment = 'Center'
             switch ($row.State) {
-                'All'       { $dot.Fill = (Get-NmGuiBrush '#3FB8AF'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
-                'Some'      { $dot.Fill = (Get-NmGuiBrush '#5A1418'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
-                'NotNeeded' { $dot.Fill = (Get-NmGuiBrush '#3FB8AF'); $dot.Stroke = (Get-NmGuiBrush '#3FB8AF') }
+                'All'       { $dot.Fill = (Get-NmGuiBrush $script:NmGuiStateColors.Dot); $dot.Stroke = (Get-NmGuiBrush $script:NmGuiStateColors.Dot) }
+                'Some'      { $dot.Fill = (Get-NmGuiBrush $script:NmGuiStateColors.DotSome); $dot.Stroke = (Get-NmGuiBrush $script:NmGuiStateColors.Dot) }
+                'NotNeeded' { $dot.Fill = (Get-NmGuiBrush $script:NmGuiStateColors.Dot); $dot.Stroke = (Get-NmGuiBrush $script:NmGuiStateColors.Dot) }
                 default     { $dot.Fill = [System.Windows.Media.Brushes]::Transparent; $dot.Stroke = (Get-NmGuiBrush '#8A919C') }
             }
             [System.Windows.Controls.DockPanel]::SetDock($dot, 'Right')

@@ -932,6 +932,21 @@ Test-That 'View GPO: the GPO''s report as a tab per part, in GPMC''s words (secu
     $true
 }
 
+Test-That 'States are never the brand colour: a loaded module, the module dots and a running step stay green or blue in both looks (0.7.19 showed loaded modules red)' {
+    foreach ($k in $script:NmGuiStateColors.Keys) {
+        $hex = $script:NmGuiStateColors[$k]
+        if ($script:NmGuiBrand.Contains($hex.ToUpper())) { throw "$k uses $hex, which the brand map turns red" }
+        foreach ($mode in 'Light', 'Dark') {
+            $c = Resolve-NmGuiColor -Hex $hex -Mode $mode
+            if ($c -in '#CF2027', '#D93A40', '#E8555B', '#A3191F', '#F0787C', '#FBEAEB', '#3A2224') { throw "$k becomes brand red in $mode ($c)" }
+        }
+    }
+    Assert-Equal '#067647|#6CCB8A' "$(Resolve-NmGuiColor -Hex $script:NmGuiStateColors.LoadedText -Mode Light)|$(Resolve-NmGuiColor -Hex $script:NmGuiStateColors.LoadedText -Mode Dark)" 'loaded text green in both'
+    $src = Get-Content (Join-Path $script:NmModuleRoot 'Core\Gui.ps1') -Raw
+    if ($src -match "Running = '#0E6B66'" -or $src -match "\`$up\) \{ '#E3F1EF'") { throw 'a state still uses the old teal' }
+    $true
+}
+
 Test-That 'Compare with nothing picked says what to do' {
     try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
     $true

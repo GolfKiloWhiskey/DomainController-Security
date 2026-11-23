@@ -6,6 +6,21 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.20 - 11/23/2026
+
+**Fixed: loaded modules showed red** (Cliff, from the VM: "ActiveDirectory" in the header was red
+although it was loaded).
+
+- When teal became Nutmeg red (0.7.15), some places where teal meant a *state* turned red too, and
+  red reads as an error. Those places now have their own colours, the same in light and dark:
+  - a **loaded module** in the header: green;
+  - the **module dots** beside the areas: green (filled when loaded, ringed when some are);
+  - a **running step** in the build's step list: blue (it was red);
+  - step-list headings and the numbers in a plan: grey instead of red.
+- The brand red stays for actions and selection: Run, the selected item, ticks and focus.
+- A new test makes sure no state colour can turn into the brand red again.
+- Not run on Windows yet: tested against stand-ins (279 tests).
+
 ## 0.7.19 - 11/23/2026
 
 **Two labels on every GPO card, and View GPO inside the app** (issue #36, second part; Cliff: keep
