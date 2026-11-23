@@ -1443,7 +1443,7 @@ function Get-NmGuiCardModel {
         -GroupBy (the tool's CardGroup) makes one card per value of its first column instead, with the
         rows listed inside under the values of its second column ("Safe (3)", "Blocked (1)").
     #>
-    param([AllowEmptyCollection()][object[]]$Rows = @(), [string[]]$Columns = @(), [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [string[]]$GroupBy = @(), [string]$CardFacet = '')
+    param([AllowEmptyCollection()][object[]]$Rows = @(), [string[]]$Columns = @(), [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [string[]]$GroupBy = @(), [string]$CardFacet = '', [string]$CardBadge = '')
     $all = @($Rows | Where-Object { $_ })
     $cols = if (@($Columns).Count) { @($Columns) } elseif ($all.Count) { @($all[0].PSObject.Properties.Name | Where-Object { $_ -ne '#' }) } else { @() }
     $fc = Get-NmGuiFacetColumn -Rows $all -Columns $cols
@@ -1472,7 +1472,7 @@ function Get-NmGuiCardModel {
     }
     $groupCol = "$(@($GroupBy)[0])"
     if ($groupCol -and $all.Count -and @($all[0].PSObject.Properties.Name) -contains $groupCol) {
-        return (Get-NmGuiGroupedCardModel -All $all -ShownIdx @($shownIdx) -Columns $cols -FacetColumn $fc -Facets $facets -Facet $Facet -Limit $Limit -GroupBy $GroupBy)
+        return (Get-NmGuiGroupedCardModel -All $all -ShownIdx @($shownIdx) -Columns $cols -FacetColumn $fc -Facets $facets -Facet $Facet -Limit $Limit -GroupBy $GroupBy -CardBadge $CardBadge)
     }
     $items = foreach ($i in @($shownIdx | Select-Object -First ([Math]::Max(1, $Limit)))) {
         $r = $all[$i]
@@ -1512,7 +1512,7 @@ function Get-NmGuiGroupedCardModel {
         split column), listing every row's other shown values, one row per line, never cut short.
         The card's status is the tag column's value when the card's rows share one, else the worst.
     #>
-    param([object[]]$All, [int[]]$ShownIdx = @(), [string[]]$Columns, [string]$FacetColumn, [object[]]$Facets = @(), [string]$Facet, [int]$Limit, [string[]]$GroupBy)
+    param([object[]]$All, [int[]]$ShownIdx = @(), [string[]]$Columns, [string]$FacetColumn, [object[]]$Facets = @(), [string]$Facet, [int]$Limit, [string[]]$GroupBy, [string]$CardBadge = '')
     $groupCol = "$(@($GroupBy)[0])"
     $splitCol = "$(@($GroupBy)[1])"
     if ($splitCol -and @($All[0].PSObject.Properties.Name) -notcontains $splitCol) { $splitCol = '' }
@@ -1572,13 +1572,27 @@ function Get-NmGuiGroupedCardModel {
                 $level = @($levels | Sort-Object { if ($rank.ContainsKey($_)) { $rank[$_] } else { 9 } })[0]
             }
         }
+        # A second label from a column that is the same on every row of the card (gpo-compare: where
+        # the GPO applies); the card's edge takes the worse of the two.
+        $badge = ''; $badgeLevel = ''
+        if ($CardBadge -and @($All[0].PSObject.Properties.Name) -contains $CardBadge) {
+            $badge = ConvertTo-NmGuiFieldText $All[$idx[0]].$CardBadge
+            if ($badge) {
+                $badgeLevel = Get-NmGuiStatusLevel -Column $CardBadge -Value $badge
+                $pair = @(@($level, $badgeLevel) | Where-Object { $_ } | Sort-Object { if ($rank.ContainsKey($_)) { $rank[$_] } else { 9 } })
+                if ($pair.Count) { $level = $pair[0] }
+            }
+        }
         [pscustomobject]@{
-            Index  = $idx[0]
-            Title  = $(if ($k) { $k } else { '(blank)' })
-            Status = $status
-            Level  = $level
-            Fields = $fields
-            More   = @()
+            Index      = $idx[0]
+            Title      = $(if ($k) { $k } else { '(blank)' })
+            Status     = $status
+            Level      = $level
+            StatusLevel = $(if ($status) { Get-NmGuiStatusLevel -Column $FacetColumn -Value $status } else { '' })
+            Badge      = $badge
+            BadgeLevel = $badgeLevel
+            Fields     = $fields
+            More       = @()
         }
     }
     [pscustomobject]@{
@@ -1920,8 +1934,13 @@ function New-NmGuiResultCard {
         [System.Windows.Controls.DockPanel]::SetDock($tick, 'Left'); [void]$top.Children.Add($tick)
     }
     if ($Item.Status) {
-        $pill = New-NmGuiPill -Text $Item.Status -Severity $Item.Level
+        $sl = if ($Item.PSObject.Properties['StatusLevel'] -and $Item.StatusLevel) { $Item.StatusLevel } else { $Item.Level }
+        $pill = New-NmGuiPill -Text $Item.Status -Severity $sl
         [System.Windows.Controls.DockPanel]::SetDock($pill, 'Left'); [void]$top.Children.Add($pill)
+    }
+    if ($Item.PSObject.Properties['Badge'] -and $Item.Badge) {
+        $bp = New-NmGuiPill -Text $Item.Badge -Severity $Item.BadgeLevel
+        [System.Windows.Controls.DockPanel]::SetDock($bp, 'Left'); [void]$top.Children.Add($bp)
     }
     $t = New-NmGuiValueBox -Text $Item.Title -Size 14.5; $t.FontWeight = 'SemiBold'; $t.VerticalAlignment = 'Center'
     [void]$top.Children.Add($t)
@@ -1992,8 +2011,8 @@ function New-NmGuiCardView {
         row (the first 100, with Show more), and a line saying how many are shown.
     #>
     param([object[]]$Rows, [string[]]$Columns, [string]$Filter = '', [string]$Facet = '', [int]$Limit = 100, [switch]$CanOpen, [string[]]$GroupBy = @(), [switch]$Selectable,
-          [string]$CardFacet = '', [object[]]$Actions = @(), [string]$Noun = '')
-    $m = Get-NmGuiCardModel -Rows $Rows -Columns $Columns -Filter $Filter -Facet $Facet -Limit $Limit -GroupBy $GroupBy -CardFacet $CardFacet
+          [string]$CardFacet = '', [object[]]$Actions = @(), [string]$Noun = '', [string]$CardBadge = '')
+    $m = Get-NmGuiCardModel -Rows $Rows -Columns $Columns -Filter $Filter -Facet $Facet -Limit $Limit -GroupBy $GroupBy -CardFacet $CardFacet -CardBadge $CardBadge
     $script:NmGui.ShownIndex = @($m.ShownIndex)
     $root = New-Object System.Windows.Controls.StackPanel
     $root.Margin = '0,0,8,0'
@@ -3948,7 +3967,7 @@ function Update-NmGuiCardView {
             $cols = @(Get-NmGuiColumn -Rows $script:NmGui.Rows -Tool $t -All:([bool]$c.AllColumnsBox.IsChecked))
             $grp = @(if ($t -and $t.CardGroup) { $t.CardGroup })
             $c.CardHost.Content = New-NmGuiCardView -Rows $script:NmGui.Rows -Columns $cols -Filter $f -Facet $script:NmGui.Facet -Limit ([int]$script:NmGui.CardLimit) -CanOpen:([bool]($t -and $t.DeepDive)) -GroupBy $grp -Selectable:([bool]($t -and $t.BulkAction)) `
-                -CardFacet $(if ($t) { "$($t.CardFacet)" } else { '' }) -Actions @(if ($t) { $t.CardActions }) -Noun $(if ($t) { "$($t.CardNoun)" } else { '' })
+                -CardFacet $(if ($t) { "$($t.CardFacet)" } else { '' }) -Actions @(if ($t) { $t.CardActions }) -Noun $(if ($t) { "$($t.CardNoun)" } else { '' }) -CardBadge $(if ($t) { "$($t.CardBadge)" } else { '' })
         }
         $c.CardScroll.Visibility = 'Visible'; $c.ResultsGrid.Visibility = 'Collapsed'
         $c.ViewToggle.Content = 'Table view'; $c.DetailsButton.IsEnabled = $false

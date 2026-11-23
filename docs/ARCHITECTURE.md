@@ -75,6 +75,8 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
   - `CardNoun = 'GPO'` and `CardFacet = '<column>'` (grouped cards): the headline counts cards ("9 GPOs")
     and the tags count cards by a column that is the same on every row of a card, with "All n" first;
     a tag filters whole cards (gpo-compare: `GpoState`).
+  - `CardBadge = '<column>'` (grouped cards): a second label on each card from a column constant per
+    card (gpo-compare: `LinkState`, next to the settings label); the card's edge takes the worse.
   - `CardActions = @(@{ Label; Action = '<function>'; ToolTip })`: buttons on every card; the function
     gets the card's first row (gpo-compare and gpo-build: Edit GPO, View GPO).
   - `BeforeRun = '<function>'`: takes the form's arguments when Run is pressed, asks what the form
