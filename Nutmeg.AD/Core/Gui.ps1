@@ -2820,14 +2820,17 @@ function Show-NmGuiQuestion {
     # A star row sizes to its rows until the window reaches its maximum height, then scrolls.
     $d.FindName('ChoiceRow').Height = New-Object System.Windows.GridLength 1, ([System.Windows.GridUnitType]::Star)
     $hint.Text = 'Click an option, or press its key'
+    # The brushes are made here: the closure below cannot call module functions (GetNewClosure
+    # leaves the module's scope; 0.7.15 broke every dialog with rows by calling Get-NmGuiBrush in it).
+    $brush = @{ OnBox = (Get-NmGuiBrush '#CDE9E5'); OffBox = (Get-NmGuiBrush '#F1F3F6'); OnGlyph = (Get-NmGuiBrush '#0A4F4B'); OffGlyph = (Get-NmGuiBrush '#5B6370') }
     $highlight = {
         param($i)
         for ($n = 0; $n -lt $state.Rows.Count; $n++) {
             $r = $state.Rows[$n]
             $on = $n -eq $i
             $r.Button.Tag = $(if ($on) { 'on' } else { $null })
-            $r.Box.Background = (Get-NmGuiBrush $(if ($on) { '#CDE9E5' } else { '#F1F3F6' }))
-            $r.Glyph.Foreground = (Get-NmGuiBrush $(if ($on) { '#0A4F4B' } else { '#5B6370' }))
+            $r.Box.Background = $(if ($on) { $brush.OnBox } else { $brush.OffBox })
+            $r.Glyph.Foreground = $(if ($on) { $brush.OnGlyph } else { $brush.OffGlyph })
         }
         $state.Index = $i
         if ($i -ge 0) { $state.Rows[$i].Button.BringIntoView() }

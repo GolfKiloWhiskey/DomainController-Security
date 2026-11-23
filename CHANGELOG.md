@@ -6,6 +6,20 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.17 - 11/23/2026
+
+**Fixed: "The term 'Get-NmGuiBrush' is not recognized"** (Cliff, from the VM: Domain and DC, and
+Run).
+
+- **What broke:** since 0.7.15 every pop-up with clickable rows (the Domain and DC menu, choice
+  questions) failed when it highlighted a row. The colour code was moved into a helper, and one part
+  of those pop-ups runs outside the toolkit's own code, where the helper can't be seen. An error in a
+  pop-up also stops whatever opened it, which is why Run showed it too.
+- **The fix:** the colours are worked out before that part runs.
+- **A new check** looks through all of the toolkit's code for that pattern, so it can't come back.
+  It fails on 0.7.16 at exactly the two lines that broke.
+- Not run on Windows yet: tested against stand-ins (272 tests).
+
 ## 0.7.16 - 11/23/2026
 
 **The window's layout: room for the results** (issues #33 and #34, Cliff: the options took most of
