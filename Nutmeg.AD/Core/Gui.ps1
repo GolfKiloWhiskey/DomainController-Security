@@ -1911,7 +1911,8 @@ function New-NmGuiResultCard {
     $copy = New-NmGuiCopyButton -Text $copyText
     [System.Windows.Controls.DockPanel]::SetDock($copy, 'Right'); [void]$top.Children.Add($copy)
     # The tool's card buttons (gpo-compare: Edit GPO, View GPO). Plain handlers: they read the Tag only.
-    foreach ($a in @($Actions)) {
+    $cardRow = @($script:NmGui.Rows)[[int]$Item.Index]
+    foreach ($a in @(Get-NmGuiCardActionShown -Actions $Actions -Row $cardRow)) {
         $ab = New-Object System.Windows.Controls.Button
         $ab.Content = $a.Label; $ab.Tag = [pscustomobject]@{ Index = [int]$Item.Index; Action = $a.Action; Label = $a.Label }
         $ab.MinHeight = 28; $ab.Padding = '10,2'; $ab.Margin = '8,0,0,0'; $ab.FontSize = 12
@@ -1988,6 +1989,16 @@ function Get-NmGuiResultTitle {
     return ('{0}  |  ran {1:HH:mm}  |  {2:N1} s' -f $what, $At, $Seconds)
 }
 
+function Get-NmGuiCardActionShown {
+    # The card's buttons (no WPF): all of the tool's, less those hidden for this card's row
+    # (gpo-compare: no Align on a GPO that matches).
+    param([object[]]$Actions = @(), $Row)
+    @(foreach ($a in @($Actions | Where-Object { $_ })) {
+        if ($a.PSObject.Properties['Hide'] -and $a.Hide -and $Row -and $Row.PSObject.Properties[$a.Hide.Column] -and (@($a.Hide.Values) -contains "$($Row.($a.Hide.Column))")) { continue }
+        $a
+    })
+}
+
 function Invoke-NmGuiCardAction {
     # A card's button: the tool's function with the card's (first) row, as an action (dialogs, errors shown).
     param([int]$Index, [string]$Action, [string]$Label)
@@ -1997,8 +2008,14 @@ function Invoke-NmGuiCardAction {
     $cardFn = $Action
     # Not $Action inside the block: Invoke-NmGuiAction's own -Action (this block) would answer to that
     # name, and the block would call itself until 'call depth overflow' (0.7.18 to 0.7.20).
+    $script:NmGui.RefreshAfterAction = $false
     Invoke-NmGuiAction -Busy "$Label..." -Action { & $cardFn $cardRow }
     if ($script:NmGui.LastLeftover) { [void](Show-NmGuiDialog -Title $Label -Text $script:NmGui.LastLeftover -NoInput -Captures $script:NmGui.LastCaptures) }
+    # The action changed something the results show (Align): run the tool again with the same options.
+    if ($script:NmGui.RefreshAfterAction -and $script:NmGui.Tool -and $script:NmGui.Controls -and $script:NmGui.Controls.RunButton) {
+        $script:NmGui.RefreshAfterAction = $false
+        try { Invoke-NmGuiRun -EntryArgs (ConvertFrom-NmGuiForm -Spec $script:NmGui.Spec -Values (Get-NmGuiFormValue)) } catch { $script:NmGui.Controls.StatusText.Text = "Run again to refresh: $($_.Exception.Message)" }
+    }
 }
 
 function Get-NmGuiCardCountText {

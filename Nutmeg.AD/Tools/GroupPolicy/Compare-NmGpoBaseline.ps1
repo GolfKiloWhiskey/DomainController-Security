@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.4
+    Version: 0.7.5
 
 .SYNOPSIS
     Compares GPOs with their baselines: missing, different and extra settings, and parameters not filled in.
@@ -28,6 +28,7 @@
     Compare-NmGpoBaseline -Gpo 'Security - Enforce UAC (old)' -Baseline security-enforce-uac
 
 .VERSIONING
+    0.7.5 - Align with baseline on the card of a GPO that does not match (gpo-align); Compare runs again after it.
     0.7.4 - Two labels per GPO: its settings (Matches, Doesn't match, Failed: the tags filter on these) and where it applies
             (Linked, Not linked, Not applied); View GPO in the app, GPMC report for GPMC's own.
     0.7.3 - Where each GPO applies (links, enabled, enforced; not linked or not applied flagged); the window counts GPOs and
@@ -40,10 +41,11 @@
 $NmTool = @{
     Name     = 'Compare GPOs with Baselines'
     Id       = 'gpo-compare'
+    Order    = 2                            # Build, Compare, Align, Restore
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'One GPO or all of them against their baseline: missing, different and extra settings'
-    Version  = '0.7.4'
+    Version  = '0.7.5'
     Kind     = 'Report'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
@@ -59,6 +61,8 @@ $NmTool = @{
     CardFacet = 'GpoState'
     CardBadge = 'LinkState'
     CardActions = @(
+        @{ Label = 'Align with baseline'; Action = 'Invoke-NmGpoCardAlign'; ToolTip = 'Put this GPO back to its baseline (Align GPOs with Baselines): backed up first, you approve every change'
+           Hide = @{ Column = 'GpoState'; Values = @('Matches') } }
         @{ Label = 'Edit GPO'; Action = 'Invoke-NmGpoCardEdit'; ToolTip = 'Open this GPO in the Group Policy Management Editor (on the DC in use)' }
         @{ Label = 'View GPO'; Action = 'Invoke-NmGpoCardView'; ToolTip = 'This GPO''s settings, here: a tab per part' }
         @{ Label = 'GPMC report'; Action = 'Invoke-NmGpoCardReport'; ToolTip = 'GPMC''s own full report of this GPO, saved and opened in the browser' }

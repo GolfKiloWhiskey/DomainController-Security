@@ -77,8 +77,12 @@ docs/                       this page, TOOL-LIST.md (the agreed plan), baselines
     a tag filters whole cards (gpo-compare: `GpoState`).
   - `CardBadge = '<column>'` (grouped cards): a second label on each card from a column constant per
     card (gpo-compare: `LinkState`, next to the settings label); the card's edge takes the worse.
-  - `CardActions = @(@{ Label; Action = '<function>'; ToolTip })`: buttons on every card; the function
-    gets the card's first row (gpo-compare and gpo-build: Edit GPO, View GPO).
+  - `CardActions = @(@{ Label; Action = '<function>'; ToolTip; Hide = @{ Column; Values } })`: buttons on
+    every card; the function gets the card's first row (gpo-compare and gpo-build: Edit GPO, View GPO).
+    `Hide` leaves the button off cards whose row has one of those values (gpo-compare: no Align on a
+    GPO that matches). An action that changes what the results show sets `$script:NmGui.RefreshAfterAction`
+    and the tool runs again.
+  - `Order = <n>`: the tool's place in its section (then by name; default 100).
   - `BeforeRun = '<function>'`: takes the form's arguments when Run is pressed, asks what the form
     cannot hold (dialogs), and returns the full arguments, or `$null` to run nothing (gpo-build: each
     ticked baseline's values and GPO name).
