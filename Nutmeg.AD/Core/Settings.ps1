@@ -25,6 +25,8 @@ $script:NmSettingDefs = @(
         Help = 'The time zone the New Forest Build offers (a Windows ID, as Get-TimeZone -ListAvailable shows them). It can still be changed at the question.' }
     [pscustomobject]@{ Key = 'BuildLastDns'; Section = 'New forest build'; Label = 'Last DNS server on a DC (blank = none)'; Type = 'Text'; Default = '1.1.1.1'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @()
         Help = 'Added as the last DNS server on a DC''s adapter (Cliff''s standard). If the DC cannot resolve itself its DNS is broken anyway; this keeps external lookups working, which the RMM agent needs (remote control above all). The DC report expects it last.' }
+    [pscustomobject]@{ Key = 'WindowLook'; Section = 'Window'; Label = 'Window look'; Type = 'Choice'; Default = 'Windows 11'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @('Windows 11', 'Classic')
+        Help = 'Windows 11: the Windows 11 controls, light or dark as Windows is set (PowerShell 7 only). Classic: the light look, always used in Windows PowerShell 5.1 (the New Forest Build). Takes effect the next time the window opens.' }
     [pscustomobject]@{ Key = 'ResultsView'; Section = 'Window'; Label = 'Show results as'; Type = 'Choice'; Default = 'Cards'; EnvVar = ''; Config = ''; Min = 0; Max = 0; Choices = @('Cards', 'Table')
         Help = 'How the window first shows a tool''s results: cards (each row readable in full, with tags to filter) or the table. The button above the results switches either way.' }
 )

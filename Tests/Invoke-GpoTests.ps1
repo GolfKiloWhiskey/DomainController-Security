@@ -702,6 +702,48 @@ Test-That 'Window sizes: the options area grows to half the window; a long tick 
     $true
 }
 
+Test-That 'Window: tick lists take the options area''s width (failed before: @() on the list threw, and the catch hid it)' {
+    $oldCtl = $script:NmGui.Controls; $oldWin = $script:NmGui.Window; $oldWide = $script:NmGui.WideBoxes
+    try {
+        $script:NmGui.Controls = @{ OptionsScroll = [pscustomobject]@{ MaxHeight = 230 }; OptionsBorder = [pscustomobject]@{ ActualWidth = 1250 } }
+        $script:NmGui.Window = [pscustomobject]@{ ActualHeight = 1000 }
+        $script:NmGui.WideBoxes = New-Object System.Collections.Generic.List[object]
+        $a = [pscustomobject]@{ Width = 320 }; $b = [pscustomobject]@{ Width = 320 }
+        $script:NmGui.WideBoxes.Add($a); $script:NmGui.WideBoxes.Add($b)
+        Update-NmGuiOptionsSize
+        Assert-Equal 1200 $a.Width 'first list'
+        Assert-Equal 1200 $b.Width 'second list'
+        Assert-Equal 500 $script:NmGui.Controls.OptionsScroll.MaxHeight 'options height'
+    } finally { $script:NmGui.Controls = $oldCtl; $script:NmGui.Window = $oldWin; $script:NmGui.WideBoxes = $oldWide }
+    $true
+}
+
+Test-That 'Window look: Windows 11 only in PowerShell 7 on .NET 9+, light or dark as Windows is set; Classic always light' {
+    Assert-Equal 'Windows 11|Light' (($l = Get-NmGuiLook -Setting 'Windows 11' -PsMajor 7 -NetMajor 10 -AppsUseLightTheme 1) | ForEach-Object { "$($_.Look)|$($_.Mode)" }) 'light'
+    Assert-Equal 'Windows 11|Dark' ((Get-NmGuiLook -Setting 'Windows 11' -PsMajor 7 -NetMajor 10 -AppsUseLightTheme 0) | ForEach-Object { "$($_.Look)|$($_.Mode)" }) 'dark'
+    Assert-Equal 'Classic|Light' ((Get-NmGuiLook -Setting 'Windows 11' -PsMajor 5 -NetMajor 4 -AppsUseLightTheme 0) | ForEach-Object { "$($_.Look)|$($_.Mode)" }) '5.1'
+    Assert-Equal 'Classic|Light' ((Get-NmGuiLook -Setting 'Windows 11' -PsMajor 7 -NetMajor 8 -AppsUseLightTheme 0) | ForEach-Object { "$($_.Look)|$($_.Mode)" }) '.NET 8'
+    Assert-Equal 'Classic|Light' ((Get-NmGuiLook -Setting 'Classic' -PsMajor 7 -NetMajor 10 -AppsUseLightTheme 0) | ForEach-Object { "$($_.Look)|$($_.Mode)" }) 'Classic chosen'
+    Assert-Equal 'Windows 11' (Get-NmSetting -Key WindowLook) 'default setting'
+    $true
+}
+
+Test-That 'Window colours: teal becomes Nutmeg red in both modes; dark mode darkens surfaces and lightens text; text on red or the sidebar stays light' {
+    Assert-Equal '#CF2027' (Resolve-NmGuiColor -Hex '#0E6B66' -Mode Light) 'accent light'
+    Assert-Equal '#D93A40' (Resolve-NmGuiColor -Hex '#0e6b66' -Mode Dark) 'accent dark'
+    Assert-Equal '#FFFFFF' (Resolve-NmGuiColor -Hex '#FFFFFF' -Mode Light) 'white stays in light'
+    Assert-Equal '#202020' (Resolve-NmGuiColor -Hex '#FFFFFF' -Mode Dark) 'surface in dark'
+    Assert-Equal '#F3F3F3' (Resolve-NmGuiColor -Hex '#16191F' -Mode Dark) 'text in dark'
+    Assert-Equal '#FFFFFE' (Resolve-NmGuiColor -Hex '#FFFFFE' -Mode Dark) 'text on red stays white'
+    Assert-Equal '#00FFFFFF' (Resolve-NmGuiColor -Hex '#00FFFFFF' -Mode Dark) 'transparent left alone'
+    $x = Convert-NmGuiXamlColor -Xaml '<Border Background="#FFFFFF" BorderBrush="#0E6B66"><TextBlock Foreground="#16191F"/><Rectangle Fill="#00FFFFFF"/></Border>' -Mode Dark
+    Assert-Equal '<Border Background="#202020" BorderBrush="#D93A40"><TextBlock Foreground="#F3F3F3"/><Rectangle Fill="#00FFFFFF"/></Border>' $x 'XAML'
+    # No teal is left where the brand map cannot reach it: every #0E6B66-family colour in the window code is in the map.
+    $src = Get-Content (Join-Path $script:NmModuleRoot 'Core\Gui.ps1') -Raw
+    if ($src -match 'ConvertFromString\(' -and @([regex]::Matches($src, 'ConvertFromString\(')).Count -ne 1) { throw 'a brush is made without Get-NmGuiBrush' }
+    $true
+}
+
 Test-That 'Compare with nothing picked says what to do' {
     try { Compare-NmGpoBaseline; throw 'no error' } catch { if ("$_" -notlike 'Pick the GPOs to compare*') { throw } }
     $true
