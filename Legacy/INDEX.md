@@ -81,16 +81,16 @@ them: Admin templates (registry policy), Security (security template: security o
 restricted groups, services, file system, audit policy), Preferences (registry or service items),
 Firewall, Wireless, Software install, Public key.
 
-Nine are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (0.7.11, built by `gpo-build`, checked by
-`gpo-compare`); the rest are **To do**.
+Fourteen are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (nine in 0.7.11, five more in
+0.7.23, built by `gpo-build`, checked by `gpo-compare`); the rest are **To do**.
 
 | GPO | Kinds | What it sets | Parameters | Notes |
 | --- | --- | --- | --- | --- |
-| Group Policy Processing | Admin templates | Registry and security policy processed even if unchanged; refresh 15 min + 30 random (computers and DCs); 60 s startup wait; wait for network at startup | refresh and wait times (defaults as here) | |
-| Network - Prefer IPv4 over IPv6 | Preferences | `Tcpip6\Parameters\DisabledComponents` = 0x20 | | Microsoft-supported value |
-| Network - Disable NCSI | Admin templates | NCSI: use global DNS | | Name says "disable" but it only sets global DNS; rename or add the setting |
+| Group Policy Processing (**Ported**: `group-policy-processing`) | Admin templates | Registry and security policy processed even if unchanged; refresh 15 min + 30 random (computers and DCs); 60 s startup wait; wait for network at startup | refresh and wait times (defaults as here) | |
+| Network - Prefer IPv4 over IPv6 (**Ported**: `network-prefer-ipv4-over-ipv6`) | Preferences | `Tcpip6\Parameters\DisabledComponents` = 0x20 | | Microsoft-supported value |
+| Network - Disable NCSI (**Ported**: `network-disable-ncsi`) | Admin templates | NCSI: use global DNS | | Name says "disable" but it only sets global DNS; rename or add the setting |
 | Network - Time Synchronization (**Ported**: `network-time-synchronization`) | Admin templates, Preferences | NTP client: server, type NT5DS, poll 1024; location provider on; `tzautoupdate` Start = 3 | NTP server | Linked at Devices only, never the domain root or DCs (Cliff): NT5DS on the PDC would leave the domain without a time source. With NT5DS the server name is ignored |
-| Devices - Power Profile (Workstations) | Admin templates | High Performance plan; no sleep, standby or hibernate; sleep and hibernate hidden | | Meant for desktops (was WMI-filtered) |
+| Devices - Power Profile (Workstations) (**Ported**: `devices-power-profile-workstations`) | Admin templates | High Performance plan; no sleep, standby or hibernate; sleep and hibernate hidden | | Meant for desktops (was WMI-filtered) |
 | Printer Deployment - Point and Print Restrictions | Admin templates, Preferences | Approved print servers; no warning or elevation prompts; `RestrictDriverInstallationToAdministrators` = 0 | print server FQDNs | No prompts plus 0 is the combination KB5005652 warns about; review before it becomes the baseline |
 | Remote Desktop - Devices (Default) | Security, Admin templates | RDP allowed; NLA, SSL layer, high encryption, secure RPC, always prompt; no saved passwords; client server auth required; 2 connections; 1 h idle limit; COM, LPT, smart card, PnP and video redirection off; user right and Remote Desktop Users group set to an admin group | group allowed to RDP | Restricted Groups replaces the group's members. Domain Admins on workstations breaks tiering; pick the group per run |
 | Remote Desktop - Servers (Default) | Security, Admin templates | Same settings as Devices | group allowed to RDP | Identical settings to Devices: one baseline with two names, or one GPO |
@@ -98,7 +98,7 @@ Nine are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (0.7.11, built b
 | Security - DUO Standards (Devices) | Admin templates | Duo logon: auto push off; offline access for elevation on; Duo at logon and UAC | | Needs the Duo ADMX in the central store |
 | Security - DUO Standards (Servers) | Admin templates, Preferences | Duo logon: auto push off; offline access off; Duo at logon and UAC; same values also as registry items | | Registry items repeat the template settings; keep one |
 | Software - DUO Rollout | Software install | Assigns Duo Authentication for Windows Logon x64 (4.3) | installer path (UNC), version | Generalize: installer from a share chosen at build time, not NETLOGON. Keep Duo keys out of a customized MSI that every user can read |
-| Security - Disable AutoPlay | Admin templates | AutoRun: no autorun commands; AutoPlay off on all drives | | |
+| Security - Disable AutoPlay (**Ported**: `security-disable-autoplay`) | Admin templates | AutoRun: no autorun commands; AutoPlay off on all drives | | |
 | Security - Disable Print Spooler (**Ported**: `security-disable-print-spooler`) | Security | Print Spooler service disabled | | For DCs and servers that don't print |
 | Security - Domain Auditing (DC's) (**Ported**: `security-domain-auditing-dcs`) | Security (audit) | Advanced audit: account logon, account management, DS access, logon/logoff, policy change | | |
 | Security - Domain Auditing (File Servers) | Security (audit) | Advanced audit: account logon and management, logon/logoff, object access (file share, file system, registry, SAM, WFP), policy change, system | | |

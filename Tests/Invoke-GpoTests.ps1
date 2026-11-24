@@ -263,7 +263,7 @@ Write-Host 'Baseline files' -ForegroundColor Cyan
 # ---------------------------------------------------------------------------
 Test-That 'Every shipped baseline loads and passes the checks; Ids unique; names in GpoDefaultLinks.csv; sources exist' {
     $all = @(Get-NmBaseline -IncludeInvalid)
-    if ($all.Count -lt 9) { throw "only $($all.Count) baselines" }
+    if ($all.Count -lt 14) { throw "only $($all.Count) baselines" }
     $bad = @($all | Where-Object { -not $_.Valid })
     if ($bad.Count) { throw "invalid: $(($bad | ForEach-Object { "$($_.Id): $($_.Problems -join '; ')" }) -join ' / ')" }
     $links = @(Import-Csv (Join-Path $script:NmModuleRoot 'Data\GpoDefaultLinks.csv') | ForEach-Object Baseline)
@@ -1179,6 +1179,38 @@ Test-That 'Both tools are registered under Group Policy > Baselines; compare is 
     Assert-Equal 'gpo|Baselines|Report' "$($c.AdminCenter)|$($c.Section)|$($c.Kind)" 'gpo-compare'
     $src = Get-Content (Join-Path $script:NmModuleRoot 'Tools\GroupPolicy\Compare-NmGpoBaseline.ps1') -Raw
     if ($src -match '\b(New|Set|Remove)-GP|Set-ADObject|Write-NmGpo|Update-NmGpoVersion') { throw 'compare writes something' }
+    $true
+}
+
+Test-That 'Step 2a baselines (5) build and compare cleanly, including GUID keys and custom parameters' {
+    $ids = @(
+        'group-policy-processing'
+        'network-prefer-ipv4-over-ipv6'
+        'network-disable-ncsi'
+        'devices-power-profile-workstations'
+        'security-disable-autoplay'
+    )
+    foreach ($id in $ids) {
+        $b = Get-NmBaseline -Id $id
+        if (-not $b -or -not $b.Valid) { throw "$id not loaded or invalid" }
+        $vals = if ($id -eq 'group-policy-processing') {
+            @{ RefreshMinutes = 30; RefreshOffsetMinutes = 15; DcRefreshMinutes = 5; DcRefreshOffsetMinutes = 10; StartupWaitSeconds = 90 }
+        } else { @{} }
+        $res = Resolve-NmBaselineValues -Baseline $b -Given $vals
+        if ($res.Problems.Count) { throw "$id resolve: $($res.Problems -join '; ')" }
+        $g = New-GPO -Name $b.Name -Comment (Get-NmBaselineStamp -Baseline $b)
+        $w = @(Invoke-NmBaselineWrite -Gpo $g -Baseline $b -Values $res.Values)
+        $wBad = @($w | Where-Object { $_.Result -ne 'Written' })
+        if ($wBad.Count) { throw "$id write failed: $(($wBad | ForEach-Object { "$($_.SettingId): $($_.Result)" }) -join '; ')" }
+        $cmp = @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)
+        $diff = @($cmp | Where-Object { $_.Result -ne 'Matches' -and $_.Result -ne 'Note' })
+        if ($diff.Count) { throw "$id compare mismatch: $(($diff | ForEach-Object { "$($_.Setting): $($_.Result) ($($_.Detail))" }) -join '; ')" }
+        if ($id -eq 'group-policy-processing') {
+            Assert-Equal 'RefreshMinutes = 30; RefreshOffsetMinutes = 15' (@($cmp | Where-Object SettingId -eq 'refresh-computers')[0].Detail) 'computer refresh params'
+            Assert-Equal 'DcRefreshMinutes = 5; DcRefreshOffsetMinutes = 10' (@($cmp | Where-Object SettingId -eq 'refresh-dcs')[0].Detail) 'dc refresh params'
+            Assert-Equal 'StartupWaitSeconds = 90' (@($cmp | Where-Object SettingId -eq 'startup-wait')[0].Detail) 'startup wait param'
+        }
+    }
     $true
 }
 
