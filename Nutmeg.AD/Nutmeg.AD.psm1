@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.22
+    Version: 0.7.23
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.23 - Five more baselines (step 2a): Group Policy Processing, Prefer IPv4 over IPv6, Disable NCSI,
+             Power Profile (Workstations) and Disable AutoPlay (14 baselines total).
     0.7.22 - gpo-align (Align or Reset a GPO to its baseline, backed up first) and gpo-restore; Align on Compare's cards for GPOs
              that do not match; tool Order; card actions that hide or refresh. Issue #43.
     0.7.21 - Fixed: card buttons (Edit GPO, View GPO, GPMC report) failed with 'call depth overflow'; the bulk action got the
@@ -97,7 +99,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.22'
+$script:ModuleVersion = '0.7.23'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

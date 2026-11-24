@@ -6,6 +6,27 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.23 - 11/24/2026
+
+**Five more baselines** (step 2a, converted from `Legacy/GPO-Reports/` — 14 baselines now):
+
+- **Group Policy Processing** (`group-policy-processing`): reapply registry and security policies even
+  when unchanged, refresh every 15 minutes (+ 30 random) on computers and DCs, 60-second startup
+  policy wait, and always wait for the network at startup and logon. Refresh and wait times are
+  parameters with your defaults.
+- **Network - Prefer IPv4 over IPv6** (`network-prefer-ipv4-over-ipv6`): sets
+  `Tcpip6\Parameters\DisabledComponents` to `0x20` (32) via Registry Preferences.
+- **Network - Disable NCSI** (`network-disable-ncsi`): turns on NCSI global DNS (`UseGlobalDNS = 1`),
+  matching the report.
+- **Devices - Power Profile (Workstations)** (`devices-power-profile-workstations`): High Performance
+  plan, standby states off, sleep/hibernate/unattended-sleep timeouts set to 0, hybrid sleep off on
+  AC and battery, and Sleep and Hibernate hidden in the power menu.
+- **Security - Disable AutoPlay** (`security-disable-autoplay`): no AutoRun commands and AutoPlay off
+  on all drives (`0xFF`).
+- Updated `Legacy/INDEX.md` and `README.md`.
+- Not run on Windows yet: tested against stand-ins (all tests pass, including build-and-compare
+  round-trips for the five new baselines). `PSScriptAnalyzer` is unavailable in this environment.
+
 ## 0.7.22 - 11/23/2026
 
 **Align GPOs with their baselines, and restore them from a backup** (issue #43, Cliff's answers:
