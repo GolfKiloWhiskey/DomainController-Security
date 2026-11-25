@@ -29,6 +29,7 @@ Security - Rename and Disable Local Accounts,Domain root,
 Security - SCHANNEL Hardening,Domain Controllers; Devices/Member Servers; Devices/Workstations,Link to Devices/Workstations/GPO Test first; run ready before DCs and servers
 Security - SMB Hardening,Domain root,Run ready first
 Security - Screen Timeout,Users,
+Security - WinRM Hardening,Domain Controllers; Devices/Member Servers,Kerberos-only; DC-only inbound scope enforced by Step 4 Firewall
 Windows Firewall - Devices (Default),Devices/Workstations,
 Windows Firewall - Servers (Default),Domain Controllers; Devices/Member Servers,Local rules always merge
 Wireless - Corporate (802.1X),Devices/Workstations/Laptops,

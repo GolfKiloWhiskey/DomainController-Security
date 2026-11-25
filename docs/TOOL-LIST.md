@@ -169,6 +169,20 @@ Agreed in principle (Nov 2026); to revisit once the Nutmeg baseline is built. No
   from the Huntress list in Update-AuditPol-HuntressDefaults as the minimum, with the role's extra
   subcategories from the existing GPOs on top (File Servers becomes Servers, or stays as its own role).
   Process Creation is turned on wherever the PowerShell logging GPO applies, so command lines are logged.
+- **Security - WinRM Hardening** (decided): Kerberos-only WinRM (`AllowNegotiate = 0`, no Basic,
+  Unencrypted, CredSSP or RunAs) on DCs and Member Servers, paired with hub-and-spoke Firewall rules
+  in Step 4 (DC -> Member Servers only; never member-to-member or member-to-DC) and HTTPS (`5986`)
+  once ADCS + PKI are deployed (`docs/baselines/Security-WinRM-Hardening.md`).
+
+## Member Server Roles (planned, after Step 4)
+
+Agreed in principle (Nov 2026); to design and build alongside/after Step 4 (Firewall + PKI + WinRM
+HTTPS).
+
+- **ADCS Enterprise Root CA (`role-adcs`):** ADCS never runs on a DC; new domain builds deploy ADCS
+  onto a dedicated member server. Bootstrapped from the DC over Kerberos-encrypted WinRM (`5985`,
+  firewall-scoped to DC IP(s)), then paired with `Security - PKI - CA Infrastructure` and WinRM
+  HTTPS (`5986`) listener binding.
 
 ### AD admin (`admin`) (in scope, decided)
 
@@ -199,6 +213,8 @@ a `Result` per object, run history; forest- or domain-wide changes need the doma
 - Runs on a DC only (elevated, as a domain admin). Other DCs are reached from there.
 - Audit policy per role.
 - SCHANNEL Hardening is in, to Microsoft's current guidance: `docs/baselines/Security-SCHANNEL-Hardening.md`.
+- WinRM Hardening is in (Kerberos-only, HTTPS 5986 post-PKI, hub-and-spoke DC -> Member Servers only via Step 4 Firewall; remote Event Viewer / Computer Management RPC rules scoped to DC IPs in Step 4): `docs/baselines/Security-WinRM-Hardening.md`.
+- ADCS never runs on a DC; planned as a Member Server Role deployment (`role-adcs`) after Step 4.
 - Firewall GPOs always merge local rules. Time Synchronization links at Devices only.
 - Disabled objects live directly under the domain root (Z-Disabled Users, Z-Disabled Computers), outside the organization OU and the Entra Connect sync scope; Users/Z-Disabled Users-SharedMailboxes stays in scope for shared mailboxes. Admin accounts stay in Users/Admin Accounts.
 - General AD admin is in, except the employee ID import.

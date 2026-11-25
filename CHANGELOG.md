@@ -6,6 +6,22 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.26 - 11/25/2026
+
+**Documented the WinRM Hardening baseline and Member Server Roles (ADCS) plan** (docs only; no code
+changes):
+
+- Added `docs/baselines/Security-WinRM-Hardening.md`: Kerberos-only WinRM (`AllowNegotiate = 0`,
+  Basic/Unencrypted/CredSSP/RunAs off) on both Domain Controllers and Member Servers, bootstrap
+  (`5985`) -> HTTPS (`5986`) lifecycle once ADCS + PKI are deployed, hub-and-spoke Firewall rules in
+  Step 4 (DC -> Member Servers only; never member-to-member or member-to-DC), and DC-only Firewall
+  scoping for remote Event Viewer / Computer Management RPC rules.
+- Updated `docs/TOOL-LIST.md` with **Security - WinRM Hardening** and the planned **Member Server
+  Roles** track (starting with dedicated ADCS Enterprise Root CA, `role-adcs`, after Step 4).
+- Added `Security - WinRM Hardening` to `Nutmeg.AD/Data/GpoDefaultLinks.csv`.
+- Not run on Windows (docs-only PR; all 295 stand-in tests still pass). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.25 - 11/25/2026
 
 **Domain and DC read automatically on start** (`Core/Domain.ps1`, `Core/Gui.ps1`, `Core/Launcher.ps1`):
