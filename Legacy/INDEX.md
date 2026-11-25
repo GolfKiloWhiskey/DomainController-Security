@@ -32,8 +32,8 @@ General AD admin is in scope (Cliff, Nov 2026), except the employee ID import.
 
 | Script | Status | What it does | Notes |
 | --- | --- | --- | --- |
-| [Update-AuditPol-HuntressDefaults.ps1](Scripts/Personal-Repo/Update-AuditPol-HuntressDefaults.ps1) | To do (baseline) | Checks and applies 59 advanced audit subcategories with auditpol, to Huntress recommendations | The minimum for the per-role audit baselines (DCs, servers, devices), built as GPOs, not auditpol on the machine. Process Creation on where PowerShell logging applies |
-| [CreateGPO-SSL_TLS-Disable.ps1](Scripts/Personal-Repo/CreateGPO-SSL_TLS-Disable.ps1) | To do (baseline) | Adds registry preferences to a GPO (Registry.xml) that turn off SSL 2.0/3.0 and TLS 1.0/1.1 | Superseded by the agreed spec `docs/baselines/Security-SCHANNEL-Hardening.md` (protocols, cipher suite and curve order, weak ciphers, DH key sizes, .NET). Its Registry.xml writer is a reference for `gpo-build` |
+| [Update-AuditPol-HuntressDefaults.ps1](Scripts/Personal-Repo/Update-AuditPol-HuntressDefaults.ps1) | Ported (`security-domain-auditing-dcs`, `servers`, `devices`) | Checks and applies 59 advanced audit subcategories with auditpol, to Huntress recommendations | The minimum for the per-role audit baselines (DCs, servers, devices), built as GPOs with `SCENoApplyLegacyAuditPolicy = 1` and Process Creation on |
+| [CreateGPO-SSL_TLS-Disable.ps1](Scripts/Personal-Repo/CreateGPO-SSL_TLS-Disable.ps1) | Ported (`security-schannel-hardening`) | Adds registry preferences to a GPO (Registry.xml) that turn off SSL 2.0/3.0 and TLS 1.0/1.1 | Superseded by `Security-SCHANNEL-Hardening.psd1` (`docs/baselines/Security-SCHANNEL-Hardening.md`) |
 | [Audit-SslTlsCiphersAndProtocols.ps1](Scripts/Personal-Repo/Audit-SslTlsCiphersAndProtocols.ps1) | To do | Audits SSL/TLS on one machine: SCHANNEL protocols with OS defaults, .NET strong crypto, FIPS, cipher suites, curves, HTTPS bindings, RDP and WinRM security, certificate health | Goes into `ready` (check DCs before the SCHANNEL baseline), run on each DC |
 | [Enable-UserKerberosEncryption.ps1](Scripts/Personal-Repo/Enable-UserKerberosEncryption.ps1) | To do | Sets AES encryption types on the users in an OU | Fix step for `ready`: accounts without AES before the Kerberos Encryption baseline |
 | [Get-ADGroupMembers-PartialGroupNaming-MENU.ps1](Scripts/Personal-Repo/Get-ADGroupMembers-PartialGroupNaming-MENU.ps1) | To do | Finds groups by part of a name; exports members of one or all | `ad-groups` |
@@ -81,8 +81,9 @@ them: Admin templates (registry policy), Security (security template: security o
 restricted groups, services, file system, audit policy), Preferences (registry or service items),
 Firewall, Wireless, Software install, Public key.
 
-Fourteen are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (nine in 0.7.11, five more in
-0.7.23, built by `gpo-build`, checked by `gpo-compare`); the rest are **To do**.
+Seventeen are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (nine in 0.7.11, five in 0.7.23,
+three more + DC auditing updated in 0.7.27, built by `gpo-build`, checked by `gpo-compare`); the rest
+are **To do**.
 
 | GPO | Kinds | What it sets | Parameters | Notes |
 | --- | --- | --- | --- | --- |
@@ -100,9 +101,9 @@ Fourteen are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (nine in 0.7
 | Software - DUO Rollout | Software install | Assigns Duo Authentication for Windows Logon x64 (4.3) | installer path (UNC), version | Generalize: installer from a share chosen at build time, not NETLOGON. Keep Duo keys out of a customized MSI that every user can read |
 | Security - Disable AutoPlay (**Ported**: `security-disable-autoplay`) | Admin templates | AutoRun: no autorun commands; AutoPlay off on all drives | | |
 | Security - Disable Print Spooler (**Ported**: `security-disable-print-spooler`) | Security | Print Spooler service disabled | | For DCs and servers that don't print |
-| Security - Domain Auditing (DC's) (**Ported**: `security-domain-auditing-dcs`) | Security (audit) | Advanced audit: account logon, account management, DS access, logon/logoff, policy change | | |
-| Security - Domain Auditing (File Servers) | Security (audit) | Advanced audit: account logon and management, logon/logoff, object access (file share, file system, registry, SAM, WFP), policy change, system | | |
-| Security - Domain Auditing (Devices) | none | Empty | | Drop, or define device auditing |
+| Security - Domain Auditing (DC's) (**Ported**: `security-domain-auditing-dcs`) | Security (audit, option) | Huntress minimum + DC extras + Process Creation + `SCENoApplyLegacyAuditPolicy = 1` | | Updated to 0.7.2 in 0.7.27 |
+| Security - Domain Auditing (File Servers) (**Ported**: `security-domain-auditing-servers`) | Security (audit, option) | Huntress minimum + File Servers extras + Process Creation + `SCENoApplyLegacyAuditPolicy = 1` | | Named `Security - Domain Auditing (Servers)` |
+| Security - Domain Auditing (Devices) (**Ported**: `security-domain-auditing-devices`) | Security (audit, option) | Huntress minimum (no DS Access) + Process Creation + `SCENoApplyLegacyAuditPolicy = 1` | | |
 | Security - Enforce UAC (**Ported**: `security-enforce-uac`) | Security | UAC: admin approval mode (built-in admin too), credentials on secure desktop for admins and users, detect installs | | |
 | Security - ClientX Disclaimer | Security | Logon banner title and text | organization name, banner text | Text mentions CUI; make the text a parameter with a default |
 | Security - Kerberos Encryption (**Ported**: `security-kerberos-encryption`) | Security | Kerberos: AES256 and future types only (DES, RC4 and AES128 off) | | Check for accounts without AES keys before applying |
@@ -117,5 +118,5 @@ Fourteen are **Ported** to baseline files in `Nutmeg.AD/Baselines/` (nine in 0.7
 | Security - Screen Timeout (**Ported**: `security-screen-timeout`) | Admin templates (user) | Screen saver on, `scrnsave.scr`, password protected, 900 s | timeout | |
 | Windows Firewall - Devices (Default) | Firewall, Admin templates | All profiles on, inbound block, outbound allow, log dropped and allowed (32 MB); notifications off; inbound RDP (TCP and UDP) and ICMP from one range | management range | Baseline change: local firewall and connection security rules are always merged (Cliff's standard, above all in existing domains); the report had them off. Rules are "allow if secure" (require authentication) with no connection security rules; check before reuse |
 | Windows Firewall - Servers (Default) | Firewall, Admin templates | As Devices, local rules merged, notifications not set | management range | Also linked to Domain Controllers (Cliff). Safe only because local rules merge: the AD DS role's own rules (LDAP, Kerberos, DNS, RPC) keep working |
-| Security - SCHANNEL Hardening | Admin templates, Preferences | New (not from a report): see `docs/baselines/Security-SCHANNEL-Hardening.md` | `CipherProfile` (Compatible, Modern) | GPO Test first; `ready` before DCs and servers |
+| Security - SCHANNEL Hardening (**Ported**: `security-schannel-hardening`) | Admin templates, Preferences | Protocols (SSL 2/3, TLS 1.0/1.1 off, TLS 1.2 on), cipher suite & ECC curve order, weak ciphers off, DH/PKCS 2048-bit, .NET strong crypto (`docs/baselines/Security-SCHANNEL-Hardening.md`) | `CipherProfile` (Compatible, Modern) | GPO Test first; `ready` before DCs and servers |
 | Wireless - ClientX-Production | Wireless | WPA2-Enterprise AES, 802.1X computer authentication, certificate (EAP-TLS), server validation against the CA, PMK caching | SSID, CA, RADIUS server names | |

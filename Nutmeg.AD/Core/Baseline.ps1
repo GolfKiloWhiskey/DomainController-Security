@@ -31,7 +31,7 @@ $script:NmBaselineKinds = [ordered]@{
 }
 $script:NmBaselineCommonFields = @('Id', 'Kind', 'Side', 'Title', 'Tags', 'Note')
 $script:NmBaselineTopFields    = @('Id', 'Name', 'Version', 'Description', 'Source', 'Requires', 'Notes', 'Parameters', 'Settings')
-$script:NmBaselineParamFields  = @('Name', 'Prompt', 'Type', 'Default', 'Min', 'Max', 'Choices', 'Optional', 'Help')
+$script:NmBaselineParamFields  = @('Name', 'Prompt', 'Type', 'Default', 'Min', 'Max', 'Choices', 'ValueMap', 'Optional', 'Help')
 $script:NmBaselineParamTypes   = @('String', 'Int', 'Choice', 'Fqdn', 'IpRange', 'Group', 'Account')
 $script:NmBaselineValueTypes   = @('String', 'ExpandString', 'DWord', 'QWord', 'MultiString')
 $script:NmBaselineSecTypes     = @('String', 'DWord', 'MultiString')
@@ -209,6 +209,15 @@ function Test-NmBaseline {
         if (-not "$($par.Prompt)".Trim()) { $p.Add("parameter ${n}: Prompt is missing") }
         if ($script:NmBaselineParamTypes -notcontains "$($par.Type)") { $p.Add("parameter ${n}: Type '$($par.Type)' is not one of: $($script:NmBaselineParamTypes -join ', ')") }
         if ("$($par.Type)" -eq 'Choice' -and -not @($par.Choices).Count) { $p.Add("parameter ${n}: a Choice needs Choices") }
+        if ($par.Contains('ValueMap')) {
+            if ("$($par.Type)" -ne 'Choice') { $p.Add("parameter ${n}: ValueMap is only for Choice parameters") }
+            elseif ($par.ValueMap -isnot [System.Collections.IDictionary]) { $p.Add("parameter ${n}: ValueMap must be a hashtable") }
+            else {
+                foreach ($ch in @($par.Choices)) {
+                    if (-not $par.ValueMap.Contains("$ch")) { $p.Add("parameter ${n}: ValueMap is missing '$ch'") }
+                }
+            }
+        }
         if (-not $par.Contains('Default')) { $p.Add("parameter ${n}: Default is missing (use '' for none)") }
     }
 
@@ -424,6 +433,23 @@ function Resolve-NmBaselineValues {
         $vals[$n] = "$v".Trim()
     }
     return [pscustomobject]@{ Values = $vals; Problems = $problems.ToArray() }
+}
+
+function Expand-NmBaselineParamValues {
+    # Returns a copy of -Values where any Choice parameter with a ValueMap is mapped to its setting value.
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Baseline, [hashtable]$Values = @{})
+    $out = @{}
+    foreach ($k in $Values.Keys) { $out[$k] = $Values[$k] }
+    foreach ($par in @($Baseline.Parameters)) {
+        if ($par -is [System.Collections.IDictionary] -and $par.Contains('ValueMap') -and $par.ValueMap -is [System.Collections.IDictionary]) {
+            $n = "$($par.Name)"
+            if ($out.ContainsKey($n) -and $par.ValueMap.Contains("$($out[$n])")) {
+                $out[$n] = $par.ValueMap["$($out[$n])"]
+            }
+        }
+    }
+    return $out
 }
 
 function Read-NmBaselineParameter {

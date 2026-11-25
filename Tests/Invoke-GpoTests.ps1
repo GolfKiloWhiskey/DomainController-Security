@@ -107,12 +107,33 @@ function global:Set-GPPrefRegistryValue {
     if ($Key -notmatch '^(HKLM|HKCU)\\') { throw 'The key must start with HKLM\ or HKCU\.' }
     $folder = Join-Path (Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($Context -eq 'User') { 'User' } else { 'Machine' })) 'Preferences') 'Registry'
     New-Item -Path $folder -ItemType Directory -Force | Out-Null
+    $file = Join-Path $folder 'Registry.xml'
     $hive = if ($Key -like 'HKLM\*') { 'HKEY_LOCAL_MACHINE' } else { 'HKEY_CURRENT_USER' }
+    $keyNoHive = $Key.Substring(5)
     $t = @{ String = 'REG_SZ'; DWord = 'REG_DWORD'; ExpandString = 'REG_EXPAND_SZ'; MultiString = 'REG_MULTI_SZ'; QWord = 'REG_QWORD' }[$Type]
     $v = if ($Type -eq 'DWord') { ([uint32][int64]([int]$Value -band 0xFFFFFFFFL)).ToString('X8') } else { "$Value" }
     $act = $Action.Substring(0, 1)
-    $xml = "<?xml version=`"1.0`" encoding=`"utf-8`"?><RegistrySettings clsid=`"{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}`"><Registry clsid=`"{9CD4B2F4-923D-47f5-A062-E897DD1DAD50}`" name=`"$ValueName`"><Properties action=`"$act`" hive=`"$hive`" key=`"$($Key.Substring(5))`" name=`"$ValueName`" type=`"$t`" value=`"$v`"/></Registry></RegistrySettings>"
-    Set-Content -LiteralPath (Join-Path $folder 'Registry.xml') -Value $xml
+    [xml]$doc = if (Test-Path -LiteralPath $file) { Get-Content -LiteralPath $file -Raw } else { '<?xml version="1.0" encoding="utf-8"?><RegistrySettings clsid="{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}"/>' }
+    $root = $doc.DocumentElement
+    foreach ($node in @($root.SelectNodes('Registry'))) {
+        $p = $node.SelectSingleNode('Properties')
+        if ($p -and $p.GetAttribute('hive') -eq $hive -and $p.GetAttribute('key') -eq $keyNoHive -and $p.GetAttribute('name') -eq $ValueName) {
+            [void]$root.RemoveChild($node)
+        }
+    }
+    $reg = $doc.CreateElement('Registry')
+    $reg.SetAttribute('clsid', '{9CD4B2F4-923D-47f5-A062-E897DD1DAD50}')
+    $reg.SetAttribute('name', $ValueName)
+    $props = $doc.CreateElement('Properties')
+    $props.SetAttribute('action', $act)
+    $props.SetAttribute('hive', $hive)
+    $props.SetAttribute('key', $keyNoHive)
+    $props.SetAttribute('name', $ValueName)
+    $props.SetAttribute('type', $t)
+    $props.SetAttribute('value', $v)
+    [void]$reg.AppendChild($props)
+    [void]$root.AppendChild($reg)
+    Set-Content -LiteralPath $file -Value $doc.OuterXml
     Add-FakeGpoVersion -Gpo $g -By 1 -Ext '{B087BE9D-ED37-454F-AF9C-04291E351182}{BEE07A6A-EC9F-4659-B8C9-0B1937907C83}'
 }
 $global:FakeLinks = @{}         # GPO name -> @(@{ Path; Enabled; Enforced }); none = not linked
@@ -164,7 +185,19 @@ function global:Remove-GPPrefRegistryValue {
     $g = Find-FakeGpo -Guid "$Guid"
     $file = Join-Path (Join-Path (Join-Path (Join-Path (Get-FakeGpoFolder $g.Id) $(if ($Context -eq 'User') { 'User' } else { 'Machine' })) 'Preferences') 'Registry') 'Registry.xml'
     if (-not (Test-Path $file)) { throw 'No registry preference item matches.' }
-    Set-Content -LiteralPath $file -Value '<?xml version="1.0" encoding="utf-8"?><RegistrySettings clsid="{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}"/>'
+    $hive = if ($Key -like 'HKLM\*') { 'HKEY_LOCAL_MACHINE' } else { 'HKEY_CURRENT_USER' }
+    $keyNoHive = $Key.Substring(5)
+    [xml]$doc = Get-Content -LiteralPath $file -Raw
+    $root = $doc.DocumentElement
+    $removed = 0
+    foreach ($node in @($root.SelectNodes('Registry'))) {
+        $p = $node.SelectSingleNode('Properties')
+        if ($p -and $p.GetAttribute('hive') -eq $hive -and $p.GetAttribute('key') -eq $keyNoHive -and $p.GetAttribute('name') -eq $ValueName) {
+            [void]$root.RemoveChild($node); $removed++
+        }
+    }
+    if (-not $removed) { throw 'No registry preference item matches.' }
+    Set-Content -LiteralPath $file -Value $doc.OuterXml
     Add-FakeGpoVersion -Gpo $g -By 1 -Ext ''
 }
 function global:Get-ADObject {
@@ -263,14 +296,14 @@ Write-Host 'Baseline files' -ForegroundColor Cyan
 # ---------------------------------------------------------------------------
 Test-That 'Every shipped baseline loads and passes the checks; Ids unique; names in GpoDefaultLinks.csv; sources exist' {
     $all = @(Get-NmBaseline -IncludeInvalid)
-    if ($all.Count -lt 14) { throw "only $($all.Count) baselines" }
+    if ($all.Count -lt 17) { throw "only $($all.Count) baselines" }
     $bad = @($all | Where-Object { -not $_.Valid })
     if ($bad.Count) { throw "invalid: $(($bad | ForEach-Object { "$($_.Id): $($_.Problems -join '; ')" }) -join ' / ')" }
     $links = @(Import-Csv (Join-Path $script:NmModuleRoot 'Data\GpoDefaultLinks.csv') | ForEach-Object Baseline)
     foreach ($b in $all) {
         if ($links -notcontains $b.Name) { throw "$($b.Name) is not in GpoDefaultLinks.csv" }
         if ($b.Source -and -not (Test-Path (Join-Path (Split-Path $script:NmModuleRoot) $b.Source))) { throw "$($b.Id): source $($b.Source) not found" }
-        if ($b.Version -ne '0.7.1') { throw "$($b.Id) version $($b.Version)" }
+        if ($b.Version -notmatch '^0\.7\.\d+$') { throw "$($b.Id) version $($b.Version)" }
     }
     $true
 }
@@ -499,9 +532,9 @@ Test-That 'Build: Domain Auditing (audit) and Print Spooler (service) - audit.cs
     $r = @(New-NmGpoFromBaseline -Baseline security-domain-auditing-dcs, security-disable-print-spooler)
     Assert-Equal 'Created|Created' (($r | ForEach-Object Result) -join '|') 'results'
     $audit = $global:FakeGpos[0]
-    Assert-Equal 23 @(Read-NmGpoAudit -Id "$($audit.Id)").Count 'audit rows'
+    Assert-Equal 40 @(Read-NmGpoAudit -Id "$($audit.Id)").Count 'audit rows'
     if ($global:FakeGpoAd[$audit.Path].gPCMachineExtensionNames -notlike '*{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}*') { throw 'audit CSE missing' }
-    if ($global:FakeGpoAd[$audit.Path].gPCMachineExtensionNames -like '*827D319E*') { throw 'security CSE added with no security template' }
+    if ($global:FakeGpoAd[$audit.Path].gPCMachineExtensionNames -notlike '*827D319E*') { throw 'security CSE missing for SCENoApplyLegacyAuditPolicy' }
     $svc = Read-NmGpoGptTmpl -Id "$($global:FakeGpos[1].Id)"
     if ($svc['Service General Setting']['spooler'] -notlike '"Spooler",4,*') { throw 'service line' }
     $true
@@ -595,7 +628,7 @@ Test-That 'Compare: a GPO just built matches its baseline everywhere; the parame
     $rows = @(Compare-NmGpoBaseline -All | Where-Object Kind -ne 'Links')
     $notOk = @($rows | Where-Object { $_.Result -ne 'Matches' })
     if ($notOk.Count) { throw "not matching: $(($notOk | ForEach-Object { "$($_.Gpo): $($_.Setting) [$($_.Result)] exp '$($_.Expected)' got '$($_.Actual)'" }) -join ' / ')" }
-    Assert-Equal (7 + 4 + 3 + 23) $rows.Count 'rows'
+    Assert-Equal (7 + 4 + 3 + 41) $rows.Count 'rows'
     Assert-Equal 'TimeoutSeconds = 600' (@($rows | Where-Object SettingId -eq 'screensaver-timeout')[0].Detail) 'parameter'
     Assert-Equal 'NtpServer = DC01.clientx.local,0x1' (@($rows | Where-Object SettingId -eq 'ntp-client')[0].Detail) 'ntp parameter'
     $true
@@ -739,7 +772,7 @@ Test-That 'Reset: security options, audit and the extras in GptTmpl.inf and audi
     $ntlm = $global:FakeGpos[0]; $aud = $global:FakeGpos[1]
     $path = Get-NmGpoFilePath -Id "$($ntlm.Id)" -File GptTmpl
     Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('LmCompatibilityLevel=4,5', 'LmCompatibilityLevel=4,3').Replace('[Version]', "[System Access]`r`nEnableGuestAccount = 1`r`n[Version]")) -Encoding Unicode
-    Write-NmGpoAudit -Id "$($aud.Id)" -Settings @(@{ Subcategory = 'Process Creation'; Setting = 'Success' })
+    Write-NmGpoAudit -Id "$($aud.Id)" -Settings @(@{ Subcategory = 'Process Termination'; Setting = 'Success' })
     $v = $global:FakeGpoAd[$ntlm.Path].versionNumber
     Answer 'y', 'y'
     $r = @(Set-NmGpoToBaseline -Gpo 'Security - NTLM Hardening', 'Security - Domain Auditing (DC''s)' -Mode Reset)
@@ -748,7 +781,7 @@ Test-That 'Reset: security options, audit and the extras in GptTmpl.inf and audi
     $doc = Read-NmGpoGptTmpl -Id "$($ntlm.Id)"
     if ($doc.Contains('System Access') -and $doc['System Access'].Contains('enableguestaccount')) { throw 'extra not removed' }
     if ($global:FakeGpoAd[$ntlm.Path].versionNumber -le $v) { throw 'version not raised' }
-    Assert-Equal 23 @(Read-NmGpoAudit -Id "$($aud.Id)").Count 'audit back to the baseline'
+    Assert-Equal 40 @(Read-NmGpoAudit -Id "$($aud.Id)").Count 'audit back to the baseline'
     $true
 }
 
@@ -1261,6 +1294,67 @@ Test-That 'Build multiple GPOs in the window: summary dialog lists every GPO wit
         Assert-Equal 3 $seen.Count 'summary plus two per-GPO dialogs'
         Assert-Equal '' $seen[1].SecondaryLabel 'per-GPO dialog has no secondary button'
     } finally { $script:NmGui.ConfirmProvider = $null; $script:NmGui.Active = $false }
+    $true
+}
+
+Test-That 'Step 2b: SCHANNEL Hardening builds, compares (Compatible & Modern), catches cipher drift, and aligns cleanly' {
+    $b = Get-NmBaseline -Id 'security-schannel-hardening'
+    if (-not $b -or -not $b.Valid) { throw 'schannel baseline not loaded or invalid' }
+    Assert-Equal 43 @($b.Settings).Count 'schannel setting count'
+
+    # Build with Modern
+    $res = Resolve-NmBaselineValues -Baseline $b -Given @{ CipherProfile = 'Modern' }
+    if ($res.Problems.Count) { throw "resolve: $($res.Problems -join '; ')" }
+    $g = New-GPO -Name $b.Name -Comment (Get-NmBaselineStamp -Baseline $b)
+    $w = @(Invoke-NmBaselineWrite -Gpo $g -Baseline $b -Values $res.Values)
+    $wBad = @($w | Where-Object { $_.Result -ne 'Written' })
+    if ($wBad.Count) { throw "write failed: $(($wBad | ForEach-Object { "$($_.SettingId): $($_.Result)" }) -join '; ')" }
+    $cmp = @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)
+    $diff = @($cmp | Where-Object { $_.Result -ne 'Matches' -and $_.Result -ne 'Note' })
+    if ($diff.Count) { throw "compare mismatch: $(($diff | ForEach-Object { "$($_.Setting): $($_.Result) exp '$($_.Expected)' got '$($_.Actual)'" }) -join '; ')" }
+    Assert-Equal 'CipherProfile = Modern' (@($cmp | Where-Object SettingId -eq 'ssl-cipher-suite-order')[0].Detail) 'modern profile detected'
+
+    # Align keeps Modern; Reset switches back to default Compatible
+    $alignPlan = Get-NmGpoAlignPlan -Gpo $g -Baseline $b -Mode Align
+    Assert-Equal 0 @($alignPlan.Changes).Count 'align keeps Modern with 0 changes'
+    Assert-Equal 'Modern' $alignPlan.Values['CipherProfile'] 'align preserves Modern'
+    $resetPlan = Get-NmGpoAlignPlan -Gpo $g -Baseline $b -Mode Reset
+    Assert-Equal 1 @($resetPlan.Changes).Count 'reset changes cipher suite back to Compatible'
+    Assert-Equal 'Compatible' $resetPlan.Values['CipherProfile'] 'reset defaults to Compatible'
+
+    # Manual drift to a bad cipher list is caught as Different
+    Set-GPRegistryValue -Guid $g.Id -Key 'HKLM\Software\Policies\Microsoft\Cryptography\Configuration\SSL\00010002' -ValueName 'Functions' -Type String -Value 'TLS_RSA_WITH_RC4_128_SHA'
+    $drift = @((Compare-NmGpoWithBaseline -Gpo $g -Baseline $b) | Where-Object SettingId -eq 'ssl-cipher-suite-order')[0]
+    Assert-Equal 'Different' $drift.Result 'drifted cipher suite flagged Different'
+    $true
+}
+
+Test-That 'Step 2b: Choice ValueMap validation catches non-Choice and missing choices' {
+    $b1 = Copy-Good
+    $b1.Parameters = @(@{ Name = 'Seconds'; Prompt = 'S'; Type = 'Int'; Default = 900; ValueMap = @{ a = 'b' } })
+    $p1 = @(Test-NmBaseline -Data $b1)
+    if (-not @($p1 | Where-Object { $_ -like '*ValueMap is only for Choice*' }).Count) { throw "p1: $($p1 -join ' | ')" }
+    $b2 = Copy-Good
+    $b2.Parameters = @(@{ Name = 'Seconds'; Prompt = 'S'; Type = 'Choice'; Choices = @('A', 'B'); Default = 'A'; ValueMap = @{ A = '1' } })
+    $p2 = @(Test-NmBaseline -Data $b2)
+    if (-not @($p2 | Where-Object { $_ -like "*ValueMap is missing 'B'*" }).Count) { throw "p2: $($p2 -join ' | ')" }
+    $true
+}
+
+Test-That 'Step 2b: Per-role Domain Auditing (DCs, Servers, Devices) build and compare cleanly with Process Creation and SCENoApplyLegacyAuditPolicy' {
+    foreach ($id in 'security-domain-auditing-dcs', 'security-domain-auditing-servers', 'security-domain-auditing-devices') {
+        $b = Get-NmBaseline -Id $id
+        if (-not $b -or -not $b.Valid) { throw "$id not loaded or invalid" }
+        if (-not @($b.Settings | Where-Object { $_.Id -eq 'force-audit-subcategory' -and $_.Key -like '*SCENoApplyLegacyAuditPolicy' -and $_.Value -eq 1 }).Count) { throw "$id missing SCENoApplyLegacyAuditPolicy" }
+        if (-not @($b.Settings | Where-Object { $_.Id -eq 'process-creation' -and $_.Subcategory -eq 'Process Creation' -and $_.Setting -eq 'Success' }).Count) { throw "$id missing Process Creation" }
+        $g = New-GPO -Name $b.Name -Comment (Get-NmBaselineStamp -Baseline $b)
+        $w = @(Invoke-NmBaselineWrite -Gpo $g -Baseline $b -Values @{})
+        $wBad = @($w | Where-Object { $_.Result -ne 'Written' })
+        if ($wBad.Count) { throw "$id write failed: $(($wBad | ForEach-Object { "$($_.SettingId): $($_.Result)" }) -join '; ')" }
+        $cmp = @(Compare-NmGpoWithBaseline -Gpo $g -Baseline $b)
+        $diff = @($cmp | Where-Object { $_.Result -ne 'Matches' -and $_.Result -ne 'Note' })
+        if ($diff.Count) { throw "$id compare mismatch: $(($diff | ForEach-Object { "$($_.Setting): $($_.Result)" }) -join '; ')" }
+    }
     $true
 }
 

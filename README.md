@@ -90,9 +90,9 @@ The rest are listed in `docs/TOOL-LIST.md` and arrive in the order given there.
 
 **Baselines** (`Nutmeg.AD/Baselines/`, one `.psd1` file each, format in `docs/baselines/FORMAT.md`):
 Group Policy Processing, Network - Prefer IPv4 over IPv6, Network - Disable NCSI, Time Synchronization,
-Power Profile (Workstations), Disable AutoPlay, Disable Print Spooler, Domain Auditing (DC's),
-Enforce UAC, Kerberos Encryption, LDAPS Hardening (DC's) and (Devices), NTLM Hardening, Screen Timeout.
-More follow as they are converted.
+Power Profile (Workstations), Disable AutoPlay, Disable Print Spooler, Domain Auditing (DC's, Servers,
+Devices), Enforce UAC, Kerberos Encryption, LDAPS Hardening (DC's) and (Devices), NTLM Hardening,
+SCHANNEL Hardening, Screen Timeout. More follow as they are converted.
 
 ## Run a tool without the menu
 

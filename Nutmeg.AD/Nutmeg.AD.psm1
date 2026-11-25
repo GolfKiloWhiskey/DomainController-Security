@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.26
+    Version: 0.7.27
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.27 - Step 2b baselines (17 total): Security - SCHANNEL Hardening (with Choice ValueMap support in
+             Core\Baseline.ps1 and Core\GpoBaseline.ps1) and per-role Domain Auditing (DC's 0.7.2, Servers,
+             Devices) with Huntress minimums, Process Creation and forced audit subcategories.
     0.7.26 - Documented Security - WinRM Hardening baseline spec (docs/baselines/Security-WinRM-Hardening.md)
              and Member Server Roles / ADCS roadmap (docs/TOOL-LIST.md, Data/GpoDefaultLinks.csv). No code changes.
     0.7.25 - Read and display Domain and DC automatically on toolkit start (Initialize-NmStartupDomain in window
@@ -106,7 +109,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.26'
+$script:ModuleVersion = '0.7.27'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
