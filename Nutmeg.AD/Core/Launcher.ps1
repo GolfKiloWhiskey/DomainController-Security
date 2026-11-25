@@ -139,8 +139,8 @@ function Start-NmToolkit {
         - Main menu: the areas (Group Policy, Active Directory, Readiness, Reports, Toolkit) with tool
           counts and whether their modules are loaded; each opens its sections, then the tools. Plus
           Search, Domain and DC, Run history, Settings and tools that did not load.
-        - Nothing is loaded at start: the first tool that needs the AD or GroupPolicy module loads it
-          and reads the domain.
+        - Reads the domain and DC on start (loading ActiveDirectory) so the header shows them right
+          away; GroupPolicy loads when a GPO tool needs it.
     #>
     [CmdletBinding()]
     param()
@@ -148,6 +148,7 @@ function Start-NmToolkit {
     Clear-NmScreen
     Write-NmLog "Nutmeg AD Toolkit $script:ModuleVersion started. Log: $(Get-NmLogPath)" -Level INFO -NoConsole
     $null = Remove-NmOldLog
+    $null = Initialize-NmStartupDomain
 
     while ($true) {
         $script:NmGoMain = $false

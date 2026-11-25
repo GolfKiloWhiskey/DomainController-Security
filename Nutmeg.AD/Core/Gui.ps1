@@ -4342,6 +4342,9 @@ function Start-NmToolkitGui {
         $w.Add_ContentRendered({
             if ($script:NmGui.Started) { return }
             $script:NmGui.Started = $true
+            if (-not $script:NmGui.BuildMode) {
+                Invoke-NmGuiAction -Busy 'Reading domain and DC...' -Action { $null = Initialize-NmStartupDomain }
+            }
             $script:NmGui.Controls.StatusText.Text = Get-NmGuiReadyText
             # The New Forest Build: its questions (or "Continue it?" after a restart) start at once.
             if ($script:NmGui.BuildMode -and $script:NmGui.Tool) { Invoke-NmGuiGuided }

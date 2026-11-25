@@ -6,6 +6,20 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.25 - 11/25/2026
+
+**Domain and DC read automatically on start** (`Core/Domain.ps1`, `Core/Gui.ps1`, `Core/Launcher.ps1`):
+
+- When the toolkit opens (window or console) on a domain-joined server or DC, it automatically loads
+  `ActiveDirectory` and reads the domain and DC right away (`Initialize-NmStartupDomain`), so
+  **Domain and DC** and the status bar show the domain and DC immediately instead of "Not read yet".
+- Skipped on workgroup servers and in New Forest Build mode; if RSAT is missing or AD cannot be
+  reached, the toolkit still opens normally without an error pop-up.
+- `GroupPolicy` still loads on demand when a GPO tool needs it.
+- Not run on Windows yet: tested against stand-ins (all tests pass, covering startup domain read on
+  domain-joined vs workgroup machines and window startup wiring). `PSScriptAnalyzer` is unavailable
+  in this environment.
+
 ## 0.7.24 - 11/25/2026
 
 **Approve all or review each when building multiple GPOs** (`gpo-build` 0.7.6, `Confirm-NmChange`,
