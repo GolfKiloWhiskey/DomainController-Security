@@ -60,11 +60,12 @@ function Invoke-NmBaselineWrite {
     $settings = @($Baseline.Settings)
     # -SettingId: only these settings (gpo-align writes what differs, nothing else).
     if (@($SettingId | Where-Object { $_ }).Count) { $settings = @($settings | Where-Object { $SettingId -contains "$($_.Id)" }) }
+    $writeVals = Expand-NmBaselineParamValues -Baseline $Baseline -Values $Values
     $i = 0
     foreach ($raw in $settings) {
         $i++
         Write-Progress -Activity "Writing $($Baseline.Name)" -Status "[$i/$($settings.Count)] $($raw.Title)" -PercentComplete ([int](100 * $i / [Math]::Max(1, $settings.Count)))
-        $s = Expand-NmBaselineValue -Value $raw -Values $Values
+        $s = Expand-NmBaselineValue -Value $raw -Values $writeVals
         $row = [pscustomobject]@{ Setting = "$($raw.Title)"; SettingId = "$($raw.Id)"; Kind = "$($raw.Kind)"; Result = 'Written' }
         try {
             switch ("$($s.Kind)") {
@@ -357,6 +358,12 @@ function Compare-NmGpoWithBaseline {
     $used = @{}
     $rows = New-Object System.Collections.Generic.List[object]
     $declared = @($Baseline.Parameters | ForEach-Object { "$($_.Name)" })
+    $paramMaps = @{}
+    foreach ($par in @($Baseline.Parameters)) {
+        if ($par -is [System.Collections.IDictionary] -and $par.Contains('ValueMap') -and $par.ValueMap -is [System.Collections.IDictionary]) {
+            $paramMaps["$($par.Name)"] = $par.ValueMap
+        }
+    }
 
     $stamp = Read-NmBaselineStamp -Comment "$($Gpo.Description)"
     if ($stamp -and $stamp.Id -eq $Baseline.Id -and $stamp.Version -ne $Baseline.Version) {
@@ -396,7 +403,18 @@ function Compare-NmGpoWithBaseline {
             }
             $m = Test-NmTemplateMatch -Template "$($it.Value)" -Actual "$($l.Value)"
             if ($null -eq $m) { $states.Add('Different'); continue }
-            foreach ($k in $m.Keys) { $params.Add("$k = $($m[$k])") }
+            $badChoice = $false
+            foreach ($k in $m.Keys) {
+                if ($paramMaps.ContainsKey($k)) {
+                    $map = $paramMaps[$k]
+                    $hit = @($map.Keys | Where-Object { "$($map[$_])" -eq "$($m[$k])" })
+                    if ($hit.Count) { $params.Add("$k = $($hit[0])") }
+                    else { $badChoice = $true }
+                } else {
+                    $params.Add("$k = $($m[$k])")
+                }
+            }
+            if ($badChoice) { $states.Add('Different'); continue }
             $states.Add('Matches')
         }
         $result = if ($states -contains 'Not filled') { 'Not filled' }
@@ -683,9 +701,10 @@ function Get-NmBaselineExpanded {
     # A baseline with its placeholders filled in: compared with a GPO, every difference is something to write.
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Baseline, [hashtable]$Values = @{})
+    $expandedVals = Expand-NmBaselineParamValues -Baseline $Baseline -Values $Values
     [pscustomobject]@{
         Id = $Baseline.Id; Name = $Baseline.Name; Version = $Baseline.Version; Parameters = @()
-        Settings = @(foreach ($s in @($Baseline.Settings)) { Expand-NmBaselineValue -Value $s -Values $Values })
+        Settings = @(foreach ($s in @($Baseline.Settings)) { Expand-NmBaselineValue -Value $s -Values $expandedVals })
     }
 }
 

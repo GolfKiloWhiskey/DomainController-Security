@@ -6,6 +6,36 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.27 - 11/25/2026
+
+**Step 2b baselines: SCHANNEL Hardening and per-role Domain Auditing** (17 baselines total):
+
+- **Security - SCHANNEL Hardening** (`security-schannel-hardening`, `0.7.1`, per
+  `docs/baselines/Security-SCHANNEL-Hardening.md`): disables SSL 2.0/3.0 and TLS 1.0/1.1, leaves
+  TLS 1.2/1.3, sets SSL cipher suite order (`CipherProfile`: `Compatible` or `Modern`) and ECC curve
+  order (`curve25519`, `NistP256`, `NistP384`), disables weak ciphers, raises DH/PKCS minimum key
+  sizes to 2048 bits, and enables .NET Framework OS TLS defaults (`SystemDefaultTlsVersions` and
+  `SchUseStrongCrypto`).
+- **Choice `ValueMap` support** (`Core/Baseline.ps1`, `Core/GpoBaseline.ps1`, `docs/baselines/FORMAT.md`):
+  Choice parameters can now map friendly labels (`Compatible`, `Modern`) to their underlying setting
+  values; `gpo-compare` validates against the known choices and reports the profile name, and
+  `gpo-align` preserves or resets it cleanly.
+- **Per-role Domain Auditing** (starting from the Huntress minimum in
+  `Update-AuditPol-HuntressDefaults.ps1`, adding `Process Creation = Success` for PowerShell logging,
+  and enabling `Audit: Force audit policy subcategory settings` / `SCENoApplyLegacyAuditPolicy = 1`):
+  - **Security - Domain Auditing (DC's)** (`security-domain-auditing-dcs`, bumped to `0.7.2`):
+    Huntress minimum + DC report extras + `Process Creation` + forced subcategories (41 settings).
+  - **Security - Domain Auditing (Servers)** (`security-domain-auditing-servers`, `0.7.1`):
+    Huntress minimum (excluding DC-only DS Access) + File Servers report extras + `Process Creation`
+    + forced subcategories (41 settings).
+  - **Security - Domain Auditing (Devices)** (`security-domain-auditing-devices`, `0.7.1`):
+    Huntress minimum (excluding DC-only DS Access) + `Process Creation` + forced subcategories
+    (34 settings).
+- Updated `Legacy/INDEX.md`, `README.md`, and `docs/baselines/FORMAT.md`.
+- Not run on Windows yet: tested against stand-ins (all tests pass, including multi-item
+  `Registry.xml` round-trips, `CipherProfile` Compatible/Modern build/compare/align, and all three
+  auditing baselines). `PSScriptAnalyzer` is unavailable in this environment.
+
 ## 0.7.26 - 11/25/2026
 
 **Documented the WinRM Hardening baseline and Member Server Roles (ADCS) plan** (docs only; no code

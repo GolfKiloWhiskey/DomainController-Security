@@ -31,7 +31,7 @@ Agreed with Cliff (Nov 2026). Code: `Nutmeg.AD/Core/Baseline.ps1` (loader and ch
 @{ Name = 'TimeoutSeconds'; Prompt = 'Seconds before the screen locks'; Type = 'Int'; Default = 900; Min = 60; Max = 7200 }
 ```
 
-- `Type`: `String`, `Int` (`Min`, `Max`), `Choice` (`Choices`), `Fqdn`, `IpRange`, `Group`, `Account`.
+- `Type`: `String`, `Int` (`Min`, `Max`), `Choice` (`Choices`, optional `ValueMap` hashtable mapping each choice to its written setting value), `Fqdn`, `IpRange`, `Group`, `Account`.
 - `Default` is required (`''` for none). It can name a toolkit setting, `{Setting:BuildTimeZone}`, or the
   session: `{Session:Pdc}`, `{Session:Domain}`, `{Session:NetBIOS}`.
 - `Optional = $true` allows an empty answer; `Help` is a grey line shown before the question.
