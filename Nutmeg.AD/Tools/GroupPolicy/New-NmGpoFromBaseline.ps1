@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.5
+    Version: 0.7.6
 
 .SYNOPSIS
     Builds new GPOs from the baselines in Nutmeg.AD\Baselines, setting by setting.
@@ -13,8 +13,10 @@
       the GPO (the baseline's name by default).
     - A GPO by that name already there is never overwritten: it is left alone and Compare is
       offered instead (gpo-compare).
-    - Asks before each GPO is created (-WhatIf shows what would happen). The GPO's comment is
-      stamped "Nutmeg baseline: <Id> <Version>" so gpo-compare can find its baseline later.
+    - When building several GPOs, shows the full list first so you can Approve all at once, Review
+      each GPO one by one, or Cancel. For a single GPO, asks once with its settings (-WhatIf shows
+      what would happen). The GPO's comment is stamped "Nutmeg baseline: <Id> <Version>" so
+      gpo-compare can find its baseline later.
     - Writes Administrative Templates and registry preferences with the GroupPolicy cmdlets, and
       security options, user rights, restricted groups, services and audit policy into the GPO's
       files in SYSVOL, then raises the GPO's version so clients apply them.
@@ -33,6 +35,7 @@
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening
 
 .VERSIONING
+    0.7.6 - Batch approval when building multiple GPOs: Approve all at once, Review each one by one, or Cancel.
     0.7.5 - First in its section (Order): Build, Compare, Align, Restore.
     0.7.4 - View GPO in the app; GPMC report for GPMC's own.
     0.7.3 - Edit GPO and View GPO on each built GPO's card.
@@ -49,7 +52,7 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'Pick baselines, answer their parameters, and build each as a new GPO (not linked)'
-    Version  = '0.7.5'
+    Version  = '0.7.6'
     Kind     = 'ReportAndChange'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
@@ -182,10 +185,10 @@ function New-NmGpoFromBaseline {
     )
     $gp = Get-NmGPParams
     $out = New-Object System.Collections.Generic.List[object]
-    $n = 0
+    $plan = New-Object System.Collections.Generic.List[object]
+
+    # Prepare every requested baseline first so multiple GPOs can be approved together.
     foreach ($id in $Baseline) {
-        $n++
-        Write-Progress -Activity 'Building GPOs' -Status "[$n/$($Baseline.Count)] $id" -PercentComplete ([int](100 * ($n - 1) / $Baseline.Count))
         $b = @(Get-NmBaseline -Id $id)[0]
         $row = [pscustomobject]@{ Gpo = $id; Baseline = $id; Version = ''; Settings = ''; Result = ''; SuggestedLinks = ''; GpoId = ''; GpoPath = ''; Details = @() }
         $out.Add($row)
@@ -206,22 +209,54 @@ function New-NmGpoFromBaseline {
             Write-NmLog "GPO '$name' already exists; not changed." -Level WARN
             continue
         }
+        $plan.Add([pscustomobject]@{ Id = $id; Baseline = $b; Name = $name; Resolved = $resolved; Row = $row })
+    }
 
-        $targets = @(foreach ($s in @($b.Settings)) { Expand-NmBaselineText -Text "$($s.Title)" -Values $resolved.Values })
-        $facts = @("Baseline: $($b.Name) v$($b.Version)")
-        foreach ($k in @($resolved.Values.Keys | Sort-Object)) { $facts += "${k}: $($resolved.Values[$k])" }
-        $facts += 'The GPO is created unlinked.'
-        if (-not (Confirm-NmChange -Action "Create GPO '$name'" -Targets $targets -Facts $facts -WhatIf:$WhatIf)) {
-            $row.Result = $(if ($WhatIf) { 'WhatIf: not changed' } else { 'Cancelled' })
-            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.1' -Kind ReportAndChange -Mode $(if ($WhatIf) { 'WhatIf' } else { 'Cancelled' }) -Result Cancelled -Notes "$name ($($b.Id))"
+    $approvedAll = $false
+    $cancelledAll = $false
+    if ($plan.Count -gt 1 -and -not $WhatIf -and -not $script:NmPlanApproved) {
+        $batchTargets = @(foreach ($item in $plan.ToArray()) {
+            $pBits = @(foreach ($k in @($item.Resolved.Values.Keys | Sort-Object)) { "${k}=$($item.Resolved.Values[$k])" })
+            $extra = if ($pBits.Count) { "; $($pBits -join ', ')" } else { '' }
+            "$($item.Name) ($(@($item.Baseline.Settings).Count) setting(s)$extra)"
+        })
+        $choice = Confirm-NmChange -Action "Create $($plan.Count) GPOs from baselines" -Targets $batchTargets -Facts @('All GPOs are created unlinked.') -ApproveLabel 'Approve all' -SecondaryLabel 'Review each'
+        if ($choice -eq 'Approve') { $approvedAll = $true }
+        elseif ($choice -eq 'Cancel') { $cancelledAll = $true }
+    }
+
+    $n = 0
+    foreach ($item in $plan.ToArray()) {
+        $n++
+        $b = $item.Baseline
+        $name = $item.Name
+        $resolved = $item.Resolved
+        $row = $item.Row
+        Write-Progress -Activity 'Building GPOs' -Status "[$n/$($plan.Count)] $($item.Id)" -PercentComplete ([int](100 * ($n - 1) / $plan.Count))
+
+        if ($cancelledAll) {
+            $row.Result = 'Cancelled'
+            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.6' -Kind ReportAndChange -Mode 'Cancelled' -Result Cancelled -Notes "$name ($($b.Id))"
             continue
+        }
+
+        if (-not $approvedAll) {
+            $targets = @(foreach ($s in @($b.Settings)) { Expand-NmBaselineText -Text "$($s.Title)" -Values $resolved.Values })
+            $facts = @("Baseline: $($b.Name) v$($b.Version)")
+            foreach ($k in @($resolved.Values.Keys | Sort-Object)) { $facts += "${k}: $($resolved.Values[$k])" }
+            $facts += 'The GPO is created unlinked.'
+            if (-not (Confirm-NmChange -Action "Create GPO '$name'" -Targets $targets -Facts $facts -WhatIf:$WhatIf)) {
+                $row.Result = $(if ($WhatIf) { 'WhatIf: not changed' } else { 'Cancelled' })
+                Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.6' -Kind ReportAndChange -Mode $(if ($WhatIf) { 'WhatIf' } else { 'Cancelled' }) -Result Cancelled -Notes "$name ($($b.Id))"
+                continue
+            }
         }
 
         try {
             $gpo = New-GPO -Name $name -Comment (Get-NmBaselineStamp -Baseline $b) @gp -ErrorAction Stop
         } catch {
             $row.Result = "Failed: GPO not created: $($_.Exception.Message)"
-            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.1' -Kind ReportAndChange -ItemCount 0 -Result Failed -Notes "$name ($($b.Id)): $($_.Exception.Message)"
+            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.6' -Kind ReportAndChange -ItemCount 0 -Result Failed -Notes "$name ($($b.Id)): $($_.Exception.Message)"
             continue
         }
         $row.GpoId = "$($gpo.Id)"
@@ -233,10 +268,10 @@ function New-NmGpoFromBaseline {
         $row.Settings = "$($written.Count - $failed.Count) of $($written.Count)"
         if ($failed.Count) {
             $row.Result = "Failed: $($failed.Count) of $($written.Count) settings not written ($($failed[0].Setting): $($failed[0].Result -replace '^Failed: ', ''))"
-            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.1' -Kind ReportAndChange -ItemCount $written.Count -Result Failed -Notes "$name ($($b.Id) $($b.Version)): $($failed.Count) settings failed"
+            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.6' -Kind ReportAndChange -ItemCount $written.Count -Result Failed -Notes "$name ($($b.Id) $($b.Version)): $($failed.Count) settings failed"
         } else {
             $row.Result = 'Created'
-            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.1' -Kind ReportAndChange -ItemCount $written.Count -Notes "$name ($($b.Id) $($b.Version))"
+            Write-NmRunHistory -ToolId 'gpo-build' -ToolVersion '0.7.6' -Kind ReportAndChange -ItemCount $written.Count -Notes "$name ($($b.Id) $($b.Version))"
         }
     }
     Write-Progress -Activity 'Building GPOs' -Completed

@@ -2329,7 +2329,8 @@ function Get-NmGuiConfirmModel {
         target, and whether a word must be typed (Expected) or Approve / Cancel is enough.
     #>
     param([Parameter(Mandatory)][string]$Action, [string]$Domain, [string]$Server, [switch]$DomainWide,
-          [object[]]$Targets = @(), [string]$Expected, [string]$Kind, [string[]]$Facts = @())
+          [object[]]$Targets = @(), [string]$Expected, [string]$Kind, [string[]]$Facts = @(),
+          [string]$ApproveLabel = 'Approve', [string]$SecondaryLabel = '')
     $chips = New-Object System.Collections.Generic.List[object]
     foreach ($f in $Facts) {
         $parts = "$f" -split ':\s*', 2
@@ -2339,24 +2340,39 @@ function Get-NmGuiConfirmModel {
     if ($Server) { $chips.Add([pscustomobject]@{ Name = 'DC'; Value = $Server }) }
     $count = @($Targets).Count
     $chips.Add([pscustomobject]@{ Name = 'Scope'; Value = $(if ($DomainWide) { 'domain-wide' } else { "$count object(s)" }) })
+    $hint = if ($Expected -and $SecondaryLabel) { "$Kind. Type '$Expected' to $ApproveLabel, or choose $SecondaryLabel." }
+            elseif ($Expected) { "$Kind. Type '$Expected' to approve." }
+            else { 'Nothing changes until you approve.' }
     [pscustomobject]@{
-        Title    = 'Approve this change'
-        Action   = $Action
-        Facts    = $chips.ToArray()
-        Targets  = @($Targets | ForEach-Object { "$_" })
-        Expected = $Expected
-        Typed    = [bool]$Expected
-        Hint     = $(if ($Expected) { "$Kind. Type '$Expected' to approve." } else { 'Nothing changes until you approve.' })
+        Title          = 'Approve this change'
+        Action         = $Action
+        Facts          = $chips.ToArray()
+        Targets        = @($Targets | ForEach-Object { "$_" })
+        Expected       = $Expected
+        Typed          = [bool]$Expected
+        ApproveLabel   = $(if ($ApproveLabel) { $ApproveLabel } else { 'Approve' })
+        SecondaryLabel = "$SecondaryLabel"
+        Hint           = $hint
     }
 }
 
 function Read-NmGuiConfirm {
-    # Confirm-NmChange in the window: the approval dialog. $true only for Approve with the right word.
+    # Confirm-NmChange in the window: the approval dialog. Returns bool normally, or 'Approve'/'Secondary'/'Cancel' when SecondaryLabel is set.
     param([Parameter(Mandatory)][string]$Action, [string]$Domain, [string]$Server, [switch]$DomainWide,
-          [object[]]$Targets = @(), [string]$Expected, [string]$Kind, [string[]]$Facts = @())
-    $model = Get-NmGuiConfirmModel -Action $Action -Domain $Domain -Server $Server -DomainWide:$DomainWide -Targets $Targets -Expected $Expected -Kind $Kind -Facts $Facts
-    $ok = if ($script:NmGui.ConfirmProvider) { [bool](& $script:NmGui.ConfirmProvider $model) } else { [bool](Show-NmGuiConfirm -Model $model) }
-    [void]$script:NmGui.Transcript.Append("CHANGE: $Action ($((@($model.Facts | ForEach-Object { "$($_.Name): $($_.Value)" })) -join ', '))`r`n> $(if ($ok) { 'approved' } else { 'not approved' })`r`n")
+          [object[]]$Targets = @(), [string]$Expected, [string]$Kind, [string[]]$Facts = @(),
+          [string]$ApproveLabel = 'Approve', [string]$SecondaryLabel = '')
+    $model = Get-NmGuiConfirmModel -Action $Action -Domain $Domain -Server $Server -DomainWide:$DomainWide -Targets $Targets -Expected $Expected -Kind $Kind -Facts $Facts -ApproveLabel $ApproveLabel -SecondaryLabel $SecondaryLabel
+    $raw = if ($script:NmGui.ConfirmProvider) { & $script:NmGui.ConfirmProvider $model } else { Show-NmGuiConfirm -Model $model }
+    $factLine = (@($model.Facts | ForEach-Object { if ($_.Value) { "$($_.Name): $($_.Value)" } else { "$($_.Name)" } })) -join ', '
+    if ($SecondaryLabel) {
+        $choice = if ($raw -is [string] -and @('Approve', 'Secondary', 'Cancel') -contains $raw) { $raw } elseif ([bool]$raw) { 'Approve' } else { 'Cancel' }
+        $note = if ($choice -eq 'Approve') { 'approved' } elseif ($choice -eq 'Secondary') { "$SecondaryLabel" } else { 'not approved' }
+        [void]$script:NmGui.Transcript.Append("CHANGE: $Action ($factLine)`r`n> $note`r`n")
+        Clear-NmGuiBuffer
+        return $choice
+    }
+    $ok = if ($raw -is [string]) { $raw -eq 'Approve' } else { [bool]$raw }
+    [void]$script:NmGui.Transcript.Append("CHANGE: $Action ($factLine)`r`n> $(if ($ok) { 'approved' } else { 'not approved' })`r`n")
     Clear-NmGuiBuffer
     return $ok
 }
@@ -2381,12 +2397,13 @@ $script:NmGuiConfirmXaml = @'
     <TextBox x:Name="WordBox" Margin="0,8,0,0" MinHeight="32" Padding="6,4" VerticalContentAlignment="Center" Visibility="Collapsed"/>
     <DockPanel Margin="0,16,0,0" LastChildFill="False">
       <Button x:Name="OkButton" DockPanel.Dock="Right" Content="Approve" MinWidth="110" Margin="0" Style="{StaticResource PrimaryButton}"/>
+      <Button x:Name="SecondaryButton" DockPanel.Dock="Right" Content="Review each" MinWidth="110" Margin="0,0,8,0" Visibility="Collapsed"/>
       <Button x:Name="CancelButton" DockPanel.Dock="Right" Content="Cancel" MinWidth="96" IsCancel="True"/>
     </DockPanel>
   </StackPanel>
 </Window>
 '@
-$script:NmGuiConfirmControls = @('TitleText', 'ActionText', 'FactPanel', 'TargetPanel', 'HintText', 'WordBox', 'OkButton', 'CancelButton')
+$script:NmGuiConfirmControls = @('TitleText', 'ActionText', 'FactPanel', 'TargetPanel', 'HintText', 'WordBox', 'OkButton', 'SecondaryButton', 'CancelButton')
 
 function Show-NmGuiConfirm {
     # The approval dialog. Approve is enabled only once the word is typed (when one is needed).
@@ -2402,7 +2419,8 @@ function Show-NmGuiConfirm {
     foreach ($f in $Model.Facts) {
         $chip = New-Object System.Windows.Controls.Border
         $chip.Background = Get-NmGuiBrush '#F1F3F6'; $chip.CornerRadius = 12; $chip.Padding = '10,3'; $chip.Margin = '0,0,6,6'
-        $chip.Child = New-NmGuiTextBlock -Text "$($f.Name): $($f.Value)" -Size 12 -Color '#3D4450'
+        $chipText = if ($f.Value) { "$($f.Name): $($f.Value)" } else { "$($f.Name)" }
+        $chip.Child = New-NmGuiTextBlock -Text $chipText -Size 12 -Color '#3D4450'
         [void]$ui.FactPanel.Children.Add($chip)
     }
     $n = 0
@@ -2420,8 +2438,14 @@ function Show-NmGuiConfirm {
         [void]$ui.TargetPanel.Children.Add($row)
     }
     $ui.HintText.Text = $Model.Hint
-    $state = @{ Ok = $false }
+    $state = @{ Choice = 'Cancel' }
     $box = $ui.WordBox; $okb = $ui.OkButton; $want = "$($Model.Expected)"
+    if ($Model.ApproveLabel) { $okb.Content = $Model.ApproveLabel }
+    if ($Model.SecondaryLabel) {
+        $ui.SecondaryButton.Content = $Model.SecondaryLabel
+        $ui.SecondaryButton.Visibility = 'Visible'
+        $ui.SecondaryButton.Add_Click({ $state.Choice = 'Secondary'; $d.Close() }.GetNewClosure())
+    }
     if ($Model.Typed) {
         $box.Visibility = 'Visible'; $okb.IsEnabled = $false
         $box.Add_TextChanged({ $okb.IsEnabled = ($box.Text.Trim() -eq $want) }.GetNewClosure())
@@ -2429,10 +2453,11 @@ function Show-NmGuiConfirm {
     } else {
         $okb.IsDefault = $true
     }
-    $okb.Add_Click({ $state.Ok = $true; $d.Close() }.GetNewClosure())
-    $ui.CancelButton.Add_Click({ $state.Ok = $false; $d.Close() }.GetNewClosure())
+    $okb.Add_Click({ $state.Choice = 'Approve'; $d.Close() }.GetNewClosure())
+    $ui.CancelButton.Add_Click({ $state.Choice = 'Cancel'; $d.Close() }.GetNewClosure())
     [void]$d.ShowDialog()
-    return $state.Ok
+    if ($Model.SecondaryLabel) { return $state.Choice }
+    return ($state.Choice -eq 'Approve')
 }
 
 function Get-NmGuiProgressText {

@@ -41,12 +41,15 @@ function Confirm-NmChange {
         [switch]$RequireTyped,
         [string]$ConfirmWord,
         [string[]]$Facts = @(),   # extra lines ("New forest: clientx.local"); with them, a missing domain is not shown
+        [string]$ApproveLabel = 'Approve',
+        [string]$SecondaryLabel = '',
         [switch]$WhatIf
     )
 
     $session = Get-NmSession
     $count   = @($Targets).Count
     $domain  = if ($session.Domain) { $session.Domain } else { 'no domain' }
+    $hasChoice = [bool]$SecondaryLabel
 
     $inWindow = [bool]($script:NmGui -and $script:NmGui.Active)
     if (-not $inWindow) {
@@ -69,11 +72,13 @@ function Confirm-NmChange {
 
     if ($WhatIf) {
         Write-NmLog "WhatIf: would run '$Action' on $(if ($DomainWide) { 'the whole domain' } else { "$count object(s)" }) in $domain." -Level WARN
+        if ($hasChoice) { return 'Cancel' }
         return $false
     }
 
     if ($script:NmPlanApproved) {
         Write-NmLog "Approved with the plan '$script:NmPlanApproved': $Action ($domain)" -Level INFO -NoConsole
+        if ($hasChoice) { return 'Approve' }
         return $true
     }
 
@@ -84,9 +89,28 @@ function Confirm-NmChange {
         $expected = if ($ConfirmWord) { $ConfirmWord } else { Get-NmConfirmWord }
         $kind = if ($RequireTyped -and -not $DomainWide -and $count -le $script:NmConfig.BulkConfirmCount) { 'This change is hard to undo' } elseif ($DomainWide) { 'This changes the whole domain' } else { 'This is a bulk change' }
     }
+
+    if ($hasChoice) {
+        if ($inWindow) {
+            $choice = Read-NmGuiConfirm -Action $Action -Domain $(if ($session.Domain -or -not $Facts.Count) { $domain } else { '' }) -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind -Facts $Facts -ApproveLabel $ApproveLabel -SecondaryLabel $SecondaryLabel
+        } elseif ($needsTyped) {
+            Write-Host "$kind. Type '$expected' to $ApproveLabel, 'each' to $SecondaryLabel, or anything else to cancel" -ForegroundColor Yellow -NoNewline
+            $typed = "$(Read-NmHost -Prompt ' ')".Trim()
+            $choice = if ($typed -eq $expected) { 'Approve' } elseif ($typed -eq 'each') { 'Secondary' } else { 'Cancel' }
+        } else {
+            Write-Host "$ApproveLabel [A], $SecondaryLabel [R], or Cancel [C]? [C]" -ForegroundColor Yellow -NoNewline
+            $ans = "$(Read-NmHost -Prompt ' ')".Trim().ToLower()
+            $choice = if ($ans -eq 'a' -or $ans -eq 'all') { 'Approve' } elseif ($ans -eq 'r' -or $ans -eq 'each') { 'Secondary' } else { 'Cancel' }
+        }
+        if ($choice -eq 'Approve') { Write-NmLog "Confirmed ($ApproveLabel): $Action ($domain)" -Level INFO -NoConsole }
+        elseif ($choice -eq 'Secondary') { Write-NmLog "Selected ($SecondaryLabel): $Action ($domain)" -Level INFO -NoConsole }
+        else { Write-NmLog "Cancelled: $Action" -Level WARN }
+        return $choice
+    }
+
     if ($inWindow) {
         # The window: one approval dialog with the change, every target and the word to type.
-        $ok = Read-NmGuiConfirm -Action $Action -Domain $(if ($session.Domain -or -not $Facts.Count) { $domain } else { '' }) -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind -Facts $Facts
+        $ok = Read-NmGuiConfirm -Action $Action -Domain $(if ($session.Domain -or -not $Facts.Count) { $domain } else { '' }) -Server "$($session.Server)" -DomainWide:$DomainWide -Targets @($Targets) -Expected $expected -Kind $kind -Facts $Facts -ApproveLabel $ApproveLabel
     } elseif ($needsTyped) {
         Write-Host "$kind. Type '$expected' to continue, or anything else to cancel" -ForegroundColor Yellow -NoNewline
         $typed = "$(Read-NmHost -Prompt ' ')".Trim()
