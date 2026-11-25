@@ -495,7 +495,7 @@ Test-That 'Build: Time Synchronization (policy + preference) - NTP server defaul
 }
 
 Test-That 'Build: Domain Auditing (audit) and Print Spooler (service) - audit.csv and the audit extension; service line' {
-    Answer 'y', 'y'
+    Answer 'a'
     $r = @(New-NmGpoFromBaseline -Baseline security-domain-auditing-dcs, security-disable-print-spooler)
     Assert-Equal 'Created|Created' (($r | ForEach-Object Result) -join '|') 'results'
     $audit = $global:FakeGpos[0]
@@ -590,7 +590,7 @@ Test-That 'Build through Invoke-NmTool with parameters (unattended, as the New F
 
 Write-Host 'gpo-compare' -ForegroundColor Cyan
 Test-That 'Compare: a GPO just built matches its baseline everywhere; the parameter value is shown' {
-    Answer 'y', 'y', 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-screen-timeout, network-time-synchronization, security-domain-auditing-dcs -Values @{ TimeoutSeconds = 600 } | Out-Null
     $rows = @(Compare-NmGpoBaseline -All | Where-Object Kind -ne 'Links')
     $notOk = @($rows | Where-Object { $_.Result -ne 'Matches' })
@@ -602,7 +602,7 @@ Test-That 'Compare: a GPO just built matches its baseline everywhere; the parame
 }
 
 Test-That 'Compare: different, missing, extra and not-filled settings are found' {
-    Answer 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-screen-timeout | Out-Null
     $uac = $global:FakeGpos[0]
     $path = Get-NmGpoFilePath -Id "$($uac.Id)" -File GptTmpl
@@ -734,7 +734,7 @@ Test-That 'Align: backed up first (backup.json), only the differing settings wri
 }
 
 Test-That 'Reset: security options, audit and the extras in GptTmpl.inf and audit.csv removed; version raised; nothing left to change' {
-    Answer 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-domain-auditing-dcs | Out-Null
     $ntlm = $global:FakeGpos[0]; $aud = $global:FakeGpos[1]
     $path = Get-NmGpoFilePath -Id "$($ntlm.Id)" -File GptTmpl
@@ -877,7 +877,7 @@ Test-That 'Window Run for gpo-build asks each ticked baseline''s name and values
 }
 
 Test-That 'Window cards for gpo-compare: one card per GPO, its status the worst, settings under Different / Matches, one line each' {
-    Answer 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening | Out-Null
     $path = Get-NmGpoFilePath -Id "$($global:FakeGpos[0].Id)" -File GptTmpl
     Write-NmGpoText -Path $path -Text (([IO.File]::ReadAllText($path)).Replace('EnableLUA=4,1', 'EnableLUA=4,0')) -Encoding Unicode
@@ -995,7 +995,7 @@ Test-That 'Window: the drop-down''s inner toggle stretches (under the Windows 11
 }
 
 Test-That 'Where a GPO applies: links shown (disabled, enforced); not linked or all links off is amber; linked with its side disabled is red' {
-    Answer 'y', 'y', 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening, security-ldaps-hardening-dcs, security-screen-timeout | Out-Null
     $global:FakeLinks['Security - Enforce UAC'] = @(@{ Path = 'Domain root'; Enabled = $true; Enforced = $true }, @{ Path = 'Devices/Workstations'; Enabled = $false })
     $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $false })
@@ -1027,7 +1027,7 @@ Test-That 'Linked away from the suggested links is only noted (links are chosen 
 }
 
 Test-That 'Window headline counts GPOs; the tags count GPOs by state (All first) and filter whole cards' {
-    Answer 'y', 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening, security-kerberos-encryption | Out-Null
     $global:FakeLinks['Security - Enforce UAC'] = @(@{ Path = 'Domain root'; Enabled = $true })
     $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $true })
@@ -1067,7 +1067,7 @@ Test-That 'Card buttons: Edit GPO opens Microsoft''s editor on the DC in use; Vi
 }
 
 Test-That 'Window cards for gpo-compare carry two labels: the settings (green Matches, red Doesn''t match) and where it applies; the edge takes the worse' {
-    Answer 'y', 'y'
+    Answer 'a'
     New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-kerberos-encryption | Out-Null
     $global:FakeLinks['Security - NTLM Hardening'] = @(@{ Path = 'Domain root'; Enabled = $true })
     $rows = @(Compare-NmGpoBaseline -All)
@@ -1211,6 +1211,56 @@ Test-That 'Step 2a baselines (5) build and compare cleanly, including GUID keys 
             Assert-Equal 'StartupWaitSeconds = 90' (@($cmp | Where-Object SettingId -eq 'startup-wait')[0].Detail) 'startup wait param'
         }
     }
+    $true
+}
+
+Test-That 'Build multiple GPOs: Approve all (one prompt), Review each (per-GPO prompts), and Cancel (none created)' {
+    # Approve all: one prompt builds both GPOs
+    Answer 'a'
+    $rAll = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-disable-print-spooler)
+    Assert-Equal 'Created,Created' (($rAll | ForEach-Object Result) -join ',') 'approve all'
+    Assert-Equal 0 $script:TestAnswers.Count 'no leftover answers'
+
+    # Review each: summary ('r'), then approve first ('y'), cancel second ('n')
+    Reset-Gpo
+    Answer 'r', 'y', 'n'
+    $rEach = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-disable-print-spooler)
+    Assert-Equal 'Created,Cancelled' (($rEach | ForEach-Object Result) -join ',') 'review each'
+    Assert-Equal 1 $global:FakeGpos.Count 'only first created'
+    Assert-Equal 0 $script:TestAnswers.Count 'no leftover answers after review each'
+
+    # Cancel batch: one prompt cancels all
+    Reset-Gpo
+    Answer 'c'
+    $rCancel = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-disable-print-spooler)
+    Assert-Equal 'Cancelled,Cancelled' (($rCancel | ForEach-Object Result) -join ',') 'cancel batch'
+    Assert-Equal 0 $global:FakeGpos.Count 'none created on cancel'
+    $true
+}
+
+Test-That 'Build multiple GPOs in the window: summary dialog lists every GPO with Approve all / Review each' {
+    $seen = New-Object System.Collections.Generic.List[object]
+    $script:NmGui.Active = $true
+    try {
+        # Approve all in window: only 1 confirmation dialog
+        $script:NmGui.ConfirmProvider = { param($m) $seen.Add($m); 'Approve' }
+        $r = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-screen-timeout -Values @{ TimeoutSeconds = 600 })
+        Assert-Equal 'Created,Created' (($r | ForEach-Object Result) -join ',') 'window approve all'
+        Assert-Equal 1 $seen.Count 'single dialog for approve all'
+        Assert-Equal 'Approve all' $seen[0].ApproveLabel 'approve label'
+        Assert-Equal 'Review each' $seen[0].SecondaryLabel 'secondary label'
+        Assert-Equal 2 @($seen[0].Targets).Count 'both GPOs listed'
+        if ($seen[0].Targets[1] -notlike '*TimeoutSeconds=600*') { throw "param not shown: $($seen[0].Targets[1])" }
+
+        # Review each in window: summary + 2 per-GPO dialogs
+        Reset-Gpo; $seen.Clear()
+        $calls = @{ N = 0 }
+        $script:NmGui.ConfirmProvider = { param($m) $seen.Add($m); $calls.N++; if ($calls.N -eq 1) { 'Secondary' } elseif ($calls.N -eq 2) { $true } else { $false } }
+        $r2 = @(New-NmGpoFromBaseline -Baseline security-ntlm-hardening, security-disable-print-spooler)
+        Assert-Equal 'Created,Cancelled' (($r2 | ForEach-Object Result) -join ',') 'window review each'
+        Assert-Equal 3 $seen.Count 'summary plus two per-GPO dialogs'
+        Assert-Equal '' $seen[1].SecondaryLabel 'per-GPO dialog has no secondary button'
+    } finally { $script:NmGui.ConfirmProvider = $null; $script:NmGui.Active = $false }
     $true
 }
 

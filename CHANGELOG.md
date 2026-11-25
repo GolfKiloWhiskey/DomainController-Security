@@ -6,6 +6,27 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.24 - 11/25/2026
+
+**Approve all or review each when building multiple GPOs** (`gpo-build` 0.7.6, `Confirm-NmChange`,
+`Core/Gui.ps1`):
+
+- When you build two or more GPOs at once, after naming them and answering any parameters, one
+  summary approval pops up listing every GPO to be created (with its setting count and parameter
+  values) and three buttons:
+  - **Approve all:** builds all listed GPOs straight through without asking again per GPO.
+  - **Review each:** steps through each GPO's own settings approval dialog one by one, so you can
+    approve or skip individual GPOs.
+  - **Cancel:** cancels the whole batch without creating anything.
+- Building a single GPO skips the summary and opens that GPO's own settings approval directly, as
+  before. Preview (`-WhatIf`) and unattended plans (`Set-NmPlanApproved`) are unchanged.
+- Works the same way in the console (`Approve all [A], Review each [R], or Cancel [C]? [C]`).
+- **Fixed a small visual glitch** spotted in the screenshots: fact chips without a value (like
+  "The GPO is created unlinked.") no longer show a trailing `: `.
+- Not run on Windows yet: tested against stand-ins (all tests pass, covering Approve all, Review
+  each, Cancel, single-GPO, and the window's confirmation model/XAML). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.23 - 11/24/2026
 
 **Five more baselines** (step 2a, converted from `Legacy/GPO-Reports/` — 14 baselines now):

@@ -488,7 +488,27 @@ Test-That 'Approval dialog: well-formed, every control there, Approve is the pri
     $x = [xml]($script:NmGuiConfirmXaml.Replace('<!--NMSTYLES-->', $script:NmGuiTheme))
     $names = @($x.SelectNodes('//*[@*[local-name()="Name"]]') | ForEach-Object { $_.GetAttribute('Name', $ns) })
     $ok = @($x.SelectNodes('//*[local-name()="Button"]') | Where-Object { $_.GetAttribute('Name', $ns) -eq 'OkButton' })[0]
-    (@($script:NmGuiConfirmControls | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($ok.Content -eq 'Approve') -and ($ok.Style -match 'PrimaryButton')
+    $sec = @($x.SelectNodes('//*[local-name()="Button"]') | Where-Object { $_.GetAttribute('Name', $ns) -eq 'SecondaryButton' })[0]
+    (@($script:NmGuiConfirmControls | Where-Object { $names -notcontains $_ }).Count -eq 0) -and ($ok.Content -eq 'Approve') -and ($ok.Style -match 'PrimaryButton') -and ($null -ne $sec) -and ($sec.Visibility -eq 'Collapsed')
+}
+
+Test-That 'Approval in the window with SecondaryLabel: Approve all, Review each, Cancel, and clean valueless fact chips' {
+    $script:Seen = $null
+    $script:NmGui.Active = $true
+    try {
+        $script:NmGui.ConfirmProvider = { param($m) $script:Seen = $m; 'Approve' }
+        $c1 = Confirm-NmChange -Action 'Create 3 GPOs from baselines' -Targets @('GPO A', 'GPO B', 'GPO C') -Facts @('All GPOs are created unlinked.') -ApproveLabel 'Approve all' -SecondaryLabel 'Review each'
+        $m = $script:Seen
+        $script:NmGui.ConfirmProvider = { param($m) 'Secondary' }
+        $c2 = Confirm-NmChange -Action 'Create 3 GPOs from baselines' -Targets @('GPO A', 'GPO B', 'GPO C') -ApproveLabel 'Approve all' -SecondaryLabel 'Review each'
+        $script:NmGui.ConfirmProvider = { param($m) 'Cancel' }
+        $c3 = Confirm-NmChange -Action 'Create 3 GPOs from baselines' -Targets @('GPO A', 'GPO B', 'GPO C') -ApproveLabel 'Approve all' -SecondaryLabel 'Review each'
+        $log = $script:NmGui.Transcript.ToString()
+    } finally { $script:NmGui.ConfirmProvider = $null; $script:NmGui.Active = $false }
+    ($c1 -eq 'Approve') -and ($c2 -eq 'Secondary') -and ($c3 -eq 'Cancel') -and
+    ($m.ApproveLabel -eq 'Approve all') -and ($m.SecondaryLabel -eq 'Review each') -and
+    ($log -match 'All GPOs are created unlinked\., Domain:') -and ($log -notmatch 'All GPOs are created unlinked\.:') -and
+    ($log -match '> Review each')
 }
 
 Test-That 'Question dialog layout: section, notes, plain text and tables have their places; no console box is used for questions' {

@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.23
+    Version: 0.7.24
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.24 - gpo-build 0.7.6: batch approval when building multiple GPOs (Approve all, Review each, or Cancel)
+             via Confirm-NmChange -ApproveLabel / -SecondaryLabel and the window's approval dialog; fixed trailing
+             colon on valueless fact chips.
     0.7.23 - Five more baselines (step 2a): Group Policy Processing, Prefer IPv4 over IPv6, Disable NCSI,
              Power Profile (Workstations) and Disable AutoPlay (14 baselines total).
     0.7.22 - gpo-align (Align or Reset a GPO to its baseline, backed up first) and gpo-restore; Align on Compare's cards for GPOs
@@ -99,7 +102,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.23'
+$script:ModuleVersion = '0.7.24'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
