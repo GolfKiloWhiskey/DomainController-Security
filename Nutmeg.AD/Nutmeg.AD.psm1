@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.25
+    Version: 0.7.26
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,8 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.26 - Documented Security - WinRM Hardening baseline spec (docs/baselines/Security-WinRM-Hardening.md)
+             and Member Server Roles / ADCS roadmap (docs/TOOL-LIST.md, Data/GpoDefaultLinks.csv). No code changes.
     0.7.25 - Read and display Domain and DC automatically on toolkit start (Initialize-NmStartupDomain in window
              and console; skipped on workgroup servers and in New Forest Build mode).
     0.7.24 - gpo-build 0.7.6: batch approval when building multiple GPOs (Approve all, Review each, or Cancel)
@@ -104,7 +106,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.25'
+$script:ModuleVersion = '0.7.26'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
