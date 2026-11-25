@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.27
+    Version: 0.7.28
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.28 - gpo-build 0.7.7: -UseDefaults tick box/prompt skips per-GPO name and parameter dialogs (asking
+             only for required parameters with no default) and goes straight to Approve all; Edit GPO warns
+             that manual edits outside baseline parameters cause drift before opening gpme.msc.
     0.7.27 - Step 2b baselines (17 total): Security - SCHANNEL Hardening (with Choice ValueMap support in
              Core\Baseline.ps1 and Core\GpoBaseline.ps1) and per-role Domain Auditing (DC's 0.7.2, Servers,
              Devices) with Huntress minimums, Process Creation and forced audit subcategories.
@@ -109,7 +112,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.27'
+$script:ModuleVersion = '0.7.28'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

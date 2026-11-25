@@ -6,6 +6,25 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.28 - 11/25/2026
+
+**Fast baseline defaults in `gpo-build` (`0.7.7`) and drift warning on `Edit GPO`:**
+
+- **`UseDefaults` option in `gpo-build`:**
+  - In the window, tick **UseDefaults** on the form before pressing **Run** to skip all per-GPO
+    name and parameter dialogs and jump straight to the **Approve all / Review each / Cancel**
+    summary (it still prompts if a baseline has a required parameter with no default).
+  - Leave **UseDefaults** unticked to customize GPO names and parameters one by one as before.
+  - In the console, when picking 2 or more baselines, it asks once whether to use baseline defaults
+    (`Y` by default) or customize.
+- **Drift warning on `Edit GPO`:** clicking **Edit GPO** on any card (`gpo-build`, `gpo-compare`,
+  `gpo-align`) now warns that manual edits outside a baseline's parameters will make the GPO fall
+  out of baseline (flagged as *Doesn't match* by Compare and reverted by Align) and asks to confirm
+  before opening `gpme.msc`.
+- Not run on Windows yet: tested against stand-ins (all tests pass, covering `-UseDefaults` skipping
+  prompts, prompting only when a required parameter has no default, and `Edit GPO` confirm/cancel).
+  `PSScriptAnalyzer` is unavailable in this environment.
+
 ## 0.7.27 - 11/25/2026
 
 **Step 2b baselines: SCHANNEL Hardening and per-role Domain Auditing** (17 baselines total):
