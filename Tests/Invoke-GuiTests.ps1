@@ -297,6 +297,11 @@ Test-That 'Ready text: not elevated says so first; otherwise the domain and DC' 
     ($a -like 'Not running as administrator*') -and ($b -eq 'Ready. Domain clientx.local, working against DC01.clientx.local.')
 }
 
+Test-That 'Window startup: reads Domain and DC automatically on ContentRendered (except in New Forest Build mode)' {
+    $code = (Get-Command Start-NmToolkitGui).ScriptBlock.ToString()
+    ($code -match 'Add_ContentRendered' -and $code -match 'if \(-not \$script:NmGui\.BuildMode\)[\s\S]*?Initialize-NmStartupDomain')
+}
+
 Test-That 'Capture titles: the domain status line is never a title; the screen title and the option picked are' {
     Clear-NmGuiBuffer
     $script:NmGui.Active = $true

@@ -192,6 +192,27 @@ function Assert-NmConnection {
     return $true
 }
 
+function Initialize-NmStartupDomain {
+    <#
+    .SYNOPSIS
+        Reads the domain and DC on toolkit start so the banner shows them right away.
+    .DESCRIPTION
+        - Does nothing on a workgroup server (no error logged).
+        - Loads ActiveDirectory and reads the domain from this DC (or one AD finds).
+        - Never throws: if RSAT is missing or the DC cannot be reached, returns $false so the
+          toolkit still opens.
+    .OUTPUTS
+        $true when the domain is ready.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+    if ($script:NmSession.Domain) { return $true }
+    try { $local = Get-NmLocalComputer } catch { return $false }
+    if (-not $local -or -not $local.PartOfDomain) { return $false }
+    try { return [bool](Assert-NmConnection -Services AD) } catch { return $false }
+}
+
 function Get-NmServiceState {
     # True when a service's module is loaded in this session.
     [CmdletBinding()]

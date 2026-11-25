@@ -65,9 +65,10 @@ then sets the IP and name, installs AD DS and creates the forest, carrying on by
 restart (sign in as an administrator and it reopens, in the window if it started there). It refuses to run on a domain-joined server or
 for a domain that already answers. See `docs/NEW-FOREST-TESTING.md`.
 
-Nothing is loaded at start. The first tool that needs the ActiveDirectory or GroupPolicy module loads
-it and reads the domain from this DC. **Domain and DC** in the main menu shows the domain, its levels
-and the PDC, and can point the toolkit at another DC.
+On a domain-joined server or DC, the toolkit loads `ActiveDirectory` and reads the domain and DC
+automatically on start so **Domain and DC** shows them right away (`GroupPolicy` loads when a GPO
+tool needs it). **Domain and DC** in the main menu shows the domain, its levels and the PDC, and can
+point the toolkit at another DC.
 
 Logs and run history: `C:\Temp\NutmegAD` (a New Forest Build keeps one log from `Get-NutmegAD.ps1`
 to the finished DC, across its restarts). Exports: `C:\Temp`. Settings (per Windows user):

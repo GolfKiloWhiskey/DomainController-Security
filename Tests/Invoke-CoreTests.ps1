@@ -578,6 +578,20 @@ Test-That 'Main menu: Domain and DC > another DC moves the session there' {
     (Get-NmSession).Server -eq 'DC02.clientx.local'
 }
 
+Test-That 'Startup domain read: reads domain and DC on a domain-joined server, skips workgroup' {
+    Reset-Fake
+    $ok = Initialize-NmStartupDomain
+    $s = Get-NmSession
+    $dcOk = $ok -and ($s.Domain -eq 'clientx.local') -and ($s.Server -eq 'DC01.clientx.local') -and $s.Services['AD'] -and (-not $s.Services['GPO'])
+    Reset-Fake
+    $realLocal = ${function:script:Get-NmLocalComputer}
+    try {
+        ${function:script:Get-NmLocalComputer} = { [pscustomobject]@{ Name = 'SRV01'; Domain = ''; PartOfDomain = $false; IsDC = $false; IsPdc = $false; DnsHostName = 'SRV01' } }
+        $wg = Initialize-NmStartupDomain
+    } finally { Set-Item -Path function:script:Get-NmLocalComputer -Value $realLocal }
+    $dcOk -and (-not $wg) -and ($null -eq (Get-NmSession).Domain)
+}
+
 # ---------------------------------------------------------------------------
 # Code rules
 # ---------------------------------------------------------------------------
