@@ -453,15 +453,6 @@ $script:NmDefaultGpoGuids = @{
     '6ac1786c-016f-11d2-945f-00c04fb984f9' = 'DDCP'
 }
 
-# Password and account lockout keys in DDP's [System Access]: the one common, often
-# intentional customization when an org does not break password policy out into a
-# separate domain-root GPO or Fine-Grained Password Policies.
-$script:NmDdpPasswordKeys = @(
-    'MinimumPasswordAge', 'MaximumPasswordAge', 'MinimumPasswordLength', 'PasswordComplexity',
-    'PasswordHistorySize', 'ClearTextPassword', 'LockoutBadCount', 'LockoutDuration',
-    'ResetLockoutCount', 'RequireLogonToChangePassword'
-)
-
 function Get-NmDefaultGpoKind {
     <#
     .SYNOPSIS
@@ -491,35 +482,42 @@ function Test-NmDefaultGpo {
 function Get-NmDefaultGpoBaseline {
     <#
     .SYNOPSIS
-        Clean Windows Server OS default settings for Default Domain Policy (DDP) or
-        Default Domain Controllers Policy (DDCP), for read-only integrity checks.
+        Expected settings for Default Domain Policy (DDP: Nutmeg Password & Account Lockout
+        standard + clean Windows OS defaults for all other sections) and Default Domain
+        Controllers Policy (DDCP: clean Windows OS defaults), for read-only integrity checks.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)][ValidateSet('DDP', 'DDCP')][string]$Kind)
     if ($Kind -eq 'DDP') {
         return [pscustomobject]@{
             Id             = 'os-default-ddp'
-            Name           = 'Windows OS default (Default Domain Policy)'
+            Name           = 'Nutmeg Password/Lockout + Windows OS default (Default Domain Policy)'
             Version        = 'OS'
             Parameters     = @()
             SuggestedLinks = @('Domain root')
             Settings       = @(
-                @{ Id = 'ddp-pwd-history';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Enforce password history'; Name = 'PasswordHistorySize'; Value = 24 }
-                @{ Id = 'ddp-pwd-max-age';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Maximum password age'; Name = 'MaximumPasswordAge'; Value = 42 }
-                @{ Id = 'ddp-pwd-min-age';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password age'; Name = 'MinimumPasswordAge'; Value = 1 }
-                @{ Id = 'ddp-pwd-min-len';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password length'; Name = 'MinimumPasswordLength'; Value = 7 }
-                @{ Id = 'ddp-pwd-complex';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Password must meet complexity requirements'; Name = 'PasswordComplexity'; Value = 1 }
-                @{ Id = 'ddp-pwd-cleartext';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Store passwords using reversible encryption'; Name = 'ClearTextPassword'; Value = 0 }
-                @{ Id = 'ddp-pwd-req-logon';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Users must log on in order to change password'; Name = 'RequireLogonToChangePassword'; Value = 0 }
-                @{ Id = 'ddp-lockout-thresh'; Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout threshold'; Name = 'LockoutBadCount'; Value = 0 }
-                @{ Id = 'ddp-force-logoff';   Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network security: Force logoff when logon hours expire'; Name = 'ForceLogoffWhenHourExpire'; Value = 0 }
-                @{ Id = 'ddp-anon-sid';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network access: Allow anonymous SID/Name translation'; Name = 'LSAAnonymousNameLookup'; Value = 0 }
-                @{ Id = 'ddp-no-lm-hash';     Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Network security: Do not store LAN Manager hash value on next password change'; Key = 'MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash'; Type = 'DWord'; Value = 1 }
-                @{ Id = 'ddp-krb-ticket';     Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket (hours)'; Name = 'MaxTicketAge'; Value = 10 }
-                @{ Id = 'ddp-krb-renew';      Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket renewal (days)'; Name = 'MaxRenewAge'; Value = 7 }
-                @{ Id = 'ddp-krb-service';    Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for service ticket (minutes)'; Name = 'MaxServiceAge'; Value = 600 }
-                @{ Id = 'ddp-krb-skew';       Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum tolerance for computer clock synchronization (minutes)'; Name = 'MaxClockSkew'; Value = 5 }
-                @{ Id = 'ddp-krb-validate';   Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Enforce user logon restrictions'; Name = 'TicketValidateClient'; Value = 1 }
+                # Password Policy (Nutmeg standard)
+                @{ Id = 'ddp-pwd-history';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Enforce password history'; Name = 'PasswordHistorySize'; Value = 24 }
+                @{ Id = 'ddp-pwd-max-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Maximum password age'; Name = 'MaximumPasswordAge'; Value = 180 }
+                @{ Id = 'ddp-pwd-min-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password age'; Name = 'MinimumPasswordAge'; Value = 1 }
+                @{ Id = 'ddp-pwd-min-len';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password length'; Name = 'MinimumPasswordLength'; Value = 12 }
+                @{ Id = 'ddp-pwd-complex';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Password must meet complexity requirements'; Name = 'PasswordComplexity'; Value = 1 }
+                @{ Id = 'ddp-pwd-cleartext';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Store passwords using reversible encryption'; Name = 'ClearTextPassword'; Value = 0 }
+                @{ Id = 'ddp-pwd-req-logon';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Users must log on in order to change password'; Name = 'RequireLogonToChangePassword'; Value = 0 }
+                # Account Lockout Policy (Nutmeg standard)
+                @{ Id = 'ddp-lockout-duration';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout duration'; Name = 'LockoutDuration'; Value = 30 }
+                @{ Id = 'ddp-lockout-thresh';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout threshold'; Name = 'LockoutBadCount'; Value = 5 }
+                @{ Id = 'ddp-lockout-admin';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Allow administrator account lockout'; Name = 'AllowAdministratorLockout'; Value = 1 }
+                @{ Id = 'ddp-lockout-reset';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Reset account lockout counter after'; Name = 'ResetLockoutCount'; Value = 30 }
+                # Remaining DDP settings (clean Windows OS defaults)
+                @{ Id = 'ddp-force-logoff';      Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network security: Force logoff when logon hours expire'; Name = 'ForceLogoffWhenHourExpire'; Value = 0 }
+                @{ Id = 'ddp-anon-sid';          Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network access: Allow anonymous SID/Name translation'; Name = 'LSAAnonymousNameLookup'; Value = 0 }
+                @{ Id = 'ddp-no-lm-hash';        Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Network security: Do not store LAN Manager hash value on next password change'; Key = 'MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash'; Type = 'DWord'; Value = 1 }
+                @{ Id = 'ddp-krb-ticket';        Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket (hours)'; Name = 'MaxTicketAge'; Value = 10 }
+                @{ Id = 'ddp-krb-renew';         Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket renewal (days)'; Name = 'MaxRenewAge'; Value = 7 }
+                @{ Id = 'ddp-krb-service';       Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for service ticket (minutes)'; Name = 'MaxServiceAge'; Value = 600 }
+                @{ Id = 'ddp-krb-skew';          Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum tolerance for computer clock synchronization (minutes)'; Name = 'MaxClockSkew'; Value = 5 }
+                @{ Id = 'ddp-krb-validate';      Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Enforce user logon restrictions'; Name = 'TicketValidateClient'; Value = 1 }
             )
         }
     }
@@ -565,13 +563,13 @@ function Get-NmDefaultGpoBaseline {
 function Compare-NmDefaultGpo {
     <#
     .SYNOPSIS
-        Read-only integrity check of Default Domain Policy (DDP) or Default Domain Controllers
-        Policy (DDCP) against clean Windows Server OS defaults.
+        Read-only integrity check of Default Domain Policy (DDP: Nutmeg Password & Lockout
+        standard + clean Windows OS defaults for all other settings) or Default Domain
+        Controllers Policy (DDCP: clean Windows OS defaults).
     .DESCRIPTION
         - For DDP: ignores the per-domain EFS Data Recovery Agent certificate entries created by
-          dcpromo under Software\Policies\Microsoft\SystemCertificates\EFS, and surfaces Password
-          and Account Lockout customizations as informational Note rows rather than failures.
-        - Any other modified, missing or extra setting in DDP or DDCP is flagged as drift.
+          dcpromo under Software\Policies\Microsoft\SystemCertificates\EFS.
+        - Any modified, missing or extra setting in DDP or DDCP is flagged as drift.
     #>
     [CmdletBinding()]
     param([Parameter(Mandatory)]$Gpo)
@@ -580,28 +578,10 @@ function Compare-NmDefaultGpo {
     $def = Get-NmDefaultGpoBaseline -Kind $kind
     $raw = @(Compare-NmGpoWithBaseline -Gpo $Gpo -Baseline $def)
     if ($kind -ne 'DDP') { return $raw }
-    $pwdIds = @('ddp-pwd-history', 'ddp-pwd-max-age', 'ddp-pwd-min-age', 'ddp-pwd-min-len', 'ddp-pwd-complex', 'ddp-pwd-cleartext', 'ddp-pwd-req-logon', 'ddp-lockout-thresh')
     $out = New-Object System.Collections.Generic.List[object]
     foreach ($r in $raw) {
         # Skip the domain's own dcpromo-generated EFS DRA certificate entries in Machine\Registry.pol.
         if ($r.Result -eq 'Extra' -and $r.Kind -eq 'Policy' -and "$($r.Ident)" -like 'policy|computer|software\policies\microsoft\systemcertificates\efs*') {
-            continue
-        }
-        # DDP Password & Account Lockout customizations are common when not using a custom domain-root GPO or FGPP.
-        if ($r.Result -in 'Different', 'Missing' -and $pwdIds -contains "$($r.SettingId)") {
-            $msg = if ($r.Result -eq 'Missing') {
-                "$($r.Setting): not set in DDP (OS default $($r.Expected)). Acceptable if managed by a separate password policy GPO or FGPP."
-            } else {
-                "$($r.Setting): customized in DDP (OS default $($r.Expected), found $($r.Actual)). Acceptable if not using a separate password policy GPO or FGPP."
-            }
-            $out.Add([pscustomobject]@{ Gpo = $r.Gpo; Baseline = $r.Baseline; Setting = $r.Setting; SettingId = $r.SettingId; Kind = $r.Kind
-                Expected = $r.Expected; Actual = $r.Actual; Result = 'Note'; Detail = $msg })
-            continue
-        }
-        if ($r.Result -eq 'Extra' -and $r.Kind -eq 'SystemAccess' -and $script:NmDdpPasswordKeys -contains "$($r.Setting)") {
-            $msg = "$($r.Setting): set to $($r.Actual) in DDP (lockout/password policy customized). Acceptable if not using a separate password policy GPO or FGPP."
-            $out.Add([pscustomobject]@{ Gpo = $r.Gpo; Baseline = $r.Baseline; Setting = $r.Setting; SettingId = ''; Kind = $r.Kind
-                Expected = '(OS default: not set)'; Actual = $r.Actual; Result = 'Note'; Detail = $msg })
             continue
         }
         $out.Add($r)

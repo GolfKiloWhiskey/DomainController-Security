@@ -6,6 +6,22 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.31 - 11/28/2026
+
+**Default Domain Policy (DDP) Password & Account Lockout standard in `gpo-compare`:**
+
+- **Password Policy (Nutmeg standard):** checks DDP against 24 remembered passwords, 180-day max
+  age, 1-day min age, 12-character minimum length, complexity enabled, and reversible encryption
+  disabled.
+- **Account Lockout Policy (Nutmeg standard):** checks DDP against 30-minute lockout duration, 5
+  invalid logon attempts threshold, Allow administrator account lockout enabled
+  (`AllowAdministratorLockout = 1`, also added to `Core\Baseline.ps1`), and 30-minute lockout
+  counter reset.
+- **All other DDP settings and all of DDCP** remain checked against clean Windows Server OS
+  defaults (ignoring DDP's per-domain EFS recovery certificate).
+- Not run on Windows yet: tested against stand-ins (all 301 tests pass). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.30 - 11/28/2026
 
 **Corrected clean Windows Server OS default values for DDP and DDCP in `gpo-compare`:**
