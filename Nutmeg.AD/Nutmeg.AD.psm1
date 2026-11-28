@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.29
+    Version: 0.7.30
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.30 - Corrected clean Windows Server OS default definitions for DDP (RequireLogonToChangePassword,
+             NoLMHash) and DDCP (exact Server 2025 user rights and service SIDs) in Core\GpoBaseline.ps1
+             and Core\GpoFiles.ps1.
     0.7.29 - gpo-compare 0.7.6: Default Domain Policy (DDP) and Default Domain Controllers Policy (DDCP)
              are excluded from normal baseline comparisons and checked read-only against clean Windows OS
              defaults (-IncludeDefaultGpos or picked directly; DDP password/lockout edits shown as Notes).
@@ -115,7 +118,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.29'
+$script:ModuleVersion = '0.7.30'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')

@@ -1429,6 +1429,7 @@ MinimumPasswordLength = 7
 PasswordComplexity = 1
 PasswordHistorySize = 24
 LockoutBadCount = 0
+RequireLogonToChangePassword = 0
 ClearTextPassword = 0
 ForceLogoffWhenHourExpire = 0
 LSAAnonymousNameLookup = 0
@@ -1438,6 +1439,8 @@ MaxRenewAge = 7
 MaxServiceAge = 600
 MaxClockSkew = 5
 TicketValidateClient = 1
+[Registry Values]
+MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash=4,1
 [Version]
 signature="`$CHICAGO`$"
 Revision=1
@@ -1445,7 +1448,7 @@ Revision=1
     Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpInf -Encoding Unicode
     Set-GPRegistryValue -Guid $ddpId -Key 'HKLM\Software\Policies\Microsoft\SystemCertificates\EFS\Certificates\ABCDEF1234' -ValueName 'Blob' -Type String -Value 'certdata' | Out-Null
 
-    # Write clean OS default GptTmpl.inf for DDCP
+    # Write clean OS default GptTmpl.inf for DDCP (Server 2025)
     $ddcpInf = @"
 [Unicode]
 Unicode=yes
@@ -1458,27 +1461,27 @@ MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\EnableSecurity
 SeNetworkLogonRight = *S-1-5-32-544,*S-1-5-11,*S-1-5-9,*S-1-1-0,*S-1-5-32-554
 SeMachineAccountPrivilege = *S-1-5-11
 SeIncreaseQuotaPrivilege = *S-1-5-32-544,*S-1-5-19,*S-1-5-20
-SeInteractiveLogonRight = *S-1-5-32-544,*S-1-5-32-548,*S-1-5-32-551,*S-1-5-32-550,*S-1-5-32-549
+SeInteractiveLogonRight = *S-1-5-32-544,*S-1-5-32-548,*S-1-5-32-551,*S-1-5-32-550,*S-1-5-32-549,*S-1-5-9
 SeBackupPrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-549
 SeBatchLogonRight = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-559
-SeChangeNotifyPrivilege = *S-1-5-32-544,*S-1-5-11,*S-1-1-0,*S-1-5-32-554
-SeSystemtimePrivilege = *S-1-5-32-544,*S-1-5-32-549
+SeChangeNotifyPrivilege = *S-1-5-32-544,*S-1-5-11,*S-1-1-0,*S-1-5-32-554,*S-1-5-19,*S-1-5-20,*S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229
+SeSystemtimePrivilege = *S-1-5-32-544,*S-1-5-32-549,*S-1-5-19
 SeCreatePagefilePrivilege = *S-1-5-32-544
 SeDebugPrivilege = *S-1-5-32-544
 SeEnableDelegationPrivilege = *S-1-5-32-544
 SeRemoteShutdownPrivilege = *S-1-5-32-544,*S-1-5-32-549
-SeAuditPrivilege = *S-1-5-19,*S-1-5-20
-SeIncreaseBasePriorityPrivilege = *S-1-5-32-544
+SeAuditPrivilege = *S-1-5-19,*S-1-5-20,*S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229
+SeIncreaseBasePriorityPrivilege = *S-1-5-32-544,*S-1-5-90-0
 SeLoadDriverPrivilege = *S-1-5-32-544,*S-1-5-32-550
 SeSecurityPrivilege = *S-1-5-32-544
 SeSystemEnvironmentPrivilege = *S-1-5-32-544
-SeSystemProfilePrivilege = *S-1-5-32-544
+SeSystemProfilePrivilege = *S-1-5-32-544,*S-1-5-80-3139157870-2983391045-3678747466-658725712-1809340420
 SeProfileSingleProcessPrivilege = *S-1-5-32-544
+SeUndockPrivilege = *S-1-5-32-544
+SeAssignPrimaryTokenPrivilege = *S-1-5-19,*S-1-5-20
 SeRestorePrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-549
 SeShutdownPrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-550,*S-1-5-32-549
 SeTakeOwnershipPrivilege = *S-1-5-32-544
-SeImpersonatePrivilege = *S-1-5-32-544,*S-1-5-6,*S-1-5-19,*S-1-5-20
-SeCreateGlobalPrivilege = *S-1-5-32-544,*S-1-5-6,*S-1-5-19,*S-1-5-20
 [Version]
 signature="`$CHICAGO`$"
 Revision=1

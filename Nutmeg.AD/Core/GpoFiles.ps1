@@ -35,6 +35,9 @@ $script:NmWellKnownSids = @{
     'Account Operators' = 'S-1-5-32-548'; 'Server Operators' = 'S-1-5-32-549'; 'Print Operators' = 'S-1-5-32-550'
     'Backup Operators' = 'S-1-5-32-551'; 'Pre-Windows 2000 Compatible Access' = 'S-1-5-32-554'
     'Remote Desktop Users' = 'S-1-5-32-555'; 'Performance Log Users' = 'S-1-5-32-559'; 'Remote Management Users' = 'S-1-5-32-580'
+    'Window Manager Group' = 'S-1-5-90-0'
+    'WdiServiceHost' = 'S-1-5-80-3139157870-2983391045-3678747466-658725712-1809340420'
+    'PrintSpoolerService' = 'S-1-5-99-216390572-1995538116-3857911515-2404958512-2623887229'
 }
 # Domain groups, as RIDs on the domain's SID.
 $script:NmDomainRids = @{
