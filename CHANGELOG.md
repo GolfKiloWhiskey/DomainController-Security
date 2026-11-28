@@ -6,6 +6,24 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.30 - 11/28/2026
+
+**Corrected clean Windows Server OS default values for DDP and DDCP in `gpo-compare`:**
+
+- **Default Domain Policy (DDP):** added `RequireLogonToChangePassword = 0` (`[System Access]`) and
+  `NoLMHash = 1` (`Network security: Do not store LAN Manager hash value on next password change`).
+- **Default Domain Controllers Policy (DDCP):** matched exact clean Server 2025 defaults from GPMC:
+  - Added `Enterprise Domain Controllers` to `SeInteractiveLogonRight`; `Local Service`,
+    `Network Service`, and `PrintSpoolerService` to `SeChangeNotifyPrivilege`; `Local Service` to
+    `SeSystemtimePrivilege`; `PrintSpoolerService` to `SeAuditPrivilege`; `Window Manager Group` to
+    `SeIncreaseBasePriorityPrivilege`; and `WdiServiceHost` to `SeSystemProfilePrivilege`.
+  - Replaced `SeImpersonatePrivilege` and `SeCreateGlobalPrivilege` with `SeUndockPrivilege`
+    (`Administrators`) and `SeAssignPrimaryTokenPrivilege` (`Local Service`, `Network Service`).
+  - Added `Window Manager Group` (`S-1-5-90-0`), `WdiServiceHost`, and `PrintSpoolerService` to
+    `$script:NmWellKnownSids` so they resolve and display by name instead of raw SIDs.
+- Not run on Windows yet: tested against stand-ins (all 301 tests pass). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.29 - 11/28/2026
 
 **Default Domain Policy (DDP) and Default Domain Controllers Policy (DDCP) handling in `gpo-compare` (`0.7.6`):**
