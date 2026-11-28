@@ -3,14 +3,14 @@
     Author:  Cliff Waite
     Date:    11/22/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.6
+    Version: 0.7.7
 
 .SYNOPSIS
     Builds new GPOs from the baselines in Nutmeg.AD\Baselines, setting by setting.
 
 .DESCRIPTION
-    - Pick one or several baselines. For each: answer its parameters (defaults offered) and name
-      the GPO (the baseline's name by default).
+    - Pick one or several baselines. Use baseline defaults (-UseDefaults) to skip name and parameter
+      prompts and jump straight to the approval summary, or customize each GPO's name and parameters.
     - A GPO by that name already there is never overwritten: it is left alone and Compare is
       offered instead (gpo-compare).
     - When building several GPOs, shows the full list first so you can Approve all at once, Review
@@ -32,9 +32,11 @@
     New-NmGpoFromBaseline -Baseline security-screen-timeout -Values @{ TimeoutSeconds = 600 } -WhatIf
 
 .EXAMPLE
-    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening
+    New-NmGpoFromBaseline -Baseline security-enforce-uac, security-ntlm-hardening -UseDefaults
 
 .VERSIONING
+    0.7.7 - Added -UseDefaults (use baseline default GPO names and parameter values, skipping per-GPO
+            prompts except required parameters with no default).
     0.7.6 - Batch approval when building multiple GPOs: Approve all at once, Review each one by one, or Cancel.
     0.7.5 - First in its section (Order): Build, Compare, Align, Restore.
     0.7.4 - View GPO in the app; GPMC report for GPMC's own.
@@ -52,14 +54,14 @@ $NmTool = @{
     Category = 'GroupPolicy'
     Area     = 'gpo/Baselines'
     Synopsis = 'Pick baselines, answer their parameters, and build each as a new GPO (not linked)'
-    Version  = '0.7.6'
+    Version  = '0.7.7'
     Kind     = 'ReportAndChange'
     Services = @('AD', 'GPO')
     Roles    = @('Domain Admins')
     Prompt   = 'Read-NmGpoBuildOption'
     Entry    = 'New-NmGpoFromBaseline'
-    # The window: baselines are ticked in a list; their values and GPO names are asked on Run.
-    Pickers  = @{ Baseline = @{ Items = 'Get-NmGpoBuildPickItem'; Note = 'Tick the baselines to build. Each becomes a new, unlinked GPO; its values and name are asked when you press Run.' } }
+    # The window: baselines are ticked in a list; their values and GPO names are asked on Run (unless UseDefaults is ticked).
+    Pickers  = @{ Baseline = @{ Items = 'Get-NmGpoBuildPickItem'; Note = 'Tick the baselines to build. Tick UseDefaults to skip name and parameter prompts and go straight to Approve all.' } }
     BeforeRun = 'Complete-NmGpoBuildArgs'
     CardActions = @(
         @{ Label = 'Edit GPO'; Action = 'Invoke-NmGpoCardEdit'; ToolTip = 'Open this GPO in the Group Policy Management Editor (on the DC in use)' }
@@ -100,17 +102,50 @@ function Get-NmGpoBuildPickItem {
 function Read-NmGpoBuildAnswer {
     <#
     .SYNOPSIS
-        For baselines already picked: the GPO name and the parameters of each. A GPO that exists is
-        left out (Compare offered). Returns @{ Baseline; Values; GpoName }, or $null when nothing is left.
+        For baselines already picked: the GPO name and the parameters of each. With -UseDefaults,
+        uses default names and parameter values without prompting (only asking for required
+        parameters that have no default). A GPO that exists is left out (Compare offered when
+        customizing). Returns @{ Baseline; Values; GpoName }, or $null when nothing is left.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string[]]$Baseline)
+    param(
+        [Parameter(Mandatory)][string[]]$Baseline,
+        [switch]$UseDefaults
+    )
     $ids = New-Object System.Collections.Generic.List[string]
     $values = @{}
     $names = @{}
     foreach ($id in $Baseline) {
         $b = @(Get-NmBaseline -Id $id)[0]
         if (-not $b) { Write-NmLog "No valid baseline '$id'." -Level WARN; continue }
+        if ($UseDefaults) {
+            $name = $b.Name
+            if (Get-NmGpoByName -Name $name) {
+                Write-NmLog "A GPO named '$name' already exists. It will not be changed." -Level WARN
+                continue
+            }
+            $resolved = Resolve-NmBaselineValues -Baseline $b -Given @{}
+            $vals = @{}
+            foreach ($k in $resolved.Values.Keys) { $vals[$k] = $resolved.Values[$k] }
+            if ($resolved.Problems.Count) {
+                # Only ask for parameters that are required and have no usable default.
+                Write-Host ''
+                Write-Host $b.Name -ForegroundColor Cyan
+                Write-Host "   $($b.Description)" -ForegroundColor DarkGray
+                $need = @(foreach ($par in @($b.Parameters)) {
+                    $why = Test-NmBaselineParamValue -Parameter $par -Value $vals["$($par.Name)"]
+                    if ($why) { $par }
+                })
+                if ($need.Count) {
+                    $asked = Read-NmBaselineParameter -Baseline ([pscustomobject]@{ Parameters = $need })
+                    foreach ($k in $asked.Keys) { $vals[$k] = $asked[$k] }
+                }
+            }
+            $ids.Add($b.Id)
+            $names[$b.Id] = $name
+            $values[$b.Id] = $vals
+            continue
+        }
         Write-Host ''
         Write-Host $b.Name -ForegroundColor Cyan
         Write-Host "   $($b.Description)" -ForegroundColor DarkGray
@@ -135,11 +170,13 @@ function Read-NmGpoBuildAnswer {
 }
 
 function Complete-NmGpoBuildArgs {
-    # The window's Run: the baselines ticked in the form, then their names and values as dialogs.
+    # The window's Run: the baselines ticked in the form, then their names and values as dialogs (skipped when UseDefaults is ticked).
     [CmdletBinding()]
     param([hashtable]$EntryArgs)
-    $a = Read-NmGpoBuildAnswer -Baseline @($EntryArgs.Baseline)
+    $useDef = [bool]$EntryArgs.UseDefaults
+    $a = Read-NmGpoBuildAnswer -Baseline @($EntryArgs.Baseline) -UseDefaults:$useDef
     if ($null -eq $a) { return $null }
+    if ($useDef) { $a.UseDefaults = $true }
     if ($EntryArgs.WhatIf) { $a.WhatIf = $true }
     return $a
 }
@@ -161,7 +198,11 @@ function Read-NmGpoBuildOption {
     })
     $picked = @(Read-NmMultiChoice -Title 'Which baselines?' -Items $items -Note 'Each becomes a new GPO. Nothing is linked.')
     if (-not $picked.Count) { return $null }
-    return (Read-NmGpoBuildAnswer -Baseline @($picked | ForEach-Object { $all[$_].Id }))
+    $useDef = $false
+    if ($picked.Count -gt 1) {
+        $useDef = Read-NmYesNo -Prompt 'Use baseline defaults (default GPO names and parameter values)?' -Default 'Y'
+    }
+    return (Read-NmGpoBuildAnswer -Baseline @($picked | ForEach-Object { $all[$_].Id }) -UseDefaults:$useDef)
 }
 
 function New-NmGpoFromBaseline {
@@ -175,12 +216,15 @@ function New-NmGpoFromBaseline {
         for every baseline. Parameters not given take their defaults.
     .PARAMETER GpoName
         GPO names per baseline Id; the baseline's name by default.
+    .PARAMETER UseDefaults
+        Use baseline default GPO names and parameter values without prompting (only asks for required parameters with no default).
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string[]]$Baseline,
         [hashtable]$Values = @{},
         [hashtable]$GpoName = @{},
+        [switch]$UseDefaults,
         [switch]$WhatIf
     )
     $gp = Get-NmGPParams

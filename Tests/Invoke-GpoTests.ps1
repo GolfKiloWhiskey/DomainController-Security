@@ -1088,6 +1088,7 @@ Test-That 'Card buttons: Edit GPO opens Microsoft''s editor on the DC in use; Vi
     $t = Get-NmTool -Id gpo-compare
     Assert-Equal 'Align with baseline|Edit GPO|View GPO|GPMC report' (($t.CardActions | ForEach-Object Label) -join '|') 'compare buttons'
     Assert-Equal 'Edit GPO|View GPO|GPMC report' (((Get-NmTool -Id gpo-build).CardActions | ForEach-Object Label) -join '|') 'build buttons'
+    Answer 'y'
     Invoke-NmGpoCardEdit -Row $rows[0]
     Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'editor'
     Invoke-NmGpoCardReport -Row $rows[0]
@@ -1179,6 +1180,7 @@ Test-That 'A card button runs its action once with the card''s row (it called it
         $script:NmGui.Rows = $rows; $script:NmGui.Active = $false
         $script:NmGui.Controls = @{ StatusText = [pscustomobject]@{ Text = '' } }
         foreach ($n in 'Set-NmGuiBusy', 'Clear-NmGuiProgress', 'Update-NmGuiBanner', 'Update-NmGuiLog') { Set-Item -Path "function:script:$n" -Value { } }
+        Answer 'y'
         Invoke-NmGuiCardAction -Index 0 -Action 'Invoke-NmGpoCardEdit' -Label 'Edit GPO'
         Assert-Equal 1 $global:Opened.Count 'ran once'
         Assert-Equal "edit $($global:FakeGpos[0].Path)" $global:Opened[0] 'with the card''s GPO'
@@ -1355,6 +1357,52 @@ Test-That 'Step 2b: Per-role Domain Auditing (DCs, Servers, Devices) build and c
         $diff = @($cmp | Where-Object { $_.Result -ne 'Matches' -and $_.Result -ne 'Note' })
         if ($diff.Count) { throw "$id compare mismatch: $(($diff | ForEach-Object { "$($_.Setting): $($_.Result)" }) -join '; ')" }
     }
+    $true
+}
+
+Test-That 'gpo-build -UseDefaults skips name and parameter prompts, asking only for required parameters with no default' {
+    # All defaults present: zero prompts needed
+    $a = Complete-NmGpoBuildArgs -EntryArgs @{ Baseline = @('security-screen-timeout', 'security-schannel-hardening'); UseDefaults = $true }
+    Assert-Equal 'security-screen-timeout,security-schannel-hardening' ($a.Baseline -join ',') 'baselines'
+    Assert-Equal 'Security - Screen Timeout' $a.GpoName['security-screen-timeout'] 'default name'
+    Assert-Equal '900' "$($a.Values['security-screen-timeout'].TimeoutSeconds)" 'default timeout'
+    Assert-Equal 'Compatible' "$($a.Values['security-schannel-hardening'].CipherProfile)" 'default cipher profile'
+
+    # Required parameter with no default: prompts only for that parameter
+    Write-TestBaseline -File 'NeedParam.psd1' -Text @"
+@{
+    Id = 'test-need-param'; Name = 'Test Need Param'; Version = '0.7.1'; Description = 'Needs a value.'
+    Parameters = @(
+        @{ Name = 'HasDef'; Prompt = 'Has default'; Type = 'Int'; Default = 60; Min = 10; Max = 600 }
+        @{ Name = 'MustAsk'; Prompt = 'Required host'; Type = 'Fqdn'; Default = '' }
+    )
+    Settings = @(
+        @{ Id = 's1'; Kind = 'Policy'; Side = 'Computer'; Title = 'S1'; Tags = @()
+           Values = @(
+               @{ Key = 'HKLM\Software\Policies\Test'; ValueName = 'A'; Type = 'DWord'; Value = '{HasDef}' }
+               @{ Key = 'HKLM\Software\Policies\Test'; ValueName = 'B'; Type = 'String'; Value = '{MustAsk}' }
+           ) }
+    )
+}
+"@
+    Answer 'srv01.clientx.local'
+    $b = Read-NmGpoBuildAnswer -Baseline @('test-need-param') -UseDefaults
+    Assert-Equal '60' "$($b.Values['test-need-param'].HasDef)" 'default kept'
+    Assert-Equal 'srv01.clientx.local' "$($b.Values['test-need-param'].MustAsk)" 'required param asked'
+    Assert-Equal 0 $script:TestAnswers.Count 'no extra prompts'
+    $true
+}
+
+Test-That 'Edit GPO warns about baseline drift and does not open gpme.msc when cancelled' {
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-ntlm-hardening | Out-Null
+    $rows = @(Compare-NmGpoBaseline -All)
+    Answer 'n'
+    Invoke-NmGpoCardEdit -Row $rows[0]
+    Assert-Equal 0 $global:Opened.Count 'editor not opened when cancelled'
+    Answer 'y'
+    Invoke-NmGpoCardEdit -Row $rows[0]
+    Assert-Equal 1 $global:Opened.Count 'editor opened when confirmed'
     $true
 }
 

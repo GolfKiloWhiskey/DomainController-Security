@@ -522,10 +522,15 @@ function Start-NmGpoEditor {
 }
 
 function Invoke-NmGpoCardEdit {
-    # Card button "Edit GPO": opens the GPO in Microsoft's editor. The toolkit itself changes nothing.
+    # Card button "Edit GPO": warns that manual edits outside baseline parameters cause drift, then opens Microsoft's editor.
     [CmdletBinding()]
     param($Row)
     if (-not $Row -or -not "$($Row.GpoPath)") { Write-NmLog 'This card has no GPO to open.' -Level WARN; return }
+    Write-NmLog "Manual edits to '$($Row.Gpo)' outside this baseline's parameters will make it fall out of baseline (Compare will flag it as Doesn't match, and Align will revert changed settings)." -Level WARN
+    if (-not (Read-NmYesNo -Prompt "Open '$($Row.Gpo)' in Group Policy Management Editor?" -Default 'Y')) {
+        Write-NmLog "Cancelled opening '$($Row.Gpo)'." -Level INFO
+        return
+    }
     $t = Start-NmGpoEditor -Path "$($Row.GpoPath)"
     Write-NmLog "Opened $($Row.Gpo) in the Group Policy Management Editor ($t). Compare again after editing." -Level INFO
 }
