@@ -497,27 +497,27 @@ function Get-NmDefaultGpoBaseline {
             SuggestedLinks = @('Domain root')
             Settings       = @(
                 # Password Policy (Nutmeg standard)
-                @{ Id = 'ddp-pwd-history';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Enforce password history'; Name = 'PasswordHistorySize'; Value = 24 }
-                @{ Id = 'ddp-pwd-max-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Maximum password age'; Name = 'MaximumPasswordAge'; Value = 180 }
-                @{ Id = 'ddp-pwd-min-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password age'; Name = 'MinimumPasswordAge'; Value = 1 }
-                @{ Id = 'ddp-pwd-min-len';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password length'; Name = 'MinimumPasswordLength'; Value = 12 }
-                @{ Id = 'ddp-pwd-complex';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Password must meet complexity requirements'; Name = 'PasswordComplexity'; Value = 1 }
-                @{ Id = 'ddp-pwd-cleartext';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Store passwords using reversible encryption'; Name = 'ClearTextPassword'; Value = 0 }
-                @{ Id = 'ddp-pwd-req-logon';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Users must log on in order to change password'; Name = 'RequireLogonToChangePassword'; Value = 0 }
+                @{ Id = 'ddp-pwd-history';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Enforce password history = 24 passwords remembered'; Name = 'PasswordHistorySize'; Value = 24 }
+                @{ Id = 'ddp-pwd-max-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Maximum password age = 180 days'; Name = 'MaximumPasswordAge'; Value = 180 }
+                @{ Id = 'ddp-pwd-min-age';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password age = 1 day'; Name = 'MinimumPasswordAge'; Value = 1 }
+                @{ Id = 'ddp-pwd-min-len';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password length = 12 characters'; Name = 'MinimumPasswordLength'; Value = 12 }
+                @{ Id = 'ddp-pwd-complex';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Password must meet complexity requirements = Enabled'; Name = 'PasswordComplexity'; Value = 1 }
+                @{ Id = 'ddp-pwd-cleartext';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Store passwords using reversible encryption = Disabled'; Name = 'ClearTextPassword'; Value = 0 }
+                @{ Id = 'ddp-pwd-req-logon';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Users must log on in order to change password = Disabled'; Name = 'RequireLogonToChangePassword'; Value = 0 }
                 # Account Lockout Policy (Nutmeg standard)
-                @{ Id = 'ddp-lockout-duration';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout duration'; Name = 'LockoutDuration'; Value = 30 }
-                @{ Id = 'ddp-lockout-thresh';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout threshold'; Name = 'LockoutBadCount'; Value = 5 }
-                @{ Id = 'ddp-lockout-admin';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Allow administrator account lockout'; Name = 'AllowAdministratorLockout'; Value = 1 }
-                @{ Id = 'ddp-lockout-reset';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Reset account lockout counter after'; Name = 'ResetLockoutCount'; Value = 30 }
+                @{ Id = 'ddp-lockout-duration';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout duration = 30 minutes'; Name = 'LockoutDuration'; Value = 30 }
+                @{ Id = 'ddp-lockout-thresh';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout threshold = 5 invalid logon attempts'; Name = 'LockoutBadCount'; Value = 5 }
+                @{ Id = 'ddp-lockout-admin';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Allow administrator account lockout = Enabled'; Name = 'AllowAdministratorLockout'; Value = 1 }
+                @{ Id = 'ddp-lockout-reset';     Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Reset account lockout counter after = 30 minutes'; Name = 'ResetLockoutCount'; Value = 30 }
                 # Remaining DDP settings (clean Windows OS defaults)
-                @{ Id = 'ddp-force-logoff';      Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network security: Force logoff when logon hours expire'; Name = 'ForceLogoffWhenHourExpire'; Value = 0 }
-                @{ Id = 'ddp-anon-sid';          Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network access: Allow anonymous SID/Name translation'; Name = 'LSAAnonymousNameLookup'; Value = 0 }
-                @{ Id = 'ddp-no-lm-hash';        Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Network security: Do not store LAN Manager hash value on next password change'; Key = 'MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash'; Type = 'DWord'; Value = 1 }
-                @{ Id = 'ddp-krb-ticket';        Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket (hours)'; Name = 'MaxTicketAge'; Value = 10 }
-                @{ Id = 'ddp-krb-renew';         Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket renewal (days)'; Name = 'MaxRenewAge'; Value = 7 }
-                @{ Id = 'ddp-krb-service';       Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for service ticket (minutes)'; Name = 'MaxServiceAge'; Value = 600 }
-                @{ Id = 'ddp-krb-skew';          Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum tolerance for computer clock synchronization (minutes)'; Name = 'MaxClockSkew'; Value = 5 }
-                @{ Id = 'ddp-krb-validate';      Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Enforce user logon restrictions'; Name = 'TicketValidateClient'; Value = 1 }
+                @{ Id = 'ddp-force-logoff';      Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network security: Force logoff when logon hours expire = Disabled'; Name = 'ForceLogoffWhenHourExpire'; Value = 0 }
+                @{ Id = 'ddp-anon-sid';          Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network access: Allow anonymous SID/Name translation = Disabled'; Name = 'LSAAnonymousNameLookup'; Value = 0 }
+                @{ Id = 'ddp-no-lm-hash';        Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Network security: Do not store LAN Manager hash value on next password change = Enabled'; Key = 'MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash'; Type = 'DWord'; Value = 1 }
+                @{ Id = 'ddp-krb-ticket';        Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket = 10 hours'; Name = 'MaxTicketAge'; Value = 10 }
+                @{ Id = 'ddp-krb-renew';         Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket renewal = 7 days'; Name = 'MaxRenewAge'; Value = 7 }
+                @{ Id = 'ddp-krb-service';       Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for service ticket = 600 minutes'; Name = 'MaxServiceAge'; Value = 600 }
+                @{ Id = 'ddp-krb-skew';          Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum tolerance for computer clock synchronization = 5 minutes'; Name = 'MaxClockSkew'; Value = 5 }
+                @{ Id = 'ddp-krb-validate';      Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Enforce user logon restrictions = Enabled'; Name = 'TicketValidateClient'; Value = 1 }
             )
         }
     }
@@ -528,34 +528,34 @@ function Get-NmDefaultGpoBaseline {
         Parameters     = @()
         SuggestedLinks = @('Domain Controllers')
         Settings       = @(
-            @{ Id = 'ddcp-ldap-signing';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain controller: LDAP server signing requirements'; Key = 'MACHINE\System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity'; Type = 'DWord'; Value = 1 }
-            @{ Id = 'ddcp-sign-or-seal';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain member: Digitally encrypt or sign secure channel data (always)'; Key = 'MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters\RequireSignOrSeal'; Type = 'DWord'; Value = 1 }
-            @{ Id = 'ddcp-smb-require';   Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (always)'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\RequireSecuritySignature'; Type = 'DWord'; Value = 1 }
-            @{ Id = 'ddcp-smb-enable';    Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (if client agrees)'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\EnableSecuritySignature'; Type = 'DWord'; Value = 1 }
-            @{ Id = 'ddcp-ur-network';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Access this computer from the network'; Right = 'SeNetworkLogonRight'; Members = @('Administrators', 'Authenticated Users', 'Enterprise Domain Controllers', 'Everyone', 'Pre-Windows 2000 Compatible Access') }
-            @{ Id = 'ddcp-ur-join';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Add workstations to domain'; Right = 'SeMachineAccountPrivilege'; Members = @('Authenticated Users') }
-            @{ Id = 'ddcp-ur-quota';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Adjust memory quotas for a process'; Right = 'SeIncreaseQuotaPrivilege'; Members = @('Administrators', 'Local Service', 'Network Service') }
-            @{ Id = 'ddcp-ur-local';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Allow log on locally'; Right = 'SeInteractiveLogonRight'; Members = @('Administrators', 'Account Operators', 'Backup Operators', 'Print Operators', 'Server Operators', 'Enterprise Domain Controllers') }
-            @{ Id = 'ddcp-ur-backup';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Back up files and directories'; Right = 'SeBackupPrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
-            @{ Id = 'ddcp-ur-batch';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Log on as a batch job'; Right = 'SeBatchLogonRight'; Members = @('Administrators', 'Backup Operators', 'Performance Log Users') }
-            @{ Id = 'ddcp-ur-traverse';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Bypass traverse checking'; Right = 'SeChangeNotifyPrivilege'; Members = @('Administrators', 'Authenticated Users', 'Everyone', 'Pre-Windows 2000 Compatible Access', 'Local Service', 'Network Service', 'PrintSpoolerService') }
-            @{ Id = 'ddcp-ur-time';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Change the system time'; Right = 'SeSystemtimePrivilege'; Members = @('Administrators', 'Server Operators', 'Local Service') }
-            @{ Id = 'ddcp-ur-pagefile';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Create a pagefile'; Right = 'SeCreatePagefilePrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-debug';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Debug programs'; Right = 'SeDebugPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-delegate';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Enable computer and user accounts to be trusted for delegation'; Right = 'SeEnableDelegationPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-remshut';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Force shutdown from a remote system'; Right = 'SeRemoteShutdownPrivilege'; Members = @('Administrators', 'Server Operators') }
-            @{ Id = 'ddcp-ur-audit';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Generate security audits'; Right = 'SeAuditPrivilege'; Members = @('Local Service', 'Network Service', 'PrintSpoolerService') }
-            @{ Id = 'ddcp-ur-priority';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Increase scheduling priority'; Right = 'SeIncreaseBasePriorityPrivilege'; Members = @('Administrators', 'Window Manager Group') }
-            @{ Id = 'ddcp-ur-driver';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Load and unload device drivers'; Right = 'SeLoadDriverPrivilege'; Members = @('Administrators', 'Print Operators') }
-            @{ Id = 'ddcp-ur-security';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Manage auditing and security log'; Right = 'SeSecurityPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-firmware';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Modify firmware environment values'; Right = 'SeSystemEnvironmentPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-sysprof';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile system performance'; Right = 'SeSystemProfilePrivilege'; Members = @('Administrators', 'WdiServiceHost') }
-            @{ Id = 'ddcp-ur-procprof';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile single process'; Right = 'SeProfileSingleProcessPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-undock';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Remove computer from docking station'; Right = 'SeUndockPrivilege'; Members = @('Administrators') }
-            @{ Id = 'ddcp-ur-token';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Replace a process level token'; Right = 'SeAssignPrimaryTokenPrivilege'; Members = @('Local Service', 'Network Service') }
-            @{ Id = 'ddcp-ur-restore';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Restore files and directories'; Right = 'SeRestorePrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
-            @{ Id = 'ddcp-ur-shutdown';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Shut down the system'; Right = 'SeShutdownPrivilege'; Members = @('Administrators', 'Backup Operators', 'Print Operators', 'Server Operators') }
-            @{ Id = 'ddcp-ur-ownership';  Kind = 'UserRight'; Side = 'Computer'; Title = 'Take ownership of files or other objects'; Right = 'SeTakeOwnershipPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ldap-signing';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain controller: LDAP server signing requirements = None'; Key = 'MACHINE\System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-sign-or-seal';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain member: Digitally encrypt or sign secure channel data (always) = Enabled'; Key = 'MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters\RequireSignOrSeal'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-smb-require';   Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (always) = Enabled'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\RequireSecuritySignature'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-smb-enable';    Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (if client agrees) = Enabled'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\EnableSecuritySignature'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-ur-network';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Access this computer from the network = Administrators, Authenticated Users, Enterprise Domain Controllers, Everyone, Pre-Windows 2000 Compatible Access'; Right = 'SeNetworkLogonRight'; Members = @('Administrators', 'Authenticated Users', 'Enterprise Domain Controllers', 'Everyone', 'Pre-Windows 2000 Compatible Access') }
+            @{ Id = 'ddcp-ur-join';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Add workstations to domain = Authenticated Users'; Right = 'SeMachineAccountPrivilege'; Members = @('Authenticated Users') }
+            @{ Id = 'ddcp-ur-quota';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Adjust memory quotas for a process = Administrators, Local Service, Network Service'; Right = 'SeIncreaseQuotaPrivilege'; Members = @('Administrators', 'Local Service', 'Network Service') }
+            @{ Id = 'ddcp-ur-local';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Allow log on locally = Administrators, Account Operators, Backup Operators, Print Operators, Server Operators, Enterprise Domain Controllers'; Right = 'SeInteractiveLogonRight'; Members = @('Administrators', 'Account Operators', 'Backup Operators', 'Print Operators', 'Server Operators', 'Enterprise Domain Controllers') }
+            @{ Id = 'ddcp-ur-backup';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Back up files and directories = Administrators, Backup Operators, Server Operators'; Right = 'SeBackupPrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-batch';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Log on as a batch job = Administrators, Backup Operators, Performance Log Users'; Right = 'SeBatchLogonRight'; Members = @('Administrators', 'Backup Operators', 'Performance Log Users') }
+            @{ Id = 'ddcp-ur-traverse';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Bypass traverse checking = Administrators, Authenticated Users, Everyone, Pre-Windows 2000 Compatible Access, Local Service, Network Service, PrintSpoolerService'; Right = 'SeChangeNotifyPrivilege'; Members = @('Administrators', 'Authenticated Users', 'Everyone', 'Pre-Windows 2000 Compatible Access', 'Local Service', 'Network Service', 'PrintSpoolerService') }
+            @{ Id = 'ddcp-ur-time';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Change the system time = Administrators, Server Operators, Local Service'; Right = 'SeSystemtimePrivilege'; Members = @('Administrators', 'Server Operators', 'Local Service') }
+            @{ Id = 'ddcp-ur-pagefile';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Create a pagefile = Administrators'; Right = 'SeCreatePagefilePrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-debug';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Debug programs = Administrators'; Right = 'SeDebugPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-delegate';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Enable computer and user accounts to be trusted for delegation = Administrators'; Right = 'SeEnableDelegationPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-remshut';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Force shutdown from a remote system = Administrators, Server Operators'; Right = 'SeRemoteShutdownPrivilege'; Members = @('Administrators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-audit';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Generate security audits = Local Service, Network Service, PrintSpoolerService'; Right = 'SeAuditPrivilege'; Members = @('Local Service', 'Network Service', 'PrintSpoolerService') }
+            @{ Id = 'ddcp-ur-priority';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Increase scheduling priority = Administrators, Window Manager Group'; Right = 'SeIncreaseBasePriorityPrivilege'; Members = @('Administrators', 'Window Manager Group') }
+            @{ Id = 'ddcp-ur-driver';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Load and unload device drivers = Administrators, Print Operators'; Right = 'SeLoadDriverPrivilege'; Members = @('Administrators', 'Print Operators') }
+            @{ Id = 'ddcp-ur-security';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Manage auditing and security log = Administrators'; Right = 'SeSecurityPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-firmware';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Modify firmware environment values = Administrators'; Right = 'SeSystemEnvironmentPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-sysprof';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile system performance = Administrators, WdiServiceHost'; Right = 'SeSystemProfilePrivilege'; Members = @('Administrators', 'WdiServiceHost') }
+            @{ Id = 'ddcp-ur-procprof';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile single process = Administrators'; Right = 'SeProfileSingleProcessPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-undock';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Remove computer from docking station = Administrators'; Right = 'SeUndockPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-token';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Replace a process level token = Local Service, Network Service'; Right = 'SeAssignPrimaryTokenPrivilege'; Members = @('Local Service', 'Network Service') }
+            @{ Id = 'ddcp-ur-restore';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Restore files and directories = Administrators, Backup Operators, Server Operators'; Right = 'SeRestorePrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-shutdown';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Shut down the system = Administrators, Backup Operators, Print Operators, Server Operators'; Right = 'SeShutdownPrivilege'; Members = @('Administrators', 'Backup Operators', 'Print Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-ownership';  Kind = 'UserRight'; Side = 'Computer'; Title = 'Take ownership of files or other objects = Administrators'; Right = 'SeTakeOwnershipPrivilege'; Members = @('Administrators') }
         )
     }
 }

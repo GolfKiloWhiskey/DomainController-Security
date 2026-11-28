@@ -6,6 +6,17 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.32 - 11/28/2026
+
+**Show configured values on DDP and DDCP `Matches` lines in `gpo-compare`:**
+
+- Updated setting titles in `Get-NmDefaultGpoBaseline` (`Core\GpoBaseline.ps1`) to include `= <value>`
+  (for example, `Enforce password history = 24 passwords remembered`, `Allow administrator account
+  lockout = Enabled`, `Access this computer from the network = ...`) so DDP and DDCP cards match the
+  format used by every other baseline.
+- Not run on Windows yet: tested against stand-ins (all 301 tests pass). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.31 - 11/28/2026
 
 **Default Domain Policy (DDP) Password & Account Lockout standard in `gpo-compare`:**
