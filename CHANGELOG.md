@@ -6,6 +6,28 @@ How the numbers move (Cliff, Nov 2026): every change adds to the last number (0.
 0.7.15 is fine). The middle number moves only at a milestone Cliff names. **1.0.0-beta** is the
 whole package built and ready for testing as a release; **1.0.0** is the release.
 
+## 0.7.29 - 11/28/2026
+
+**Default Domain Policy (DDP) and Default Domain Controllers Policy (DDCP) handling in `gpo-compare` (`0.7.6`):**
+
+- **Excluded from normal baseline comparisons:** DDP (`{31B2F340-016D-11D2-945F-00C04FB984F9}`) and
+  DDCP (`{6AC1786C-016F-11D2-945F-00C04FB984F9}`) are matched by their fixed AD GUIDs, removed from
+  the `No stamp` bucket in the picker (badged **OS default** instead), skipped by `-All`, and refused
+  if an explicit Nutmeg `-Baseline` is passed.
+- **Read-only OS default integrity check:** pick DDP or DDCP directly, tick **IncludeDefaultGpos**
+  (`-IncludeDefaultGpos`), or pick option 4 in the console menu to check whether DDP or DDCP have
+  been modified from clean Windows Server OS defaults:
+  - Parses `[Kerberos Policy]` in `GptTmpl.inf` in addition to `[System Access]`, `[Registry Values]`,
+    and `[Privilege Rights]`.
+  - Ignores DDP's per-domain `dcpromo`-generated EFS Data Recovery Agent certificate entries under
+    `Software\Policies\Microsoft\SystemCertificates\EFS`.
+  - Surfaces DDP Password and Account Lockout customizations as informational **Note** rows rather
+    than failures (common when not using a separate domain-root password policy GPO or FGPP).
+  - Flags any other changed, missing, or extra setting in DDP or DDCP as **Doesn't match**.
+  - Strictly read-only: **Align with baseline** is hidden on DDP/DDCP cards and refused if invoked.
+- Not run on Windows yet: tested against stand-ins (all tests pass). `PSScriptAnalyzer` is
+  unavailable in this environment.
+
 ## 0.7.28 - 11/25/2026
 
 **Fast baseline defaults in `gpo-build` (`0.7.7`) and drift warning on `Edit GPO`:**

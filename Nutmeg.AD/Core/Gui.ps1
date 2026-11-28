@@ -1991,10 +1991,16 @@ function Get-NmGuiResultTitle {
 
 function Get-NmGuiCardActionShown {
     # The card's buttons (no WPF): all of the tool's, less those hidden for this card's row
-    # (gpo-compare: no Align on a GPO that matches).
+    # (gpo-compare: no Align on a GPO that matches or an OS default GPO).
     param([object[]]$Actions = @(), $Row)
     @(foreach ($a in @($Actions | Where-Object { $_ })) {
-        if ($a.PSObject.Properties['Hide'] -and $a.Hide -and $Row -and $Row.PSObject.Properties[$a.Hide.Column] -and (@($a.Hide.Values) -contains "$($Row.($a.Hide.Column))")) { continue }
+        $hide = $false
+        if ($a.PSObject.Properties['Hide'] -and $a.Hide -and $Row) {
+            foreach ($h in @($a.Hide)) {
+                if ($h -and $Row.PSObject.Properties[$h.Column] -and (@($h.Values) -contains "$($Row.($h.Column))")) { $hide = $true; break }
+            }
+        }
+        if ($hide) { continue }
         $a
     })
 }

@@ -139,7 +139,11 @@ function Register-NmTool {
         if ($a -isnot [hashtable] -or -not "$($a.Label)".Trim() -or -not $a.Action) { & $fail 'Each CardActions entry needs Label and Action.'; return }
         if (-not (Get-Command -Name $a.Action -CommandType Function -ErrorAction SilentlyContinue)) { & $fail "CardActions: function '$($a.Action)' is not defined."; return }
         $hide = $null
-        if ($a.Hide) { $hide = [pscustomobject]@{ Column = "$($a.Hide.Column)"; Values = @($a.Hide.Values | ForEach-Object { "$_" }) } }
+        if ($a.Hide) {
+            $hide = @(foreach ($h in @($a.Hide)) {
+                if ($h) { [pscustomobject]@{ Column = "$($h.Column)"; Values = @($h.Values | ForEach-Object { "$_" }) } }
+            })
+        }
         $cardActions.Add([pscustomobject]@{ Label = "$($a.Label)"; Action = "$($a.Action)"; ToolTip = "$($a.ToolTip)"; Hide = $hide })
     }
     foreach ($hook in 'Prompt', 'Summary', 'BeforeRun') {

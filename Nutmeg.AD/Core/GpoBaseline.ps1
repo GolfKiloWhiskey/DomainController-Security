@@ -213,6 +213,12 @@ function Get-NmGpoLiveItem {
                 Raw = @{ Section = 'System Access'; LineKey = (Get-NmInfLineKey -Line $l) } })
         }
     }
+    if ($inf.Contains('Kerberos Policy')) {
+        foreach ($l in $inf['Kerberos Policy'].Values) {
+            $out.Add([pscustomobject]@{ Ident = "kerberos|$((& $lhs $l).ToLower())"; Kind = 'KerberosPolicy'; Label = (& $lhs $l); Value = ((& $rhs $l).Trim('"')); Members = $null
+                Raw = @{ Section = 'Kerberos Policy'; LineKey = (Get-NmInfLineKey -Line $l) } })
+        }
+    }
     if ($inf.Contains('Privilege Rights')) {
         foreach ($l in $inf['Privilege Rights'].Values) {
             $members = @((& $rhs $l) -split ',' | Where-Object { $_.Trim() } | ForEach-Object { ConvertTo-NmMemberKey -Member $_ })
@@ -284,6 +290,9 @@ function Get-NmBaselineExpectedItem {
         }
         'SystemAccess' {
             [pscustomobject]@{ Ident = "sysaccess|$("$($s.Name)".ToLower())"; Label = "$($s.Name)"; Value = "$($s.Value)"; Members = $null }
+        }
+        'KerberosPolicy' {
+            [pscustomobject]@{ Ident = "kerberos|$("$($s.Name)".ToLower())"; Label = "$($s.Name)"; Value = "$($s.Value)"; Members = $null }
         }
         'UserRight' {
             [pscustomobject]@{ Ident = "right|$("$($s.Right)".ToLower())"; Label = "$($s.Right)"; Value = ''; Members = @(foreach ($m in @($s.Members | Where-Object { "$_".Trim() })) { & $member $m }) }
@@ -431,6 +440,171 @@ function Compare-NmGpoWithBaseline {
             Expected = '(not in the baseline)'; Actual = $actText; Result = 'Extra'; Detail = ''; Ident = $l.Ident; Raw = $l.Raw })
     }
     return $rows.ToArray()
+}
+
+# ---------------------------------------------------------------------------
+# OS default GPOs (Default Domain Policy and Default Domain Controllers Policy)
+# ---------------------------------------------------------------------------
+# Identified by their fixed Active Directory GUIDs (the same in every AD domain).
+# Never compared against Nutmeg baselines and never aligned; instead, checked read-only
+# against their clean Windows Server OS default state.
+$script:NmDefaultGpoGuids = @{
+    '31b2f340-016d-11d2-945f-00c04fb984f9' = 'DDP'
+    '6ac1786c-016f-11d2-945f-00c04fb984f9' = 'DDCP'
+}
+
+# Password and account lockout keys in DDP's [System Access]: the one common, often
+# intentional customization when an org does not break password policy out into a
+# separate domain-root GPO or Fine-Grained Password Policies.
+$script:NmDdpPasswordKeys = @(
+    'MinimumPasswordAge', 'MaximumPasswordAge', 'MinimumPasswordLength', 'PasswordComplexity',
+    'PasswordHistorySize', 'ClearTextPassword', 'LockoutBadCount', 'LockoutDuration',
+    'ResetLockoutCount', 'RequireLogonToChangePassword'
+)
+
+function Get-NmDefaultGpoKind {
+    <#
+    .SYNOPSIS
+        Returns 'DDP' for Default Domain Policy, 'DDCP' for Default Domain Controllers Policy,
+        or '' for any other GPO, matched by its fixed AD GUID.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$Id)
+    $g = "$Id".Trim('{', '}', ' ').ToLower()
+    if ($script:NmDefaultGpoGuids.ContainsKey($g)) { return $script:NmDefaultGpoGuids[$g] }
+    return ''
+}
+
+function Test-NmDefaultGpo {
+    <#
+    .SYNOPSIS
+        True when a GPO (or GUID string) is Default Domain Policy or Default Domain Controllers Policy.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([Parameter(Mandatory)]$Gpo)
+    $id = if ($Gpo -is [string]) { $Gpo } elseif ($Gpo.PSObject.Properties['Id']) { "$($Gpo.Id)" } elseif ($Gpo.PSObject.Properties['GpoId']) { "$($Gpo.GpoId)" } else { '' }
+    return [bool](Get-NmDefaultGpoKind -Id $id)
+}
+
+function Get-NmDefaultGpoBaseline {
+    <#
+    .SYNOPSIS
+        Clean Windows Server OS default settings for Default Domain Policy (DDP) or
+        Default Domain Controllers Policy (DDCP), for read-only integrity checks.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][ValidateSet('DDP', 'DDCP')][string]$Kind)
+    if ($Kind -eq 'DDP') {
+        return [pscustomobject]@{
+            Id             = 'os-default-ddp'
+            Name           = 'Windows OS default (Default Domain Policy)'
+            Version        = 'OS'
+            Parameters     = @()
+            SuggestedLinks = @('Domain root')
+            Settings       = @(
+                @{ Id = 'ddp-pwd-history';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Enforce password history'; Name = 'PasswordHistorySize'; Value = 24 }
+                @{ Id = 'ddp-pwd-max-age';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Maximum password age'; Name = 'MaximumPasswordAge'; Value = 42 }
+                @{ Id = 'ddp-pwd-min-age';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password age'; Name = 'MinimumPasswordAge'; Value = 1 }
+                @{ Id = 'ddp-pwd-min-len';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Minimum password length'; Name = 'MinimumPasswordLength'; Value = 7 }
+                @{ Id = 'ddp-pwd-complex';    Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Password must meet complexity requirements'; Name = 'PasswordComplexity'; Value = 1 }
+                @{ Id = 'ddp-pwd-cleartext';  Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Store passwords using reversible encryption'; Name = 'ClearTextPassword'; Value = 0 }
+                @{ Id = 'ddp-lockout-thresh'; Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Account lockout threshold'; Name = 'LockoutBadCount'; Value = 0 }
+                @{ Id = 'ddp-force-logoff';   Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network security: Force logoff when logon hours expire'; Name = 'ForceLogoffWhenHourExpire'; Value = 0 }
+                @{ Id = 'ddp-anon-sid';       Kind = 'SystemAccess';   Side = 'Computer'; Title = 'Network access: Allow anonymous SID/Name translation'; Name = 'LSAAnonymousNameLookup'; Value = 0 }
+                @{ Id = 'ddp-krb-ticket';     Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket (hours)'; Name = 'MaxTicketAge'; Value = 10 }
+                @{ Id = 'ddp-krb-renew';      Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for user ticket renewal (days)'; Name = 'MaxRenewAge'; Value = 7 }
+                @{ Id = 'ddp-krb-service';    Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum lifetime for service ticket (minutes)'; Name = 'MaxServiceAge'; Value = 600 }
+                @{ Id = 'ddp-krb-skew';       Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Maximum tolerance for computer clock synchronization (minutes)'; Name = 'MaxClockSkew'; Value = 5 }
+                @{ Id = 'ddp-krb-validate';   Kind = 'KerberosPolicy'; Side = 'Computer'; Title = 'Enforce user logon restrictions'; Name = 'TicketValidateClient'; Value = 1 }
+            )
+        }
+    }
+    return [pscustomobject]@{
+        Id             = 'os-default-ddcp'
+        Name           = 'Windows OS default (Default Domain Controllers Policy)'
+        Version        = 'OS'
+        Parameters     = @()
+        SuggestedLinks = @('Domain Controllers')
+        Settings       = @(
+            @{ Id = 'ddcp-ldap-signing';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain controller: LDAP server signing requirements'; Key = 'MACHINE\System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-sign-or-seal';  Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Domain member: Digitally encrypt or sign secure channel data (always)'; Key = 'MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters\RequireSignOrSeal'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-smb-require';   Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (always)'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\RequireSecuritySignature'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-smb-enable';    Kind = 'SecurityOption'; Side = 'Computer'; Title = 'Microsoft network server: Digitally sign communications (if client agrees)'; Key = 'MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\EnableSecuritySignature'; Type = 'DWord'; Value = 1 }
+            @{ Id = 'ddcp-ur-network';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Access this computer from the network'; Right = 'SeNetworkLogonRight'; Members = @('Administrators', 'Authenticated Users', 'Enterprise Domain Controllers', 'Everyone', 'Pre-Windows 2000 Compatible Access') }
+            @{ Id = 'ddcp-ur-join';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Add workstations to domain'; Right = 'SeMachineAccountPrivilege'; Members = @('Authenticated Users') }
+            @{ Id = 'ddcp-ur-quota';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Adjust memory quotas for a process'; Right = 'SeIncreaseQuotaPrivilege'; Members = @('Administrators', 'Local Service', 'Network Service') }
+            @{ Id = 'ddcp-ur-local';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Allow log on locally'; Right = 'SeInteractiveLogonRight'; Members = @('Administrators', 'Account Operators', 'Backup Operators', 'Print Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-backup';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Back up files and directories'; Right = 'SeBackupPrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-batch';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Log on as a batch job'; Right = 'SeBatchLogonRight'; Members = @('Administrators', 'Backup Operators', 'Performance Log Users') }
+            @{ Id = 'ddcp-ur-traverse';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Bypass traverse checking'; Right = 'SeChangeNotifyPrivilege'; Members = @('Administrators', 'Authenticated Users', 'Everyone', 'Pre-Windows 2000 Compatible Access') }
+            @{ Id = 'ddcp-ur-time';       Kind = 'UserRight'; Side = 'Computer'; Title = 'Change the system time'; Right = 'SeSystemtimePrivilege'; Members = @('Administrators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-pagefile';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Create a pagefile'; Right = 'SeCreatePagefilePrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-debug';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Debug programs'; Right = 'SeDebugPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-delegate';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Enable computer and user accounts to be trusted for delegation'; Right = 'SeEnableDelegationPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-remshut';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Force shutdown from a remote system'; Right = 'SeRemoteShutdownPrivilege'; Members = @('Administrators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-audit';      Kind = 'UserRight'; Side = 'Computer'; Title = 'Generate security audits'; Right = 'SeAuditPrivilege'; Members = @('Local Service', 'Network Service') }
+            @{ Id = 'ddcp-ur-priority';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Increase scheduling priority'; Right = 'SeIncreaseBasePriorityPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-driver';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Load and unload device drivers'; Right = 'SeLoadDriverPrivilege'; Members = @('Administrators', 'Print Operators') }
+            @{ Id = 'ddcp-ur-security';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Manage auditing and security log'; Right = 'SeSecurityPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-firmware';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Modify firmware environment values'; Right = 'SeSystemEnvironmentPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-sysprof';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile system performance'; Right = 'SeSystemProfilePrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-procprof';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Profile single process'; Right = 'SeProfileSingleProcessPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-restore';    Kind = 'UserRight'; Side = 'Computer'; Title = 'Restore files and directories'; Right = 'SeRestorePrivilege'; Members = @('Administrators', 'Backup Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-shutdown';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Shut down the system'; Right = 'SeShutdownPrivilege'; Members = @('Administrators', 'Backup Operators', 'Print Operators', 'Server Operators') }
+            @{ Id = 'ddcp-ur-ownership';  Kind = 'UserRight'; Side = 'Computer'; Title = 'Take ownership of files or other objects'; Right = 'SeTakeOwnershipPrivilege'; Members = @('Administrators') }
+            @{ Id = 'ddcp-ur-imperson';   Kind = 'UserRight'; Side = 'Computer'; Title = 'Impersonate a client after authentication'; Right = 'SeImpersonatePrivilege'; Members = @('Administrators', 'Service', 'Local Service', 'Network Service') }
+            @{ Id = 'ddcp-ur-global';     Kind = 'UserRight'; Side = 'Computer'; Title = 'Create global objects'; Right = 'SeCreateGlobalPrivilege'; Members = @('Administrators', 'Service', 'Local Service', 'Network Service') }
+        )
+    }
+}
+
+function Compare-NmDefaultGpo {
+    <#
+    .SYNOPSIS
+        Read-only integrity check of Default Domain Policy (DDP) or Default Domain Controllers
+        Policy (DDCP) against clean Windows Server OS defaults.
+    .DESCRIPTION
+        - For DDP: ignores the per-domain EFS Data Recovery Agent certificate entries created by
+          dcpromo under Software\Policies\Microsoft\SystemCertificates\EFS, and surfaces Password
+          and Account Lockout customizations as informational Note rows rather than failures.
+        - Any other modified, missing or extra setting in DDP or DDCP is flagged as drift.
+    #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Gpo)
+    $kind = Get-NmDefaultGpoKind -Id "$($Gpo.Id)"
+    if (-not $kind) { throw "GPO '$($Gpo.DisplayName)' is not Default Domain Policy or Default Domain Controllers Policy." }
+    $def = Get-NmDefaultGpoBaseline -Kind $kind
+    $raw = @(Compare-NmGpoWithBaseline -Gpo $Gpo -Baseline $def)
+    if ($kind -ne 'DDP') { return $raw }
+    $pwdIds = @('ddp-pwd-history', 'ddp-pwd-max-age', 'ddp-pwd-min-age', 'ddp-pwd-min-len', 'ddp-pwd-complex', 'ddp-pwd-cleartext', 'ddp-lockout-thresh')
+    $out = New-Object System.Collections.Generic.List[object]
+    foreach ($r in $raw) {
+        # Skip the domain's own dcpromo-generated EFS DRA certificate entries in Machine\Registry.pol.
+        if ($r.Result -eq 'Extra' -and $r.Kind -eq 'Policy' -and "$($r.Ident)" -like 'policy|computer|software\policies\microsoft\systemcertificates\efs*') {
+            continue
+        }
+        # DDP Password & Account Lockout customizations are common when not using a custom domain-root GPO or FGPP.
+        if ($r.Result -in 'Different', 'Missing' -and $pwdIds -contains "$($r.SettingId)") {
+            $msg = if ($r.Result -eq 'Missing') {
+                "$($r.Setting): not set in DDP (OS default $($r.Expected)). Acceptable if managed by a separate password policy GPO or FGPP."
+            } else {
+                "$($r.Setting): customized in DDP (OS default $($r.Expected), found $($r.Actual)). Acceptable if not using a separate password policy GPO or FGPP."
+            }
+            $out.Add([pscustomobject]@{ Gpo = $r.Gpo; Baseline = $r.Baseline; Setting = $r.Setting; SettingId = $r.SettingId; Kind = $r.Kind
+                Expected = $r.Expected; Actual = $r.Actual; Result = 'Note'; Detail = $msg })
+            continue
+        }
+        if ($r.Result -eq 'Extra' -and $r.Kind -eq 'SystemAccess' -and $script:NmDdpPasswordKeys -contains "$($r.Setting)") {
+            $msg = "$($r.Setting): set to $($r.Actual) in DDP (lockout/password policy customized). Acceptable if not using a separate password policy GPO or FGPP."
+            $out.Add([pscustomobject]@{ Gpo = $r.Gpo; Baseline = $r.Baseline; Setting = $r.Setting; SettingId = ''; Kind = $r.Kind
+                Expected = '(OS default: not set)'; Actual = $r.Actual; Result = 'Note'; Detail = $msg })
+            continue
+        }
+        $out.Add($r)
+    }
+    return $out.ToArray()
 }
 
 # ---------------------------------------------------------------------------
@@ -876,6 +1050,10 @@ function Invoke-NmGpoCardAlign {
     [CmdletBinding()]
     param($Row)
     if (-not $Row -or -not "$($Row.Gpo)") { return }
+    if (Test-NmDefaultGpo -Gpo $Row) {
+        Write-NmLog "$($Row.Gpo) is an OS default GPO and is read-only here (never aligned by the toolkit)." -Level WARN
+        return
+    }
     $mode = Read-NmGpoAlignMode -Gpo "$($Row.Gpo)"
     if (-not $mode) { return }
     $r = @(Set-NmGpoToBaseline -Gpo @("$($Row.Gpo)") -Mode $mode)

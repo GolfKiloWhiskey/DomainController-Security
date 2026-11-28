@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.28
+    Version: 0.7.29
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,9 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.29 - gpo-compare 0.7.6: Default Domain Policy (DDP) and Default Domain Controllers Policy (DDCP)
+             are excluded from normal baseline comparisons and checked read-only against clean Windows OS
+             defaults (-IncludeDefaultGpos or picked directly; DDP password/lockout edits shown as Notes).
     0.7.28 - gpo-build 0.7.7: -UseDefaults tick box/prompt skips per-GPO name and parameter dialogs (asking
              only for required parameters with no default) and goes straight to Approve all; Edit GPO warns
              that manual edits outside baseline parameters cause drift before opening gpme.msc.
@@ -112,7 +115,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.28'
+$script:ModuleVersion = '0.7.29'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
