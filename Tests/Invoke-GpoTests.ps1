@@ -1418,8 +1418,8 @@ Test-That 'Default Domain Policy (DDP) and DDCP: excluded from -All, tagged OS d
     $global:FakeLinks['Default Domain Policy'] = @(@{ Path = 'clientx.local'; Enabled = $true })
     $global:FakeLinks['Default Domain Controllers Policy'] = @(@{ Path = 'Domain Controllers'; Enabled = $true })
 
-    # Write clean OS default GptTmpl.inf for DDP + dcpromo EFS DRA certificate in Registry.pol
-    $ddpInf = @"
+    # Write clean OS default GptTmpl.inf for DDP (weak Windows defaults) + dcpromo EFS DRA certificate
+    $ddpOsInf = @"
 [Unicode]
 Unicode=yes
 [System Access]
@@ -1445,7 +1445,9 @@ MACHINE\System\CurrentControlSet\Control\Lsa\NoLMHash=4,1
 signature="`$CHICAGO`$"
 Revision=1
 "@
-    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpInf -Encoding Unicode
+    # Nutmeg standard DDP (Nutmeg Password/Lockout + clean Windows OS defaults for the rest)
+    $ddpStdInf = $ddpOsInf.Replace('MaximumPasswordAge = 42', 'MaximumPasswordAge = 180').Replace('MinimumPasswordLength = 7', 'MinimumPasswordLength = 12').Replace('LockoutBadCount = 0', "LockoutBadCount = 5`r`nLockoutDuration = 30`r`nAllowAdministratorLockout = 1`r`nResetLockoutCount = 30")
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpStdInf -Encoding Unicode
     Set-GPRegistryValue -Guid $ddpId -Key 'HKLM\Software\Policies\Microsoft\SystemCertificates\EFS\Certificates\ABCDEF1234' -ValueName 'Blob' -Type String -Value 'certdata' | Out-Null
 
     # Write clean OS default GptTmpl.inf for DDCP (Server 2025)
@@ -1503,11 +1505,11 @@ Revision=1
     $allOnly = @(Compare-NmGpoBaseline -All)
     Assert-Equal 'Security - Enforce UAC' ((@($allOnly | ForEach-Object Gpo | Sort-Object -Unique)) -join ',') '-All excludes DDP/DDCP'
 
-    # -IncludeDefaultGpos alone checks clean DDP (ignoring EFS cert) and clean DDCP -> both Matches
+    # -IncludeDefaultGpos alone checks Nutmeg-standard DDP (ignoring EFS cert) and clean DDCP -> both Matches
     $defRows = @(Compare-NmGpoBaseline -IncludeDefaultGpos)
     $ddpRows = @($defRows | Where-Object Gpo -eq 'Default Domain Policy')
     $ddcpRows = @($defRows | Where-Object Gpo -eq 'Default Domain Controllers Policy')
-    Assert-Equal 'Matches' $ddpRows[0].GpoState 'clean DDP matches'
+    Assert-Equal 'Matches' $ddpRows[0].GpoState 'Nutmeg-standard DDP matches'
     Assert-Equal 'Matches' $ddcpRows[0].GpoState 'clean DDCP matches'
     Assert-Equal $true $ddpRows[0].IsDefaultGpo 'DDP flagged IsDefaultGpo'
 
@@ -1515,15 +1517,15 @@ Revision=1
     $bad = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy' -Baseline security-enforce-uac)
     Assert-Equal 'Failed' $bad[0].GpoState 'DDP with -Baseline fails cleanly'
 
-    # DDP with Password & Lockout customized -> still Matches, surfaced as Note rows
-    $ddpPwdInf = $ddpInf.Replace('MinimumPasswordLength = 7', 'MinimumPasswordLength = 14').Replace('LockoutBadCount = 0', "LockoutBadCount = 5`r`nLockoutDuration = 30`r`nResetLockoutCount = 30")
-    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpPwdInf -Encoding Unicode
-    $pwdRows = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy')
-    Assert-Equal 'Matches' $pwdRows[0].GpoState 'DDP password/lockout edits stay Matches'
-    $notes = @($pwdRows | Where-Object Result -eq 'Note')
-    Assert-Equal 4 $notes.Count '4 Note rows (min len, lockout threshold, duration, reset)'
+    # Unhardened Windows OS default DDP (7 chars, 42 days, lockout 0) -> Doesn't match on Password & Lockout
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpOsInf -Encoding Unicode
+    $weakRows = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy')
+    Assert-Equal "Doesn't match" $weakRows[0].GpoState 'weak OS default DDP flagged'
+    Assert-Equal 3 @($weakRows | Where-Object Result -eq 'Different').Count '3 Different (max age, min len, lockout threshold)'
+    Assert-Equal 3 @($weakRows | Where-Object Result -eq 'Missing').Count '3 Missing (lockout duration, admin lockout, reset)'
 
     # DDP with an unexpected Registry.pol setting -> Doesn't match, and Align button is hidden
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpStdInf -Encoding Unicode
     Set-GPRegistryValue -Guid $ddpId -Key 'HKLM\Software\Policies\Contoso\Custom' -ValueName 'RandomStuff' -Type DWord -Value 1 | Out-Null
     $driftRows = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy')
     Assert-Equal "Doesn't match" $driftRows[0].GpoState 'extra non-EFS setting in DDP flags drift'

@@ -42,9 +42,9 @@ $script:NmBaselineRequires     = @('Duo', 'PowerShellCore')
 # Control tags: a framework from this list, a colon, the control. CIS: section numbers only.
 $script:NmBaselineTagFrameworks = @('HIPAA', 'NIST800-53', 'NIST800-171', 'CMMC', 'FFIEC', 'STIG', 'MSBaseline', 'CIS')
 $script:NmBaselineSystemAccess = @('MinimumPasswordAge', 'MaximumPasswordAge', 'MinimumPasswordLength', 'PasswordComplexity',
-    'PasswordHistorySize', 'LockoutBadCount', 'ResetLockoutCount', 'LockoutDuration', 'RequireLogonToChangePassword',
-    'ForceLogoffWhenHourExpire', 'NewAdministratorName', 'NewGuestName', 'ClearTextPassword', 'LSAAnonymousNameLookup',
-    'EnableAdminAccount', 'EnableGuestAccount')
+    'PasswordHistorySize', 'LockoutBadCount', 'ResetLockoutCount', 'LockoutDuration', 'AllowAdministratorLockout',
+    'RequireLogonToChangePassword', 'ForceLogoffWhenHourExpire', 'NewAdministratorName', 'NewGuestName',
+    'ClearTextPassword', 'LSAAnonymousNameLookup', 'EnableAdminAccount', 'EnableGuestAccount')
 
 # Advanced audit subcategories (auditpol /list /subcategory:* /v). GUIDs share the tail -69ae-11d9-bed3-505054503030.
 $script:NmAuditSubcategories = [ordered]@{

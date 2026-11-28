@@ -3,7 +3,7 @@
     Author:  Cliff Waite
     Date:    11/21/2026
     Email:   cliff.ps@nutmegtech.com
-    Version: 0.7.30
+    Version: 0.7.31
 
 .SYNOPSIS
     Nutmeg.AD - one menu-driven toolkit for Active Directory domain controller onboarding.
@@ -23,6 +23,10 @@
     Get-NmTool | Format-Table AdminCenter, Section, Name, Kind, Version
 
 .VERSIONING
+    0.7.31 - DDP Password and Account Lockout Policy in gpo-compare now checks against Nutmeg's standard
+             (24 history, 180 max age, 1 min age, 12 chars, complexity, no reversible encryption; 30 min
+             lockout/reset, 5 attempts, AllowAdministratorLockout enabled); rest of DDP and all of DDCP
+             stay at clean Windows Server OS defaults.
     0.7.30 - Corrected clean Windows Server OS default definitions for DDP (RequireLogonToChangePassword,
              NoLMHash) and DDCP (exact Server 2025 user rights and service SIDs) in Core\GpoBaseline.ps1
              and Core\GpoFiles.ps1.
@@ -118,7 +122,7 @@
 # ---------------------------------------------------------------------------
 # Module state and default paths
 # ---------------------------------------------------------------------------
-$script:ModuleVersion = '0.7.30'
+$script:ModuleVersion = '0.7.31'
 $script:NmModuleRoot  = $PSScriptRoot
 
 $script:NmOnWindows = ($env:OS -eq 'Windows_NT')
