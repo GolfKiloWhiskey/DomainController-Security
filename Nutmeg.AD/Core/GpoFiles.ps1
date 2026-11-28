@@ -33,7 +33,8 @@ $script:NmWellKnownSids = @{
     'Local account and member of Administrators group' = 'S-1-5-114'
     'Administrators' = 'S-1-5-32-544'; 'Users' = 'S-1-5-32-545'; 'Guests' = 'S-1-5-32-546'; 'Power Users' = 'S-1-5-32-547'
     'Account Operators' = 'S-1-5-32-548'; 'Server Operators' = 'S-1-5-32-549'; 'Print Operators' = 'S-1-5-32-550'
-    'Backup Operators' = 'S-1-5-32-551'; 'Remote Desktop Users' = 'S-1-5-32-555'; 'Remote Management Users' = 'S-1-5-32-580'
+    'Backup Operators' = 'S-1-5-32-551'; 'Pre-Windows 2000 Compatible Access' = 'S-1-5-32-554'
+    'Remote Desktop Users' = 'S-1-5-32-555'; 'Performance Log Users' = 'S-1-5-32-559'; 'Remote Management Users' = 'S-1-5-32-580'
 }
 # Domain groups, as RIDs on the domain's SID.
 $script:NmDomainRids = @{

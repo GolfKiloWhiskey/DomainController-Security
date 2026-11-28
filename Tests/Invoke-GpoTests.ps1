@@ -1406,6 +1406,141 @@ Test-That 'Edit GPO warns about baseline drift and does not open gpme.msc when c
     $true
 }
 
+Test-That 'Default Domain Policy (DDP) and DDCP: excluded from -All, tagged OS default in picker, read-only integrity check' {
+    $ddpId  = '31b2f340-016d-11d2-945f-00c04fb984f9'
+    $ddcpId = '6ac1786c-016f-11d2-945f-00c04fb984f9'
+    $ddp  = [pscustomobject]@{ DisplayName = 'Default Domain Policy'; Id = [guid]$ddpId; Description = ''; Path = "CN={$($ddpId.ToUpper())},CN=Policies,CN=System,DC=clientx,DC=local" }
+    $ddcp = [pscustomobject]@{ DisplayName = 'Default Domain Controllers Policy'; Id = [guid]$ddcpId; Description = ''; Path = "CN={$($ddcpId.ToUpper())},CN=Policies,CN=System,DC=clientx,DC=local" }
+    $global:FakeGpos.Add($ddp)
+    $global:FakeGpos.Add($ddcp)
+    $global:FakeGpoAd[$ddp.Path]  = [pscustomobject]@{ versionNumber = 1; gPCMachineExtensionNames = ''; gPCUserExtensionNames = '' }
+    $global:FakeGpoAd[$ddcp.Path] = [pscustomobject]@{ versionNumber = 1; gPCMachineExtensionNames = ''; gPCUserExtensionNames = '' }
+    $global:FakeLinks['Default Domain Policy'] = @(@{ Path = 'clientx.local'; Enabled = $true })
+    $global:FakeLinks['Default Domain Controllers Policy'] = @(@{ Path = 'Domain Controllers'; Enabled = $true })
+
+    # Write clean OS default GptTmpl.inf for DDP + dcpromo EFS DRA certificate in Registry.pol
+    $ddpInf = @"
+[Unicode]
+Unicode=yes
+[System Access]
+MinimumPasswordAge = 1
+MaximumPasswordAge = 42
+MinimumPasswordLength = 7
+PasswordComplexity = 1
+PasswordHistorySize = 24
+LockoutBadCount = 0
+ClearTextPassword = 0
+ForceLogoffWhenHourExpire = 0
+LSAAnonymousNameLookup = 0
+[Kerberos Policy]
+MaxTicketAge = 10
+MaxRenewAge = 7
+MaxServiceAge = 600
+MaxClockSkew = 5
+TicketValidateClient = 1
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+"@
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpInf -Encoding Unicode
+    Set-GPRegistryValue -Guid $ddpId -Key 'HKLM\Software\Policies\Microsoft\SystemCertificates\EFS\Certificates\ABCDEF1234' -ValueName 'Blob' -Type String -Value 'certdata' | Out-Null
+
+    # Write clean OS default GptTmpl.inf for DDCP
+    $ddcpInf = @"
+[Unicode]
+Unicode=yes
+[Registry Values]
+MACHINE\System\CurrentControlSet\Services\NTDS\Parameters\LDAPServerIntegrity=4,1
+MACHINE\System\CurrentControlSet\Services\Netlogon\Parameters\RequireSignOrSeal=4,1
+MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\RequireSecuritySignature=4,1
+MACHINE\System\CurrentControlSet\Services\LanManServer\Parameters\EnableSecuritySignature=4,1
+[Privilege Rights]
+SeNetworkLogonRight = *S-1-5-32-544,*S-1-5-11,*S-1-5-9,*S-1-1-0,*S-1-5-32-554
+SeMachineAccountPrivilege = *S-1-5-11
+SeIncreaseQuotaPrivilege = *S-1-5-32-544,*S-1-5-19,*S-1-5-20
+SeInteractiveLogonRight = *S-1-5-32-544,*S-1-5-32-548,*S-1-5-32-551,*S-1-5-32-550,*S-1-5-32-549
+SeBackupPrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-549
+SeBatchLogonRight = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-559
+SeChangeNotifyPrivilege = *S-1-5-32-544,*S-1-5-11,*S-1-1-0,*S-1-5-32-554
+SeSystemtimePrivilege = *S-1-5-32-544,*S-1-5-32-549
+SeCreatePagefilePrivilege = *S-1-5-32-544
+SeDebugPrivilege = *S-1-5-32-544
+SeEnableDelegationPrivilege = *S-1-5-32-544
+SeRemoteShutdownPrivilege = *S-1-5-32-544,*S-1-5-32-549
+SeAuditPrivilege = *S-1-5-19,*S-1-5-20
+SeIncreaseBasePriorityPrivilege = *S-1-5-32-544
+SeLoadDriverPrivilege = *S-1-5-32-544,*S-1-5-32-550
+SeSecurityPrivilege = *S-1-5-32-544
+SeSystemEnvironmentPrivilege = *S-1-5-32-544
+SeSystemProfilePrivilege = *S-1-5-32-544
+SeProfileSingleProcessPrivilege = *S-1-5-32-544
+SeRestorePrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-549
+SeShutdownPrivilege = *S-1-5-32-544,*S-1-5-32-551,*S-1-5-32-550,*S-1-5-32-549
+SeTakeOwnershipPrivilege = *S-1-5-32-544
+SeImpersonatePrivilege = *S-1-5-32-544,*S-1-5-6,*S-1-5-19,*S-1-5-20
+SeCreateGlobalPrivilege = *S-1-5-32-544,*S-1-5-6,*S-1-5-19,*S-1-5-20
+[Version]
+signature="`$CHICAGO`$"
+Revision=1
+"@
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddcpId -File GptTmpl) -Text $ddcpInf -Encoding Unicode
+
+    # Build one normal stamped baseline GPO
+    Answer 'y'
+    New-NmGpoFromBaseline -Baseline security-enforce-uac | Out-Null
+
+    # Picker: DDP & DDCP show as OS default (not No stamp)
+    $pick = @(Get-NmGpoComparePickItem)
+    $ddpPick = @($pick | Where-Object Key -eq 'Default Domain Policy')[0]
+    Assert-Equal 'OS default' $ddpPick.Badge 'DDP badge'
+    $ddcpPick = @($pick | Where-Object Key -eq 'Default Domain Controllers Policy')[0]
+    Assert-Equal 'OS default' $ddcpPick.Badge 'DDCP badge'
+
+    # -All alone excludes DDP and DDCP
+    $allOnly = @(Compare-NmGpoBaseline -All)
+    Assert-Equal 'Security - Enforce UAC' ((@($allOnly | ForEach-Object Gpo | Sort-Object -Unique)) -join ',') '-All excludes DDP/DDCP'
+
+    # -IncludeDefaultGpos alone checks clean DDP (ignoring EFS cert) and clean DDCP -> both Matches
+    $defRows = @(Compare-NmGpoBaseline -IncludeDefaultGpos)
+    $ddpRows = @($defRows | Where-Object Gpo -eq 'Default Domain Policy')
+    $ddcpRows = @($defRows | Where-Object Gpo -eq 'Default Domain Controllers Policy')
+    Assert-Equal 'Matches' $ddpRows[0].GpoState 'clean DDP matches'
+    Assert-Equal 'Matches' $ddcpRows[0].GpoState 'clean DDCP matches'
+    Assert-Equal $true $ddpRows[0].IsDefaultGpo 'DDP flagged IsDefaultGpo'
+
+    # Refuses explicit -Baseline on DDP
+    $bad = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy' -Baseline security-enforce-uac)
+    Assert-Equal 'Failed' $bad[0].GpoState 'DDP with -Baseline fails cleanly'
+
+    # DDP with Password & Lockout customized -> still Matches, surfaced as Note rows
+    $ddpPwdInf = $ddpInf.Replace('MinimumPasswordLength = 7', 'MinimumPasswordLength = 14').Replace('LockoutBadCount = 0', "LockoutBadCount = 5`r`nLockoutDuration = 30`r`nResetLockoutCount = 30")
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddpId -File GptTmpl) -Text $ddpPwdInf -Encoding Unicode
+    $pwdRows = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy')
+    Assert-Equal 'Matches' $pwdRows[0].GpoState 'DDP password/lockout edits stay Matches'
+    $notes = @($pwdRows | Where-Object Result -eq 'Note')
+    Assert-Equal 4 $notes.Count '4 Note rows (min len, lockout threshold, duration, reset)'
+
+    # DDP with an unexpected Registry.pol setting -> Doesn't match, and Align button is hidden
+    Set-GPRegistryValue -Guid $ddpId -Key 'HKLM\Software\Policies\Contoso\Custom' -ValueName 'RandomStuff' -Type DWord -Value 1 | Out-Null
+    $driftRows = @(Compare-NmGpoBaseline -Gpo 'Default Domain Policy')
+    Assert-Equal "Doesn't match" $driftRows[0].GpoState 'extra non-EFS setting in DDP flags drift'
+    $t = Get-NmTool -Id gpo-compare
+    $btns = @(Get-NmGuiCardActionShown -Actions $t.CardActions -Row $driftRows[0] | ForEach-Object Label)
+    if ($btns -contains 'Align with baseline') { throw "Align button should be hidden on DDP: $($btns -join ', ')" }
+
+    # DDCP with an extra User Right -> Doesn't match
+    $ddcpMod = $ddcpInf.Replace('[Version]', "SeDenyInteractiveLogonRight = *S-1-5-32-546`r`n[Version]")
+    Write-NmGpoText -Path (Get-NmGpoFilePath -Id $ddcpId -File GptTmpl) -Text $ddcpMod -Encoding Unicode
+    $ddcpDrift = @(Compare-NmGpoBaseline -Gpo 'Default Domain Controllers Policy')
+    Assert-Equal "Doesn't match" $ddcpDrift[0].GpoState 'extra setting in DDCP flags drift'
+
+    # Invoke-NmGpoCardAlign refuses to touch DDP/DDCP
+    $global:Backups.Clear()
+    Invoke-NmGpoCardAlign -Row $driftRows[0]
+    Assert-Equal 0 $global:Backups.Count 'DDP never aligned'
+    $true
+}
+
 # ---------------------------------------------------------------------------
 Remove-Item -Path $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 & $mod { if ($script:NmSettingsTestFile -and (Test-Path $script:NmSettingsTestFile)) { Remove-Item $script:NmSettingsTestFile -Force } }
